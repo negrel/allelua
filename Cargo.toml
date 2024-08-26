@@ -1,0 +1,19 @@
+[package]
+name = "allelua"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+description = "The Lua distribution blessed by the gods of programming."
+documentation = "https://docs.rs/allelua"
+repository = "https://github.com/negrel/allelua"
+readme = "README.md"
+authors = ["Alexandre Negrel <alexandre@negrel.dev>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "allelua"
+path = "src/bin/allelua/main.rs"
+edition = "2021"
+
+[dependencies]
