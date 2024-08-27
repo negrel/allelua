@@ -4,7 +4,7 @@ use anyhow::Context;
 use mlua::{Lua, LuaOptions, StdLib};
 use tokio::task;
 
-use crate::lua::{register_globals, register_time};
+use crate::lua::{load_sync, load_time, register_globals};
 
 pub async fn run(fpath: PathBuf) -> anyhow::Result<()> {
     // Read file.
@@ -24,7 +24,8 @@ pub async fn run(fpath: PathBuf) -> anyhow::Result<()> {
 
     // Load libraries.
     register_globals(lua, &globals).unwrap();
-    register_time(lua, &globals).unwrap();
+    load_time(lua)?;
+    load_sync(lua)?;
 
     // Execute code.
     let local = task::LocalSet::new();
