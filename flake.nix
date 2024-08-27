@@ -11,7 +11,7 @@
     };
   };
 
-  outputs = { flake-utils, nixpkgs, fenix, ... }@inputs:
+  outputs = { flake-utils, nixpkgs, fenix, self, ... }@inputs:
     flake-utils.lib.eachDefaultSystem
       (system:
         let
@@ -22,14 +22,25 @@
           lib = pkgs.lib;
         in
         {
+          packages = {
+            luajit = pkgs.luajit.override { enable52Compat = true; };
+          };
           devShells = {
             default = pkgs.mkShell rec {
-              buildInputs = with pkgs; [ ] ++ (
-                with pkgs.fenix; [
-                  stable.toolchain
-                  rust-analyzer
-                ]
-              );
+              buildInputs = (with pkgs; [
+                clang-tools
+                clang
+                check
+                valgrind
+                pkg-config
+                cargo-expand
+                tokio-console
+              ])
+              ++ (with self.packages.${system}; [ luajit ])
+              ++ (with pkgs.fenix; [
+                stable.toolchain
+                rust-analyzer
+              ]);
               LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
             };
           };

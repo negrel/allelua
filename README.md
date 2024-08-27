@@ -2,10 +2,7 @@
     <img height="250" src="./.github/images/allelua.png">
 </h1>
 
-# 🙏 `allelua` - The Lua distribution blessed by the gods of programming
-
-A Lua distribution for system programming that aims to be stable (no breaking
-changes), with great DX out of the box.
+# 🙏 `allelua` - Lua distribution blessed by the gods of programming
 
 ## Contributing
 
@@ -18,7 +15,7 @@ me at [alexandre@negrel.dev](mailto:alexandre@negrel.dev), open an
 
 Please give a :star: if this project helped you!
 
-[![buy me a coffee](.github/images/bmc-button.png)](https://www.buymeacoffee.com/negrel)
+[![buy me a coffee](https://github.com/negrel/.github/raw/master/.github/images/bmc-button.png?raw=true)](https://www.buymeacoffee.com/negrel)
 
 ## :scroll: License
 

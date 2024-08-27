@@ -3,7 +3,7 @@ name = "allelua"
 version = "0.1.0"
 edition = "2021"
 license-file = "LICENSE"
-description = "The Lua distribution blessed by the gods of programming."
+description = "Lua distribution blessed by the gods of programming."
 documentation = "https://docs.rs/allelua"
 repository = "https://github.com/negrel/allelua"
 readme = "README.md"
@@ -17,3 +17,8 @@ path = "src/bin/allelua/main.rs"
 edition = "2021"
 
 [dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+# console-subscriber = { version = "0.4.0" }
+mlua = { version = "0.9", features = ["luajit52", "async"] }
+tokio = { version = "1", features = ["time", "rt", "macros"] }
