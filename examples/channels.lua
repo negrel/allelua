@@ -1,6 +1,7 @@
 local sync = require('sync')
 local time = require('time')
-local tx, rx = sync.mpsc(1)
+
+local tx, rx = sync.channel()
 
 go(function()
 	for i = 1, 10 do
@@ -8,20 +9,20 @@ go(function()
 		-- 10th call will fail
 		_, err = pcall(function()
 			tx:send(i)
+			print('sent!')
 		end)
 		-- handle error
+		_ = err
 	end
 end)
 
 time.sleep(time.second)
 
-go(function()
-	for i = 1, 9 do
+for i = 1, 10 do
+	go(function()
 		print("recv", rx:recv())
-	end
-	-- Close channel after 9 messages.
-	rx:close()
-end)
+	end)
+end
 
 time.sleep(100 * time.millisecond)
 print('done')
