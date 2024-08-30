@@ -1,6 +1,6 @@
 use mlua::{AnyUserData, Lua, MetaMethod, UserData};
 
-pub struct LuaByteBuffer(Vec<u8>);
+struct LuaByteBuffer(Vec<u8>);
 
 impl UserData for LuaByteBuffer {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
@@ -38,8 +38,9 @@ pub fn load_byte(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
         lua.create_function(|lua, ()| {
             let byte = lua.create_table()?;
 
-            byte.set(
-                "buffer",
+            let buffer = lua.create_table()?;
+            buffer.set(
+                "new",
                 lua.create_function(|_, (len, fill): (Option<usize>, Option<u8>)| {
                     let vec = match len {
                         Some(len) => vec![fill.unwrap_or(0); len],
@@ -49,11 +50,13 @@ pub fn load_byte(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
                 })?,
             )?;
             byte.set(
-                "buffer_from_string",
+                "new_from_string",
                 lua.create_function(|_, str: mlua::String| {
                     Ok(LuaByteBuffer(str.as_bytes().to_owned()))
                 })?,
             )?;
+
+            byte.set("Buffer", buffer)?;
 
             Ok(byte)
         })?,

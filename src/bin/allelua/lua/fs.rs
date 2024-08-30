@@ -7,7 +7,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 #[derive(Debug)]
-pub struct LuaFile(File);
+struct LuaFile(File);
 
 impl UserData for LuaFile {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
@@ -51,7 +51,7 @@ impl UserData for LuaFile {
 }
 
 #[derive(Debug, Clone, Copy, FromLua)]
-pub struct LuaSeekFrom(SeekFrom);
+struct LuaSeekFrom(SeekFrom);
 
 impl UserData for LuaSeekFrom {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
@@ -101,10 +101,10 @@ pub fn load_fs(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
         "fs",
         lua.create_function(|_, ()| {
             let fs = lua.create_table()?;
+
             let file = lua.create_table()?;
             file.set("open", lua.create_async_function(file_open)?)?;
-
-            fs.set("file", file)?;
+            fs.set("File", file)?;
 
             let seek_from = lua.create_table()?;
             seek_from.set(
@@ -119,7 +119,7 @@ pub fn load_fs(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
                 "current",
                 lua.create_function(|_, offset: i64| Ok(LuaSeekFrom(SeekFrom::Current(offset))))?,
             )?;
-            fs.set("seek_from", seek_from)?;
+            fs.set("SeekFrom", seek_from)?;
 
             Ok(fs)
         })?,

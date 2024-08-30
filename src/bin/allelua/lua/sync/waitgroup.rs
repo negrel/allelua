@@ -6,7 +6,7 @@ use std::{
 
 use mlua::UserData;
 
-pub(crate) struct LuaWaitGroup {
+pub(super) struct LuaWaitGroup {
     counter: Cell<usize>,
     waiter: Cell<Option<Waiter>>,
 }
@@ -74,7 +74,7 @@ struct Waiter {
 }
 
 impl Waiter {
-    pub fn wake(self) {
+    fn wake(self) {
         if self.next.is_some() {
             self.next.unwrap().wake();
         }
@@ -112,6 +112,6 @@ impl UserData for LuaWaitGroup {
     }
 }
 
-pub(crate) fn lua_waitgroup() -> LuaWaitGroup {
+pub fn lua_waitgroup() -> LuaWaitGroup {
     LuaWaitGroup::new()
 }

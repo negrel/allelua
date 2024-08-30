@@ -18,7 +18,7 @@ pub fn load_sync(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
             )?;
 
             sync.set(
-                "waitgroup",
+                "WaitGroup",
                 lua.create_function(|_, ()| Ok(lua_waitgroup()))?,
             )?;
 

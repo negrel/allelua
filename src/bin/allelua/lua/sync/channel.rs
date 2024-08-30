@@ -3,12 +3,12 @@ use std::{ffi::c_void, ops::Deref};
 use kanal::{AsyncReceiver, AsyncSender};
 use mlua::UserData;
 
-pub fn lua_channel(cap: usize) -> (LuaChannelSender, LuaChannelReceiver) {
+pub(super) fn lua_channel(cap: usize) -> (LuaChannelSender, LuaChannelReceiver) {
     let (tx, rx) = kanal::bounded_async::<mlua::Value<'static>>(cap);
     (LuaChannelSender(tx), LuaChannelReceiver(rx))
 }
 
-pub(crate) struct LuaChannelSender(AsyncSender<mlua::Value<'static>>);
+pub(super) struct LuaChannelSender(AsyncSender<mlua::Value<'static>>);
 
 impl Deref for LuaChannelSender {
     type Target = AsyncSender<mlua::Value<'static>>;
@@ -41,7 +41,7 @@ impl UserData for LuaChannelSender {
     }
 }
 
-pub(crate) struct LuaChannelReceiver(AsyncReceiver<mlua::Value<'static>>);
+pub(super) struct LuaChannelReceiver(AsyncReceiver<mlua::Value<'static>>);
 
 impl Deref for LuaChannelReceiver {
     type Target = AsyncReceiver<mlua::Value<'static>>;
