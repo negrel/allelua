@@ -16,13 +16,13 @@ impl UserData for LuaFile {
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
             let fd = f.0.as_raw_fd();
-            Ok(format!("LuaFile(fd={fd}) 0x{address:x}"))
+            Ok(format!("File(fd={fd}) 0x{address:x}"))
         });
 
         methods.add_async_method_mut("write", |_, f, str: mlua::String| async move {
             f.0.write_all(str.as_bytes())
                 .await
-                .map_err(|err| mlua::Error::RuntimeError(err.to_string()))?;
+                .map_err(mlua::Error::external)?;
             Ok(())
         });
 
@@ -39,22 +39,18 @@ impl UserData for LuaFile {
         });
 
         methods.add_async_method_mut("seek", |_, f, seek_from: LuaSeekFrom| async move {
-            f.0.seek(seek_from.0)
-                .await
-                .map_err(|err| mlua::Error::RuntimeError(err.to_string()))?;
+            f.0.seek(seek_from.0).await.map_err(mlua::Error::external)?;
             Ok(())
         });
 
         methods.add_async_method_mut("flush", |_, f, ()| async {
-            f.0.flush()
-                .await
-                .map_err(|err| mlua::Error::RuntimeError(err.to_string()))?;
+            f.0.flush().await.map_err(mlua::Error::external)?;
             Ok(())
         });
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, FromLua)]
 pub struct LuaSeekFrom(SeekFrom);
 
 impl UserData for LuaSeekFrom {
@@ -64,25 +60,12 @@ impl UserData for LuaSeekFrom {
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
             let str = match f.0 {
-                SeekFrom::Start(offset) => format!("LuaSeekFrom(start={offset}) 0x{address:x}"),
-                SeekFrom::End(offset) => format!("LuaSeekFrom(end={offset}) 0x{address:x}"),
-                SeekFrom::Current(offset) => format!("LuaSeekFrom(current={offset}) 0x{address:x}"),
+                SeekFrom::Start(offset) => format!("SeekFrom(start={offset}) 0x{address:x}"),
+                SeekFrom::End(offset) => format!("SeekFrom(end={offset}) 0x{address:x}"),
+                SeekFrom::Current(offset) => format!("SeekFrom(current={offset}) 0x{address:x}"),
             };
             Ok(str)
         });
-    }
-}
-
-impl<'lua> FromLua<'lua> for LuaSeekFrom {
-    fn from_lua(value: mlua::Value<'lua>, _: &'lua Lua) -> mlua::prelude::LuaResult<Self> {
-        match value {
-            mlua::Value::UserData(ud) => Ok(*ud.borrow::<Self>()?),
-            _ => Err(mlua::Error::FromLuaConversionError {
-                from: value.type_name(),
-                to: "LuaSeekFrom",
-                message: Some("user data expected".to_owned()),
-            }),
-        }
     }
 }
 
@@ -109,10 +92,7 @@ async fn file_open<'lua>(
         options.write(true).append(true);
     }
 
-    let file = options
-        .open(path)
-        .await
-        .map_err(|err| mlua::Error::RuntimeError(err.to_string()))?;
+    let file = options.open(path).await.map_err(mlua::Error::external)?;
     Ok(LuaFile(file))
 }
 

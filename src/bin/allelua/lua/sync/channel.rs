@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::{ffi::c_void, ops::Deref};
 
 use kanal::{AsyncReceiver, AsyncSender};
 use mlua::UserData;
@@ -10,6 +10,14 @@ pub fn lua_channel(cap: usize) -> (LuaChannelSender, LuaChannelReceiver) {
 
 pub(crate) struct LuaChannelSender(AsyncSender<mlua::Value<'static>>);
 
+impl Deref for LuaChannelSender {
+    type Target = AsyncSender<mlua::Value<'static>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl UserData for LuaChannelSender {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
 
@@ -20,7 +28,6 @@ impl UserData for LuaChannelSender {
         });
 
         methods.add_async_method("send", |_, sender, val: mlua::Value<'lua>| async move {
-            let tx = &sender.0;
             // This is safe because this block was blessed by programming gods,
             // (also lua VM is static).
             let val: mlua::Value<'static> = unsafe {
@@ -28,15 +35,21 @@ impl UserData for LuaChannelSender {
                 let val_ref: &mlua::Value<'static> = &*(ptr as *const mlua::Value<'static>);
                 val_ref.to_owned()
             };
-            tx.send(val)
-                .await
-                .map_err(|err| mlua::Error::RuntimeError(err.to_string()))?;
+            sender.send(val).await.map_err(mlua::Error::external)?;
             Ok(())
         });
     }
 }
 
 pub(crate) struct LuaChannelReceiver(AsyncReceiver<mlua::Value<'static>>);
+
+impl Deref for LuaChannelReceiver {
+    type Target = AsyncReceiver<mlua::Value<'static>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl UserData for LuaChannelReceiver {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
@@ -48,15 +61,11 @@ impl UserData for LuaChannelReceiver {
         });
 
         methods.add_async_method("recv", |_, receiver, ()| async {
-            receiver
-                .0
-                .recv()
-                .await
-                .map_err(|err| mlua::Error::RuntimeError(err.to_string()))
+            receiver.recv().await.map_err(mlua::Error::external)
         });
 
         methods.add_method("close", |_, receiver, ()| {
-            receiver.0.close();
+            receiver.close();
             Ok(())
         });
     }

@@ -1,9 +1,18 @@
 use core::time;
+use std::ops::Deref;
 
 use mlua::{FromLua, Lua, UserData};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromLua)]
 struct LuaDuration(time::Duration);
+
+impl Deref for LuaDuration {
+    type Target = time::Duration;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl UserData for LuaDuration {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
@@ -30,8 +39,7 @@ impl UserData for LuaDuration {
                 (mlua::Value::UserData(ud), mlua::Value::Integer(n))
                 | (mlua::Value::Integer(n), mlua::Value::UserData(ud)) => {
                     let dur = *ud.borrow::<Self>()?;
-                    let n = u32::try_from(n)
-                        .map_err(|err| mlua::Error::RuntimeError(err.to_string()))?;
+                    let n = u32::try_from(n).map_err(mlua::Error::external)?;
                     Ok(LuaDuration(dur.0 * n))
                 }
                 (mlua::Value::UserData(ud), mlua::Value::Number(n))
@@ -39,11 +47,9 @@ impl UserData for LuaDuration {
                     let dur = *ud.borrow::<Self>()?;
                     Ok(LuaDuration(dur.0.mul_f64(n)))
                 }
-                _ => Err(mlua::Error::MetaMethodTypeError {
-                    method: mlua::MetaMethod::Mul.to_string(),
-                    type_name: "LuaDuration",
-                    message: Some("LuaDuration can only be multiplied with integers".to_owned()),
-                }),
+                _ => Err(mlua::Error::external(
+                    "Duration can only be multiplied with integers",
+                )),
             },
         );
         methods.add_meta_method(mlua::MetaMethod::Div, |_lua, dur1, dur2: u32| {
@@ -56,22 +62,9 @@ impl UserData for LuaDuration {
     }
 }
 
-impl<'lua> FromLua<'lua> for LuaDuration {
-    fn from_lua(value: mlua::prelude::LuaValue<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
-        match value {
-            mlua::Value::UserData(ud) => Ok(*ud.borrow::<Self>()?),
-            _ => Err(mlua::Error::FromLuaConversionError {
-                from: value.type_name(),
-                to: "LuaDuration",
-                message: Some("user data expected".to_owned()),
-            }),
-        }
-    }
-}
-
 async fn sleep(_lua: &Lua, dur: LuaDuration) -> mlua::Result<()> {
     tokio::time::sleep(dur.0).await;
-    mlua::Result::Ok(())
+    Ok(())
 }
 
 pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {

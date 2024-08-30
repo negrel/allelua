@@ -20,7 +20,7 @@ impl UserData for LuaByteBuffer {
         methods.add_meta_method_mut(MetaMethod::NewIndex, |_, b, (i, byte): (usize, u8)| {
             let i = i - 1;
             if i >= b.0.len() {
-                return Err(mlua::Error::RuntimeError(format!(
+                return Err(mlua::Error::runtime(format!(
                     "index out of bound: the len is {} but the index is {i}",
                     b.0.len(),
                 )));

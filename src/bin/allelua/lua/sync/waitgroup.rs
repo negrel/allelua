@@ -84,12 +84,17 @@ impl Waiter {
 }
 
 impl UserData for LuaWaitGroup {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field_method_get("count", |_, wg| Ok(wg.counter.get()))
+    }
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, wg, ()| {
             let address = wg as *const _ as usize;
-            Ok(format!("WaitGroup 0x{address:x}"))
+            Ok(format!(
+                "WaitGroup(counter={}) 0x{address:x}",
+                wg.counter.get()
+            ))
         });
 
         methods.add_method("add", |_, wg, n: usize| {
