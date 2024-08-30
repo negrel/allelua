@@ -4,7 +4,7 @@ use anyhow::Context;
 use mlua::{Lua, LuaOptions, StdLib};
 use tokio::task;
 
-use crate::lua::{load_sync, load_time, register_globals};
+use crate::lua::{load_fs, load_sync, load_time, register_globals};
 
 pub async fn run(fpath: PathBuf) -> anyhow::Result<()> {
     // Read file.
@@ -26,6 +26,7 @@ pub async fn run(fpath: PathBuf) -> anyhow::Result<()> {
     register_globals(lua, &globals).unwrap();
     load_time(lua)?;
     load_sync(lua)?;
+    load_fs(lua)?;
 
     // Execute code.
     let local = task::LocalSet::new();
@@ -36,6 +37,10 @@ pub async fn run(fpath: PathBuf) -> anyhow::Result<()> {
 
     // Wait for background tasks.
     local.await;
+
+    // Collect everything so user data drop method get called (e.g. closing files).
+    lua.gc_collect()?;
+    lua.gc_collect()?;
 
     Ok(())
 }

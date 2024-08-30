@@ -115,6 +115,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bytes"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8318a53db07bb3f8dca91a600466bdb3f2eaadeedfdbcf02e1accbad9271ba50"
+
+[[package]]
 name = "cc"
 version = "1.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -421,6 +427,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9babc99b9923bfa4804bd74722ff02c0381021eafa4db9949217e3be8e84fff5"
 dependencies = [
  "backtrace",
+ "bytes",
  "pin-project-lite",
  "tokio-macros",
 ]

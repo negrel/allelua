@@ -22,4 +22,4 @@ clap = { version = "4", features = ["derive"] }
 kanal = "0.1.0-pre8"
 # console-subscriber = { version = "0.4.0" }
 mlua = { version = "0.9", features = ["luajit52", "async"] }
-tokio = { version = "1", features = ["time", "rt", "macros", "sync"] }
+tokio = { version = "1", features = ["time", "rt", "macros", "sync", "fs", "io-util"] }
