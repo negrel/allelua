@@ -1,7 +1,7 @@
 local time = require('time')
 local sync = require('sync')
 
-local wg = sync.waitgroup()
+local wg = sync.WaitGroup.new()
 wg:add(2)
 
 function work(n, secs)
