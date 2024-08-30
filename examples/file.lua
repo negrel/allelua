@@ -1,7 +1,7 @@
 local fs = require("fs")
 
 -- Open stdin with read permissions.
-local stdin = fs.file.open("/proc/self/fd/0", "r")
+local stdin = fs.File.open("/proc/self/fd/0", "r")
 
 local buf = ""
 while true do
@@ -13,4 +13,3 @@ while true do
 		buf = buf .. byte
 	end
 end
-

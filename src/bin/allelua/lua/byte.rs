@@ -1,5 +1,7 @@
 use mlua::{AnyUserData, Lua, MetaMethod, UserData};
 
+use crate::LuaTypeConstructors;
+
 struct LuaByteBuffer(Vec<u8>);
 
 impl UserData for LuaByteBuffer {
@@ -32,32 +34,25 @@ impl UserData for LuaByteBuffer {
     }
 }
 
+LuaTypeConstructors!(LuaByteBufferConstructors {
+    new(len: Option<usize>, fill: Option<u8>) {
+        let vec = match len {
+            Some(len) => vec![fill.unwrap_or(0); len],
+            None => Vec::new(),
+        };
+        Ok(LuaByteBuffer(vec))
+    },
+    from_string(str: mlua::String) {
+        Ok(LuaByteBuffer(str.as_bytes().to_owned()))
+    }
+});
+
 pub fn load_byte(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
     lua.load_from_function(
         "byte",
         lua.create_function(|lua, ()| {
             let byte = lua.create_table()?;
-
-            let buffer = lua.create_table()?;
-            buffer.set(
-                "new",
-                lua.create_function(|_, (len, fill): (Option<usize>, Option<u8>)| {
-                    let vec = match len {
-                        Some(len) => vec![fill.unwrap_or(0); len],
-                        None => Vec::new(),
-                    };
-                    Ok(LuaByteBuffer(vec))
-                })?,
-            )?;
-            byte.set(
-                "new_from_string",
-                lua.create_function(|_, str: mlua::String| {
-                    Ok(LuaByteBuffer(str.as_bytes().to_owned()))
-                })?,
-            )?;
-
-            byte.set("Buffer", buffer)?;
-
+            byte.set("Buffer", LuaByteBufferConstructors)?;
             Ok(byte)
         })?,
     )

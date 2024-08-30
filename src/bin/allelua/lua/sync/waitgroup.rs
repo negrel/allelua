@@ -6,6 +6,8 @@ use std::{
 
 use mlua::UserData;
 
+use crate::LuaTypeConstructors;
+
 pub(super) struct LuaWaitGroup {
     counter: Cell<usize>,
     waiter: Cell<Option<Waiter>>,
@@ -112,6 +114,8 @@ impl UserData for LuaWaitGroup {
     }
 }
 
-pub fn lua_waitgroup() -> LuaWaitGroup {
-    LuaWaitGroup::new()
-}
+LuaTypeConstructors!(pub(super) LuaWaitGroupConstructors {
+    new() {
+        Ok(LuaWaitGroup::new())
+    }
+});

@@ -1,6 +1,7 @@
 mod byte;
 mod fs;
 mod globals;
+mod macros;
 mod sync;
 mod time;
 
