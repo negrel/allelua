@@ -5,9 +5,9 @@ use crate::LuaTypeConstructors;
 struct LuaByteBuffer(Vec<u8>);
 
 impl UserData for LuaByteBuffer {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::Len, |_, b, ()| Ok(b.0.len()));
         methods.add_meta_method(MetaMethod::ToString, |lua, b, ()| {
             Ok(lua.create_string(&*b.0))

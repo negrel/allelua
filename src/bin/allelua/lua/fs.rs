@@ -12,9 +12,9 @@ use crate::LuaTypeConstructors;
 struct LuaFile(File);
 
 impl UserData for LuaFile {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
             let fd = f.0.as_raw_fd();
@@ -82,9 +82,9 @@ LuaTypeConstructors!(FileConstructors async {
 struct LuaSeekFrom(SeekFrom);
 
 impl UserData for LuaSeekFrom {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
             let str = match f.0 {

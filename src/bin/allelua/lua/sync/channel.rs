@@ -19,9 +19,9 @@ impl Deref for LuaChannelSender {
 }
 
 impl UserData for LuaChannelSender {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, sender, ()| {
             let address = sender as *const _ as usize;
             Ok(format!("ChannelSender 0x{address:x}"))
@@ -52,9 +52,9 @@ impl Deref for LuaChannelReceiver {
 }
 
 impl UserData for LuaChannelReceiver {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, receiver, ()| {
             let address = receiver as *const _ as usize;
             Ok(format!("ChannelReceiver 0x{address:x}"))
