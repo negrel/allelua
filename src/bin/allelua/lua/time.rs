@@ -3,6 +3,8 @@ use std::ops::Deref;
 
 use mlua::{FromLua, Lua, UserData};
 
+use crate::LuaModule;
+
 #[derive(Clone, Copy, FromLua)]
 struct LuaDuration(time::Duration);
 
@@ -62,26 +64,24 @@ impl UserData for LuaDuration {
     }
 }
 
-async fn sleep(_lua: &Lua, dur: LuaDuration) -> mlua::Result<()> {
-    tokio::time::sleep(dur.0).await;
-    Ok(())
-}
+LuaModule!(LuaTimeModule,
+    fields {
+        nanosecond = LuaDuration(time::Duration::from_nanos(1))
+        microsecond = LuaDuration(time::Duration::from_micros(1))
+        millisecond = LuaDuration(time::Duration::from_millis(1))
+        second = LuaDuration(time::Duration::from_secs(1))
+        minute = LuaDuration(time::Duration::from_secs(60 ))
+        hour   = LuaDuration(time::Duration::from_secs(60 * 60))
+    },
+    functions { },
+    async functions {
+        sleep(_lua, dur: LuaDuration) {
+            tokio::time::sleep(dur.0).await;
+            Ok(())
+        }
+    }
+);
 
-pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
-    lua.load_from_function(
-        "time",
-        lua.create_function(|_, ()| {
-            let time = lua.create_table()?;
-
-            time.set("nanosecond", LuaDuration(time::Duration::from_nanos(1)))?;
-            time.set("millisecond", LuaDuration(time::Duration::from_millis(1)))?;
-            time.set("second", LuaDuration(time::Duration::from_secs(1)))?;
-            time.set("minute", LuaDuration(time::Duration::from_secs(60)))?;
-            time.set("hour", LuaDuration(time::Duration::from_secs(60 * 60)))?;
-
-            time.set("sleep", lua.create_async_function(sleep)?)?;
-
-            Ok(time)
-        })?,
-    )
+pub fn load_time(lua: &'static Lua) -> mlua::Result<LuaTimeModule> {
+    lua.load_from_function("time", lua.create_function(|_, ()| Ok(LuaTimeModule))?)
 }

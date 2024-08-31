@@ -6,7 +6,7 @@ use mlua::{FromLua, Lua, MetaMethod, UserData};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-use crate::LuaTypeConstructors;
+use crate::{LuaModule, LuaTypeConstructors};
 
 #[derive(Debug)]
 struct LuaFile(File);
@@ -52,7 +52,7 @@ impl UserData for LuaFile {
     }
 }
 
-LuaTypeConstructors!(FileConstructors async {
+LuaTypeConstructors!(LuaFileConstructors async {
     open(path: mlua::String<'lua>, mode: mlua::String<'lua>) {
         let path = Path::new(OsStr::from_bytes(path.as_bytes()));
         let mut options = OpenOptions::new();
@@ -109,15 +109,14 @@ LuaTypeConstructors!(LuaSeekFromConstructors {
     }
 });
 
-pub fn load_fs(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
-    lua.load_from_function(
-        "fs",
-        lua.create_function(|_, ()| {
-            let fs = lua.create_table()?;
-            fs.set("File", FileConstructors)?;
-            fs.set("SeekFrom", LuaSeekFromConstructors)?;
+LuaModule!(LuaFsModule,
+    fields {
+        File = LuaFileConstructors
+        SeekFrom = LuaSeekFromConstructors
+    },
+    functions {}, async functions {}
+);
 
-            Ok(fs)
-        })?,
-    )
+pub fn load_fs(lua: &'static Lua) -> mlua::Result<LuaFsModule> {
+    lua.load_from_function("fs", lua.create_function(|_, ()| Ok(LuaFsModule))?)
 }

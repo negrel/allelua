@@ -6,20 +6,14 @@ use channel::*;
 mod waitgroup;
 use waitgroup::*;
 
-pub fn load_sync(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
-    lua.load_from_function(
-        "sync",
-        lua.create_function(|_, ()| {
-            let sync = lua.create_table()?;
+use crate::LuaModule;
 
-            sync.set(
-                "channel",
-                lua.create_function(|_, cap: Option<usize>| Ok(lua_channel(cap.unwrap_or(0))))?,
-            )?;
+LuaModule!(LuaSyncModule,
+    fields { WaitGroup = LuaWaitGroupConstructors },
+    functions { channel(_lua, cap: Option<usize>) { Ok(lua_channel(cap.unwrap_or(0))) } },
+    async functions {}
+);
 
-            sync.set("WaitGroup", LuaWaitGroupConstructors)?;
-
-            Ok(sync)
-        })?,
-    )
+pub fn load_sync(lua: &'static Lua) -> mlua::Result<LuaSyncModule> {
+    lua.load_from_function("sync", lua.create_function(|_, ()| Ok(LuaSyncModule))?)
 }

@@ -1,6 +1,6 @@
 use mlua::{AnyUserData, Lua, MetaMethod, UserData};
 
-use crate::LuaTypeConstructors;
+use crate::{LuaModule, LuaTypeConstructors};
 
 struct LuaByteBuffer(Vec<u8>);
 
@@ -47,13 +47,8 @@ LuaTypeConstructors!(LuaByteBufferConstructors {
     }
 });
 
-pub fn load_byte(lua: &'static Lua) -> mlua::Result<mlua::Table<'static>> {
-    lua.load_from_function(
-        "byte",
-        lua.create_function(|lua, ()| {
-            let byte = lua.create_table()?;
-            byte.set("Buffer", LuaByteBufferConstructors)?;
-            Ok(byte)
-        })?,
-    )
+LuaModule!(LuaByteModule, fields { Buffer = LuaByteBufferConstructors }, functions {}, async functions {});
+
+pub fn load_byte(lua: &'static Lua) -> mlua::Result<LuaByteModule> {
+    lua.load_from_function("byte", lua.create_function(|_, ()| Ok(LuaByteModule))?)
 }
