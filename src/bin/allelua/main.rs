@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 
@@ -18,6 +18,8 @@ enum Command {
     Run {
         /// Path of file to run.
         file: PathBuf,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        run_args: Vec<OsString>,
     },
 }
 
@@ -29,7 +31,7 @@ pub async fn main() -> anyhow::Result<()> {
     let parse = Cli::parse();
 
     match parse.command {
-        Command::Run { file } => cmds::run(file).await?,
+        Command::Run { file, run_args } => cmds::run(file, run_args).await?,
     }
 
     Ok(())
