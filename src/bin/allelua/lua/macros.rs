@@ -12,6 +12,9 @@ macro_rules! LuaTypeConstructors {
             fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
 
             fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(#[allow(unused)] methods: &mut M) {
+                let tostr = stringify!($type_name).replace("Lua", "");
+                methods.add_meta_method(mlua::MetaMethod::ToString, move |_, _, ()| Ok(tostr.to_owned()));
+
                 $(
                     $(
                         methods.add_function(
@@ -52,6 +55,9 @@ macro_rules! LuaModule {
             }
 
             fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(#[allow(unused)] methods: &mut M) {
+                let tostr = stringify!($type_name).replace("Lua", "");
+                methods.add_meta_method(mlua::MetaMethod::ToString, move |_, _, ()| Ok(tostr.to_owned()));
+
                 $(
                     methods.add_function(
                         stringify!($fn_name),
