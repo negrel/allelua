@@ -87,7 +87,18 @@ fn print_value(value: mlua::Value, prefix: &str, state: &mut PrintState) -> mlua
         mlua::Value::Number(n) => print!("{n}"),
         mlua::Value::String(str) => print!("{str:?}",),
         mlua::Value::Table(t) => print_table(t, prefix, state)?,
-        mlua::Value::Function(f) => print!("{:?}", f.info()),
+        mlua::Value::Function(f) => {
+            let info = f.info();
+            match info.what {
+                "C" => print!("<function> C"),
+                "Lua" => print!(
+                    "<function> Lua {}:{}",
+                    info.short_src.unwrap_or("".to_string()),
+                    info.line_defined.unwrap_or(0),
+                ),
+                _ => print!("<function> Rust"),
+            }
+        }
         mlua::Value::Thread(_) => unreachable!(),
         mlua::Value::UserData(ref ud) => {
             let idx = state.add_user_data(ud);
