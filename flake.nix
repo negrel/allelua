@@ -11,39 +11,35 @@
     };
   };
 
-  outputs = { flake-utils, nixpkgs, fenix, self, ... }@inputs:
-    flake-utils.lib.eachDefaultSystem
-      (system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ fenix.overlays.default ];
+  outputs = { flake-utils, nixpkgs, fenix, self, ... }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ fenix.overlays.default ];
+        };
+        lib = pkgs.lib;
+      in {
+        packages = {
+          default = pkgs.rustPlatform.buildRustPackage rec {
+            pname = "allelua";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock = { lockFile = ./Cargo.lock; };
+            nativeBuildInputs = with pkgs; [ pkg-config ];
+            buildInputs = [ self.packages.${system}.luajit ];
+            LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
           };
-          lib = pkgs.lib;
-        in
-        {
-          packages = {
-            luajit = pkgs.luajit.override { enable52Compat = true; };
-          };
-          devShells = {
-            default = pkgs.mkShell rec {
-              buildInputs = (with pkgs; [
-                clang-tools
-                clang
-                check
-                valgrind
-                pkg-config
-                cargo-expand
-                tokio-console
-              ])
+          luajit = pkgs.luajit.override { enable52Compat = true; };
+        };
+        devShells = {
+          default = pkgs.mkShell rec {
+            buildInputs = (with pkgs; [ pkg-config cargo-expand tokio-console ])
               ++ (with self.packages.${system}; [ luajit ])
-              ++ (with pkgs.fenix; [
-                stable.toolchain
-                rust-analyzer
-              ]);
-              LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
-            };
+              ++ (with pkgs.fenix; [ stable.toolchain rust-analyzer ]);
+            LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
           };
-        });
+        };
+      });
 }
 
