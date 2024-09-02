@@ -15,10 +15,12 @@ struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
+    /// Run a Lua program.
     Run {
         /// Path of file to run.
         file: PathBuf,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        /// Arguments passed to Lua program.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         run_args: Vec<OsString>,
     },
 }
