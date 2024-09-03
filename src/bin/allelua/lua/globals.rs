@@ -125,7 +125,8 @@ async fn print(_lua: &Lua, values: mlua::MultiValue<'_>) -> mlua::Result<()> {
     Ok(())
 }
 
-pub fn register_globals(lua: &'static Lua, globals: &mlua::Table) -> mlua::Result<()> {
+pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
+    let globals = lua.globals();
     globals.set("go", lua.create_async_function(go)?)?;
     globals.set("print", lua.create_async_function(print)?)?;
     Ok(())
