@@ -45,6 +45,20 @@ pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua
                     },
                 )?,
             )?;
+            vars_mt.set(
+                "__tostring",
+                lua.create_function(|lua, (_, opts): (mlua::Table, mlua::Table)| {
+                    let table = lua.create_table()?;
+                    for (varname, varvalue) in env::vars_os() {
+                        table.set(
+                            lua.create_string(varname.as_bytes())?,
+                            lua.create_string(varvalue.as_bytes())?,
+                        )?;
+                    }
+                    let tostring = lua.globals().get::<_, mlua::Function>("tostring")?;
+                    tostring.call::<_, mlua::String>((table, opts))
+                })?,
+            )?;
             vars.set_metatable(Some(vars_mt));
             env.set("vars", vars)?;
 

@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::Path};
+use std::{ffi::OsString, fmt::Display, path::Path, process::exit};
 
 use mlua::{chunk, Lua};
 use package::load_package;
@@ -20,34 +20,42 @@ mod sync;
 mod table;
 mod time;
 
+fn handle_result<T, E: Display>(result: Result<T, E>) {
+    match result {
+        Ok(_) => {}
+        Err(err) => {
+            eprintln!("{err}");
+            exit(-1);
+        }
+    }
+}
+
 pub fn prepare_runtime(lua: &'static Lua, fpath: &Path, run_args: Vec<OsString>) {
     // Load libraries.
-    register_globals(lua).unwrap();
-    load_byte(lua).unwrap();
-    load_env(lua, run_args).unwrap();
-    load_fs(lua).unwrap();
-    load_path(lua).unwrap();
-    load_string(lua).unwrap();
-    load_sync(lua).unwrap();
-    load_table(lua).unwrap();
-    load_time(lua).unwrap();
+    handle_result(load_byte(lua));
+    handle_result(load_env(lua, run_args));
+    handle_result(load_fs(lua));
+    handle_result(load_path(lua));
+    handle_result(load_string(lua));
+    handle_result(load_sync(lua));
+    handle_result(load_table(lua));
+    handle_result(load_time(lua));
+    handle_result(register_globals(lua));
 
     // overwrite require.
-    load_package(lua, fpath).unwrap();
+    handle_result(load_package(lua, fpath));
 
-    lua.load(chunk! {
-        local package = require("package")
-        local table = require("table")
+    let result = lua
+        .load(chunk! {
+            local package = require("package")
+            local table = require("table")
 
-        // Freeze modules.
-        table.map(package.loaded, function(k, v)
-            if type(v) == "table" then
+            // Freeze modules.
+            table.map(package.loaded, function(k, v)
                 return table.freeze(v)
-            else
-                return v
-            end
-        end)
-    })
-    .eval::<()>()
-    .unwrap();
+            end)
+        })
+        .eval::<()>();
+
+    handle_result(result);
 }

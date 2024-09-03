@@ -1,6 +1,11 @@
-use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path};
+use std::{
+    ffi::OsStr,
+    os::unix::{ffi::OsStrExt, fs::FileTypeExt},
+    path,
+};
 
 use mlua::{FromLua, Lua};
+use tokio::fs;
 
 pub fn load_path(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
@@ -9,44 +14,104 @@ pub fn load_path(lua: &Lua) -> mlua::Result<mlua::Table> {
             let table = lua.create_table()?;
 
             table.set(
-                "absolute",
-                lua.create_function(|lua, str: mlua::String| {
+                "canonicalize",
+                lua.create_async_function(|lua, str: mlua::String| async move {
                     let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
-                    let path = path::absolute(path).map_err(mlua::Error::runtime)?;
+                    let path = fs::canonicalize(path).await.map_err(mlua::Error::runtime)?;
                     lua.create_string(path.as_os_str().as_bytes())
                 })?,
             )?;
 
             table.set(
                 "exists",
-                lua.create_function(|_lua, str: mlua::String| {
-                    match path::Path::new(OsStr::from_bytes(str.as_bytes())).try_exists() {
-                        Ok(exists) => Ok(exists),
-                        Err(err) => Err(mlua::Error::runtime(err)),
-                    }
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                    fs::try_exists(path).await.map_err(mlua::Error::runtime)
                 })?,
             )?;
 
             table.set(
                 "is_file",
-                lua.create_function(|_lua, str: mlua::String| {
-                    Ok(path::Path::new(OsStr::from_bytes(str.as_bytes())).is_file())
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                    let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+
+                    Ok(metadata.file_type().is_file())
                 })?,
             )?;
 
             table.set(
                 "is_dir",
-                lua.create_function(|_lua, str: mlua::String| {
-                    Ok(path::Path::new(OsStr::from_bytes(str.as_bytes())).is_dir())
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                    let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+
+                    Ok(metadata.file_type().is_dir())
                 })?,
             )?;
 
             table.set(
                 "is_symlink",
-                lua.create_function(|_lua, str: mlua::String| {
-                    Ok(path::Path::new(OsStr::from_bytes(str.as_bytes())).is_symlink())
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                    let metadata = fs::symlink_metadata(path)
+                        .await
+                        .map_err(mlua::Error::runtime)?;
+
+                    Ok(metadata.file_type().is_symlink())
                 })?,
             )?;
+
+            table.set(
+                "len",
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                    let metadata = fs::symlink_metadata(path)
+                        .await
+                        .map_err(mlua::Error::runtime)?;
+
+                    Ok(metadata.len())
+                })?,
+            )?;
+
+            if cfg!(unix) {
+                table.set(
+                    "is_block_device",
+                    lua.create_async_function(|_lua, str: mlua::String| async move {
+                        let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+
+                        Ok(metadata.file_type().is_block_device())
+                    })?,
+                )?;
+                table.set(
+                    "is_char_device",
+                    lua.create_async_function(|_lua, str: mlua::String| async move {
+                        let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+
+                        Ok(metadata.file_type().is_char_device())
+                    })?,
+                )?;
+                table.set(
+                    "is_socket",
+                    lua.create_async_function(|_lua, str: mlua::String| async move {
+                        let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+
+                        Ok(metadata.file_type().is_socket())
+                    })?,
+                )?;
+                table.set(
+                    "is_fifo",
+                    lua.create_async_function(|_lua, str: mlua::String| async move {
+                        let path = path::Path::new(OsStr::from_bytes(str.as_bytes()));
+                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+
+                        Ok(metadata.file_type().is_fifo())
+                    })?,
+                )?;
+            }
 
             table.set(
                 "is_absolute",
