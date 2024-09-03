@@ -11,7 +11,6 @@ mod byte;
 mod env;
 mod fs;
 mod globals;
-mod macros;
 mod string;
 mod sync;
 mod table;

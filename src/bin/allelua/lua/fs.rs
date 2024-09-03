@@ -6,8 +6,6 @@ use mlua::{FromLua, Lua, MetaMethod, UserData};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-use crate::{LuaModule, LuaTypeConstructors};
-
 #[derive(Debug)]
 struct LuaFile(File);
 
@@ -52,32 +50,6 @@ impl UserData for LuaFile {
     }
 }
 
-LuaTypeConstructors!(LuaFileConstructors async {
-    open(path: mlua::String<'lua>, mode: mlua::String<'lua>) {
-        let path = Path::new(OsStr::from_bytes(path.as_bytes()));
-        let mut options = OpenOptions::new();
-        let mode = mode.as_bytes();
-        if mode.contains(&b'c') {
-            options.create(true);
-        }
-        if mode.contains(&b'C') {
-            options.create_new(true);
-        }
-        if mode.contains(&b'r') {
-            options.read(true);
-        }
-        if mode.contains(&b'w') {
-            options.write(true);
-        }
-        if mode.contains(&b'a') {
-            options.write(true).append(true);
-        }
-
-        let file = options.open(path).await.map_err(mlua::Error::external)?;
-        Ok(LuaFile(file))
-    }
-});
-
 #[derive(Debug, Clone, Copy, FromLua)]
 struct LuaSeekFrom(SeekFrom);
 
@@ -97,26 +69,61 @@ impl UserData for LuaSeekFrom {
     }
 }
 
-LuaTypeConstructors!(LuaSeekFromConstructors {
-    start(offset: u64) {
-        Ok(LuaSeekFrom(SeekFrom::Start(offset)))
-    },
-    end(offset: i64) {
-        Ok(LuaSeekFrom(SeekFrom::End(offset)))
-    },
-    current(offset: i64) {
-        Ok(LuaSeekFrom(SeekFrom::Current(offset)))
-    }
-});
+pub fn load_fs(lua: &'static Lua) -> mlua::Result<mlua::Table> {
+    lua.load_from_function(
+        "fs",
+        lua.create_function(|lua, ()| {
+            let fs = lua.create_table()?;
 
-LuaModule!(LuaFsModule,
-    fields {
-        File = LuaFileConstructors
-        SeekFrom = LuaSeekFromConstructors
-    },
-    functions {}, async functions {}
-);
+            let file_constructors = lua.create_table()?;
+            file_constructors.set(
+                "open",
+                lua.create_async_function(
+                    |_lua, (path, mode): (mlua::String, mlua::String)| async move {
+                        let path = Path::new(OsStr::from_bytes(path.as_bytes()));
+                        let mut options = OpenOptions::new();
+                        let mode = mode.as_bytes();
+                        if mode.contains(&b'c') {
+                            options.create(true);
+                        }
+                        if mode.contains(&b'C') {
+                            options.create_new(true);
+                        }
+                        if mode.contains(&b'r') {
+                            options.read(true);
+                        }
+                        if mode.contains(&b'w') {
+                            options.write(true);
+                        }
+                        if mode.contains(&b'a') {
+                            options.write(true).append(true);
+                        }
 
-pub fn load_fs(lua: &'static Lua) -> mlua::Result<LuaFsModule> {
-    lua.load_from_function("fs", lua.create_function(|_, ()| Ok(LuaFsModule))?)
+                        let file = options.open(path).await.map_err(mlua::Error::external)?;
+                        Ok(LuaFile(file))
+                    },
+                )?,
+            )?;
+            fs.set("File", file_constructors)?;
+
+            let seek_from_constructors = lua.create_table()?;
+            seek_from_constructors.set(
+                "start",
+                lua.create_function(|_lua, offset: u64| Ok(LuaSeekFrom(SeekFrom::Start(offset))))?,
+            )?;
+            seek_from_constructors.set(
+                "end",
+                lua.create_function(|_lua, offset: i64| Ok(LuaSeekFrom(SeekFrom::End(offset))))?,
+            )?;
+            seek_from_constructors.set(
+                "current",
+                lua.create_function(|_lua, offset: i64| {
+                    Ok(LuaSeekFrom(SeekFrom::Current(offset)))
+                })?,
+            )?;
+            fs.set("SeekFrom", seek_from_constructors)?;
+
+            Ok(fs)
+        })?,
+    )
 }

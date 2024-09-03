@@ -6,15 +6,13 @@ use std::{
 
 use mlua::UserData;
 
-use crate::LuaTypeConstructors;
-
 pub(super) struct LuaWaitGroup {
     counter: Cell<usize>,
     waiter: Cell<Option<Waiter>>,
 }
 
 impl LuaWaitGroup {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             counter: Cell::new(0),
             waiter: Cell::new(None),
@@ -113,9 +111,3 @@ impl UserData for LuaWaitGroup {
         })
     }
 }
-
-LuaTypeConstructors!(pub(super) LuaWaitGroupConstructors {
-    new() {
-        Ok(LuaWaitGroup::new())
-    }
-});
