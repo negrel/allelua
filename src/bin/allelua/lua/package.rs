@@ -5,6 +5,10 @@ use mlua::{chunk, Lua};
 pub fn load_package(lua: &'static Lua, fpath: &Path) -> mlua::Result<()> {
     let fpath = lua.create_string(fpath.as_os_str().as_bytes())?;
 
+    // Delete coroutine library.
+    lua.globals()
+        .set::<_, Option<mlua::Value>>("coroutine", None)?;
+
     lua.load(chunk! {
         local package = require("package")
         local table = require("table")
@@ -14,7 +18,6 @@ pub fn load_package(lua: &'static Lua, fpath: &Path) -> mlua::Result<()> {
         local M = package
 
         // Remove coroutine module.
-        _G["corountine"] = nil
         package.loaded.coroutine = nil
 
         // Remove path and cpath in favor or home made searchers.
