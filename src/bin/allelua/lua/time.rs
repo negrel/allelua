@@ -2,6 +2,7 @@ use core::time;
 use std::ops::Deref;
 
 use mlua::{FromLua, Lua, UserData};
+use tokio::{task::spawn_blocking, time::Instant};
 
 #[derive(Clone, Copy, FromLua)]
 struct LuaDuration(time::Duration);
@@ -62,6 +63,59 @@ impl UserData for LuaDuration {
     }
 }
 
+#[derive(Clone, Copy, FromLua)]
+pub struct LuaInstant(Instant);
+
+impl Deref for LuaInstant {
+    type Target = Instant;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl UserData for LuaInstant {
+    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method(
+            mlua::MetaMethod::Eq,
+            |_lua, instant1, instant2: LuaInstant| Ok(instant1.0 == instant2.0),
+        );
+
+        methods.add_meta_method(
+            mlua::MetaMethod::Lt,
+            |_lua, instant1, instant2: LuaInstant| Ok(instant1.0 < instant2.0),
+        );
+
+        methods.add_meta_method(
+            mlua::MetaMethod::Le,
+            |_lua, instant1, instant2: LuaInstant| Ok(instant1.0 <= instant2.0),
+        );
+
+        methods.add_meta_method_mut(mlua::MetaMethod::Add, |_lua, instant, dur: LuaDuration| {
+            Ok(LuaInstant(instant.0 + dur.0))
+        });
+
+        methods.add_meta_method_mut(mlua::MetaMethod::Sub, |_lua, instant, dur: LuaDuration| {
+            Ok(LuaInstant(instant.0 - dur.0))
+        });
+
+        methods.add_meta_method(mlua::MetaMethod::ToString, |_lua, instant, ()| {
+            let address = instant as *const _ as usize;
+            Ok(format!("Instant Ox{address:x}"))
+        });
+
+        methods.add_method("elapsed", |_lua, instant, ()| {
+            Ok(LuaDuration(instant.elapsed()))
+        });
+
+        methods.add_method("duration_since", |_lua, instant, other: LuaInstant| {
+            Ok(LuaDuration(instant.duration_since(*other)))
+        });
+    }
+}
+
 pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "time",
@@ -81,6 +135,18 @@ pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                     Ok(())
                 })?,
             )?;
+
+            let instant = lua.create_table()?;
+            instant.set(
+                "now",
+                lua.create_async_function(|_, ()| async {
+                    let instant = spawn_blocking(Instant::now)
+                        .await
+                        .map_err(mlua::Error::runtime)?;
+                    Ok(LuaInstant(instant))
+                })?,
+            )?;
+            time.set("Instant", instant.clone())?;
 
             Ok(time)
         })?,
