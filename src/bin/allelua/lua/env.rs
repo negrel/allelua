@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     env,
     ffi::{OsStr, OsString},
     os::unix::ffi::OsStrExt,
@@ -57,6 +58,23 @@ pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua
                     }
                     let tostring = lua.globals().get::<_, mlua::Function>("tostring")?;
                     tostring.call::<_, mlua::String>((table, opts))
+                })?,
+            )?;
+
+            vars_mt.set(
+                "__pairs",
+                lua.create_function(move |lua, _: mlua::Table| {
+                    let iter = RefCell::new(env::vars_os());
+                    lua.create_function(move |lua, _: mlua::Value| {
+                        let mut iter = iter.borrow_mut();
+                        if let Some((varname, varvalue)) = iter.next() {
+                            let k = lua.create_string(varname.as_bytes())?;
+                            let v = lua.create_string(varvalue.as_bytes())?;
+                            Ok((mlua::Value::String(k), mlua::Value::String(v)))
+                        } else {
+                            Ok((mlua::Value::Nil, mlua::Value::Nil))
+                        }
+                    })
                 })?,
             )?;
             vars.set_metatable(Some(vars_mt));

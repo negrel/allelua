@@ -17,8 +17,10 @@ pub fn load_package(lua: &'static Lua, fpath: &Path) -> mlua::Result<()> {
 
         local M = package
 
-        // Remove coroutine module.
+        // Remove coroutine, table.new and table.clear module.
         package.loaded.coroutine = nil
+        package.loaded["table.new"] = nil
+        package.loaded["table.clear"] = nil
 
         // Remove path and cpath in favor or home made searchers.
         package.path = ""
