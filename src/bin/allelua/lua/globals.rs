@@ -106,5 +106,19 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
         })
             .eval::<mlua::Function>()?,
     )?;
+
+    let tostring = globals.get::<_, mlua::Function>("tostring").unwrap();
+    globals.set(
+        "print",
+        lua.create_function(move |_lua, values: mlua::MultiValue| {
+            for v in values {
+                let str = tostring.call::<mlua::Value, String>(v)?;
+                print!("{str} ");
+            }
+            println!();
+            Ok(())
+        })?,
+    )?;
+
     Ok(())
 }
