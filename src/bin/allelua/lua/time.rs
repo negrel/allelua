@@ -1,5 +1,5 @@
 use core::time;
-use std::ops::Deref;
+use std::{ops::Deref, time::Duration};
 
 use mlua::{FromLua, Lua, UserData};
 use tokio::{task::spawn_blocking, time::Instant};
@@ -58,7 +58,53 @@ impl UserData for LuaDuration {
         });
 
         methods.add_meta_method(mlua::MetaMethod::ToString, |_lua, dur, ()| {
-            Ok(dur.0.as_secs_f64().to_string() + "s")
+            if dur.as_secs() < 1 {
+                // Special case: if duration is smaller than a second,
+                // use smaller units, like 1.2ms
+                let ns = dur.as_nanos();
+                let us = dur.as_micros();
+                let ms = dur.as_millis();
+
+                if dur.0 == Duration::ZERO {
+                    Ok("0s".to_owned())
+                } else if us == 0 {
+                    // nanoseconds
+                    Ok(format!("{ns}ns"))
+                } else if ms == 0 {
+                    // microseconds
+                    let ns = ns % 1000;
+                    if ns == 0 {
+                        Ok(format!("{us}µs"))
+                    } else {
+                        Ok(format!("{us}.{ns:03}µs"))
+                    }
+                } else {
+                    let ns = ns % 1_000_000;
+                    Ok(format!("{ms}.{ns:06}ms"))
+                }
+            } else {
+                let ns = remove_trailing_zeros(dur.as_nanos() % 1_000_000_000);
+
+                let hours = dur.as_secs() / 3600;
+                let minutes = (dur.as_secs() % 3600) / 60;
+                let seconds = dur.as_secs() % 60;
+
+                if ns != 0 {
+                    match (hours, minutes, seconds) {
+                        (0, 0, s) => Ok(format!("{s}.{ns}s")),
+                        (0, m, s) => Ok(format!("{m}m{s}.{ns}s")),
+                        (h, 0, s) => Ok(format!("{h}h{s}.{ns}s")),
+                        (h, m, s) => Ok(format!("{h}h{m}m{s}.{ns}s")),
+                    }
+                } else {
+                    match (hours, minutes, seconds) {
+                        (0, 0, s) => Ok(format!("{s}s")),
+                        (0, m, s) => Ok(format!("{m}m{s}s")),
+                        (h, 0, s) => Ok(format!("{h}h{s}s")),
+                        (h, m, s) => Ok(format!("{h}h{m}m{s}s")),
+                    }
+                }
+            }
         })
     }
 }
@@ -151,4 +197,14 @@ pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table> {
             Ok(time)
         })?,
     )
+}
+
+fn remove_trailing_zeros(mut n: u128) -> u128 {
+    if n == 0 {
+        return 0;
+    }
+    while n % 10 == 0 {
+        n /= 10;
+    }
+    n
 }
