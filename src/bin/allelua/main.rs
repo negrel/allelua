@@ -23,17 +23,20 @@ enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         run_args: Vec<OsString>,
     },
+
+    Test {
+        /// Path of test file or directory containing test files.
+        path: Option<PathBuf>,
+    },
 }
 
-#[tokio::main(flavor = "current_thread")]
-pub async fn main() -> anyhow::Result<()> {
+pub fn main() -> anyhow::Result<()> {
     // RUSTFLAGS="--cfg tokio_unstable" cargo build
     // console_subscriber::init();
 
-    let parse = Cli::parse();
-
-    match parse.command {
-        Command::Run { file, run_args } => cmds::run(file, run_args).await?,
+    match Cli::parse().command {
+        Command::Run { file, run_args } => cmds::run(file, run_args)?,
+        Command::Test { path } => cmds::test(path)?,
     }
 
     Ok(())
