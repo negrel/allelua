@@ -16,51 +16,49 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
 
                 local real_print = print
                 local test_print = function(file, name)
-                  return function(...)
-                    real_print(file .. " " .. name .. ": ", ...)
-                  end
+                    name = name .. ":"
+                    return function(...)
+                        real_print(file, name, ...)
+                    end
                 end
 
                 function M.test(name, test)
-                  assert(type(name) == "string", "test name is not a string")
-                  assert(type(test) == "function", "test body is not a function")
-                  local info = debug.getinfo(2, "S")
-                  local filename = info.short_src
+                    assert(type(name) == "string", "test name is not a string")
+                    assert(type(test) == "function", "test body is not a function")
+                    local info = debug.getinfo(2, "S")
+                    local filename = info.short_src
 
-                  local test_file_table = M.__tests[filename] or {}
-                  table.insert(test_file_table, { name = name, test = test })
+                    local test_file_table = M.__tests[filename] or {}
+                    table.insert(test_file_table, { name = name, test = test })
 
-                  M.__tests[filename] = test_file_table
+                    M.__tests[filename] = test_file_table
                 end
 
                 function M.__execute_suite()
-                  local passed = 0
-                  local failed = 0
-                  local test_suite_result = "ok"
-                  local start_instant = time.Instant.now()
+                    local passed = 0
+                    local failed = 0
+                    local test_suite_result = "ok"
+                    local start_instant = time.Instant.now()
 
-                  // Run tests per source file.
-                  for test_file, tests in pairs(M.__tests) do
-                    print("running", #tests, "tests from", test_file)
+                    // Run tests per source file.
+                    for test_file, tests in pairs(M.__tests) do
+                        print("running", #tests, "tests from", test_file)
 
-                    // Run all tests from the same file
-                    for _, test in ipairs(tests) do
-                      local test_passed = M.__execute_test(test_file, test.name, test.test)
-                      if test_passed then
-                        passed = passed + 1
-                      else
-                        failed = failed + 1
-                        test_suite_result = "FAILED" // one test failed
-                      end
+                        // Run all tests from the same file
+                        for _, test in ipairs(tests) do
+                            local test_passed = M.__execute_test(test_file, test.name, test.test)
+                            if test_passed then
+                                passed = passed + 1
+                            else
+                                failed = failed + 1
+                                test_suite_result = "FAILED" // one test failed
+                            end
+                        end
                     end
-                  end
 
-                  // Sum up results.
-                  print("\n", test_suite_result, "|", passed, "passed |", failed, "failed |", start_instant:elapsed())
-
-                  if failed > 0 then
-                    os.exit(1)
-                  end
+                    // Sum up results.
+                    print(test_suite_result, "|", passed, "passed |", failed, "failed |", start_instant:elapsed())
+                    return failed == 0
                 end
 
                 function M.__execute_test(file, name, test)
@@ -75,23 +73,32 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
 
                     // Print result.
                     if success then
-                        print(name, "...", "ok", test_duration)
+                        print("\t", name, "...", "ok", test_duration)
                     else
-                        print(name, " ... ", "FAILED", elapsed)
-                        print(debug.traceback(error_msg))
+                        print("\t", name, " ... ", "FAILED", elapsed)
+                        if error_msg then
+                            print(debug.traceback(error_msg))
+                        end
                         print()
                     end
 
                     return success
-                    end
+                end
+
+                M.assert = assert
 
                 function M.assert_eq(left, right, msg)
-                  if not table.deep_eq(left, right) then
-                    real_print("values are not equal")
-                    real_print("left  :", left)
-                    real_print("right :", right)
-                    error(msg)
-                  end
+                    if not table.deep_eq(left, right) then
+                        real_print("values are not equal")
+                        real_print("left  :", left)
+                        real_print("right :", right)
+                        error(msg)
+                    end
+                end
+
+                function M.assert_err(func, expected_err)
+                    local ok, err = pcall(func)
+                    M.assert_eq(err, expected_err, "error doesn't match expected error")
                 end
 
                 return M

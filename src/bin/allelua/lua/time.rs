@@ -31,7 +31,7 @@ impl UserData for LuaDuration {
         methods.add_meta_method(mlua::MetaMethod::Add, |_lua, dur1, dur2: LuaDuration| {
             Ok(LuaDuration(dur1.0 + dur2.0))
         });
-        methods.add_meta_method(mlua::MetaMethod::Unm, |_lua, dur1, dur2: LuaDuration| {
+        methods.add_meta_method(mlua::MetaMethod::Sub, |_lua, dur1, dur2: LuaDuration| {
             Ok(LuaDuration(dur1.0 - dur2.0))
         });
         methods.add_meta_function(

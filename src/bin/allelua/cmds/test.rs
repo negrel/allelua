@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use mlua::chunk;
 use std::{env, path::PathBuf};
 use tokio::task;
@@ -18,6 +18,9 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
     let iter = WalkDir::new(path)
         .into_iter()
         .filter_entry(is_dir_or_test_file);
+
+    let mut all_test_suite_ok = true;
+
     for entry in iter {
         let entry = entry.unwrap();
         if entry.file_type().is_dir() {
@@ -34,7 +37,7 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
             .block_on(async {
                 // Execute code.
                 let local = task::LocalSet::new();
-                local
+                let test_suite_ok = local
                     .run_until(async {
                         runtime
                             .exec::<()>(fpath.clone())
@@ -42,7 +45,7 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
                             .with_context(|| format!("failed to load lua test file {fpath:?}"))?;
 
                         runtime
-                            .exec::<()>(chunk! {
+                            .exec::<bool>(chunk! {
                                 local test = require("test")
                                 test.__execute_suite()
                             })
@@ -53,11 +56,18 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
                     })
                     .await?;
 
+                all_test_suite_ok &= test_suite_ok;
+
                 // Wait for background tasks.
                 local.await;
 
                 Ok::<_, anyhow::Error>(())
             })?;
     }
+
+    if !all_test_suite_ok {
+        bail!("some test failed")
+    }
+
     Ok(())
 }
