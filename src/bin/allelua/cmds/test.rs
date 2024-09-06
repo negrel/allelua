@@ -1,9 +1,10 @@
+use anyhow::Context;
 use mlua::chunk;
 use std::{env, path::PathBuf};
 use tokio::task;
 use walkdir::WalkDir;
 
-use crate::lua::prepare_vm;
+use crate::lua::Runtime;
 
 fn is_dir_or_test_file(entry: &walkdir::DirEntry) -> bool {
     entry.file_type().is_dir()
@@ -14,47 +15,49 @@ fn is_dir_or_test_file(entry: &walkdir::DirEntry) -> bool {
 pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
     let path = path.unwrap_or(env::current_dir()?);
 
-    WalkDir::new(path)
+    let iter = WalkDir::new(path)
         .into_iter()
-        .filter_entry(is_dir_or_test_file)
-        .for_each(|entry: Result<walkdir::DirEntry, walkdir::Error>| {
-            let entry = entry.unwrap();
-            if entry.file_type().is_dir() {
-                return;
-            }
+        .filter_entry(is_dir_or_test_file);
+    for entry in iter {
+        let entry = entry.unwrap();
+        if entry.file_type().is_dir() {
+            continue;
+        }
 
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed building the Runtime")
-                .block_on(async {
-                    let fpath = entry.into_path();
-                    let lua = prepare_vm(&fpath, vec![]);
+        let fpath = entry.into_path();
+        let runtime = Runtime::new(&fpath, vec![]);
 
-                    // Execute code.
-                    let local = task::LocalSet::new();
-                    local
-                        .run_until(async {
-                            lua.load(fpath.clone()).eval_async::<()>().await.unwrap();
-                            let test = lua
-                                .load(chunk! {
-                                    return require("test")
-                                })
-                                .eval::<mlua::Table>()
-                                .unwrap();
-                            let exec = test.get::<_, mlua::Function>("__execute_suite").unwrap();
-                            exec.call_async::<(), ()>(()).await.unwrap()
-                        })
-                        .await;
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed building the tokio Runtime")
+            .block_on(async {
+                // Execute code.
+                let local = task::LocalSet::new();
+                local
+                    .run_until(async {
+                        runtime
+                            .exec::<()>(fpath.clone())
+                            .await
+                            .with_context(|| format!("failed to load lua test file {fpath:?}"))?;
 
-                    // Wait for background tasks.
-                    local.await;
+                        runtime
+                            .exec::<()>(chunk! {
+                                local test = require("test")
+                                test.__execute_suite()
+                            })
+                            .await
+                            .with_context(|| {
+                                format!("failed to execute test suite of lua file {fpath:?}",)
+                            })
+                    })
+                    .await?;
 
-                    // Collect everything so user data drop method get called (e.g. closing files).
-                    lua.gc_collect().unwrap();
-                    lua.gc_collect().unwrap();
-                })
-        });
+                // Wait for background tasks.
+                local.await;
 
+                Ok::<_, anyhow::Error>(())
+            })?;
+    }
     Ok(())
 }

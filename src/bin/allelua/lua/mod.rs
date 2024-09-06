@@ -1,6 +1,6 @@
-use std::{ffi::OsString, fmt::Display, path::Path, process::exit};
+use std::{ffi::OsString, fmt::Display, ops::Deref, path::Path, process::exit};
 
-use mlua::{chunk, Lua, LuaOptions, StdLib};
+use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
 
 use self::{
     byte::load_byte, env::load_env, fs::load_fs, globals::register_globals, os::load_os,
@@ -21,6 +21,55 @@ mod table;
 mod test;
 mod time;
 
+/// Runtime define ready to use Lua VM with the allelua std lib loaded.
+pub struct Runtime(&'static Lua);
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        // Collect twice to ensure we collect all reachable objects.
+        // This is necessary to finalize values owned by the runtime (e.g. close
+        // LuaFile).
+        self.0.gc_collect().unwrap();
+        self.0.gc_collect().unwrap();
+    }
+}
+
+impl Deref for Runtime {
+    type Target = &'static Lua;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Runtime {
+    pub fn new(fpath: &Path, run_args: Vec<OsString>) -> Self {
+        let vm = unsafe {
+            Lua::unsafe_new_with(
+                StdLib::NONE
+                    | StdLib::MATH
+                    | StdLib::TABLE
+                    | StdLib::PACKAGE
+                    | StdLib::STRING
+                    | StdLib::DEBUG,
+                LuaOptions::new(),
+            )
+            .into_static()
+        };
+
+        prepare_runtime(vm, fpath, run_args);
+
+        Runtime(vm)
+    }
+
+    pub async fn exec<'a, T>(&self, chunk: impl AsChunk<'static, 'a>) -> mlua::Result<T>
+    where
+        T: FromLuaMulti<'a> + 'a,
+    {
+        self.load(chunk).eval_async::<T>().await
+    }
+}
+
 fn handle_result<T, E: Display>(result: Result<T, E>) {
     match result {
         Ok(_) => {}
@@ -29,25 +78,6 @@ fn handle_result<T, E: Display>(result: Result<T, E>) {
             exit(-1);
         }
     }
-}
-
-pub fn prepare_vm(fpath: &Path, run_args: Vec<OsString>) -> &'static Lua {
-    let vm = unsafe {
-        Lua::unsafe_new_with(
-            StdLib::NONE
-                | StdLib::MATH
-                | StdLib::TABLE
-                | StdLib::PACKAGE
-                | StdLib::STRING
-                | StdLib::DEBUG,
-            LuaOptions::new(),
-        )
-        .into_static()
-    };
-
-    prepare_runtime(vm, fpath, run_args);
-
-    vm
 }
 
 fn prepare_runtime(lua: &'static Lua, fpath: &Path, run_args: Vec<OsString>) {
