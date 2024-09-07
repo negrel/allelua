@@ -75,7 +75,7 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                     if success then
                         print("\t", name, "...", "ok", test_duration)
                     else
-                        print("\t", name, " ... ", "FAILED", elapsed)
+                        print("\t", name, "...", "FAILED", test_duration)
                         if error_msg then
                             print(debug.traceback(error_msg))
                         end
