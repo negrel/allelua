@@ -22,7 +22,7 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
     let mut all_test_suite_ok = true;
 
     for entry in iter {
-        let entry = entry.unwrap();
+        let entry = entry?;
         if entry.file_type().is_dir() {
             continue;
         }

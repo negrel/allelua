@@ -34,7 +34,8 @@
         };
         devShells = {
           default = pkgs.mkShell rec {
-            buildInputs = (with pkgs; [ pkg-config cargo-expand tokio-console ])
+            buildInputs =
+              (with pkgs; [ pkg-config cargo-expand tokio-console bats ])
               ++ (with self.packages.${system}; [ luajit ])
               ++ (with pkgs.fenix; [ stable.toolchain rust-analyzer ]);
             LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
