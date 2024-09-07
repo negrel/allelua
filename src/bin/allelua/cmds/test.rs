@@ -47,7 +47,7 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
                         runtime
                             .exec::<bool>(chunk! {
                                 local test = require("test")
-                                test.__execute_suite()
+                                return test.__execute_suite()
                             })
                             .await
                             .with_context(|| {

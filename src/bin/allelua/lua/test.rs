@@ -57,7 +57,7 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                     end
 
                     // Sum up results.
-                    print(test_suite_result, "|", passed, "passed |", failed, "failed |", start_instant:elapsed())
+                    print(test_suite_result, "|", passed, "passed |", failed, "failed |", start_instant:elapsed(), "\n")
                     return failed == 0
                 end
 
