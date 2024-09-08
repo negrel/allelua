@@ -3,7 +3,9 @@ use mlua::{AnyUserData, Lua, MetaMethod, UserData};
 struct LuaByteBuffer(Vec<u8>);
 
 impl UserData for LuaByteBuffer {
-    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field("__type", "ByteBuffer");
+    }
 
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::Len, |_, b, ()| Ok(b.0.len()));

@@ -22,6 +22,7 @@ pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua
 
             let vars = lua.create_table()?;
             let vars_mt = lua.create_table()?;
+            vars_mt.set("__type", lua.create_string("Vars")?)?;
             vars_mt.set(
                 "__index",
                 lua.create_function(|_, (_, varname): (mlua::Table, mlua::String)| {
@@ -77,6 +78,7 @@ pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua
                     })
                 })?,
             )?;
+            vars_mt.set("__metatable", false)?;
             vars.set_metatable(Some(vars_mt));
             env.set("vars", vars)?;
 

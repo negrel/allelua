@@ -1,4 +1,4 @@
-use mlua::{chunk, Lua};
+use mlua::{chunk, AnyUserDataExt, IntoLua, Lua, TableExt};
 
 async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<()> {
     let fut = func.call_async::<_, ()>(());
@@ -20,7 +20,7 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
             local string = require("string")
             local table = require("table")
 
-            local rawtostring = tostring
+            rawtostring = tostring
 
             local tostring = nil
 
@@ -117,6 +117,38 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
             }
             println!();
             Ok(())
+        })?,
+    )?;
+
+    let rawtype = globals.get::<_, mlua::Function>("type")?;
+    globals.set("rawtype", rawtype)?;
+
+    globals.set(
+        "type",
+        lua.create_function(move |lua, value: mlua::Value| match value {
+            mlua::Value::Nil
+            | mlua::Value::Boolean(_)
+            | mlua::Value::Integer(_)
+            | mlua::Value::Number(_)
+            | mlua::Value::String(_)
+            | mlua::Value::LightUserData(_)
+            | mlua::Value::Function(_)
+            | mlua::Value::Thread(_) => value.type_name().into_lua(lua),
+            mlua::Value::Error(err) => Ok(mlua::Value::String(lua.create_string(err.to_string())?)),
+            mlua::Value::Table(ref t) => {
+                let __type = t.get::<_, mlua::Value>("__type")?;
+                match __type {
+                    mlua::Value::Nil => value.type_name().into_lua(lua),
+                    mlua::Value::String(_) => Ok(__type),
+                    mlua::Value::Function(func) => func.call::<_, mlua::Value>(t),
+                    _ => Err(mlua::Error::FromLuaConversionError {
+                        from: value.type_name(),
+                        to: "function",
+                        message: None,
+                    }),
+                }
+            }
+            mlua::Value::UserData(udata) => udata.get::<_, mlua::Value>("__type"),
         })?,
     )?;
 

@@ -85,6 +85,8 @@ impl Waiter {
 
 impl UserData for LuaWaitGroup {
     fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field("__type", "WaitGroup");
+
         fields.add_field_method_get("count", |_, wg| Ok(wg.counter.get()))
     }
 

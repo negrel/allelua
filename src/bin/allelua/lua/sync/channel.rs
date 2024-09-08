@@ -19,7 +19,9 @@ impl Deref for LuaChannelSender {
 }
 
 impl UserData for LuaChannelSender {
-    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field("__type", "ChannelSender")
+    }
 
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, sender, ()| {
@@ -52,7 +54,9 @@ impl Deref for LuaChannelReceiver {
 }
 
 impl UserData for LuaChannelReceiver {
-    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field("__type", "ChannelSender")
+    }
 
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, receiver, ()| {
