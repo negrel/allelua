@@ -1,15 +1,26 @@
-local fs = require("fs")
+local os = require("os")
+local io = require("io")
+local string = require("string")
+local errors = require("errors")
+
 
 -- Open stdin with read permissions.
-local stdin = fs.File.open("/proc/self/fd/0", "r")
+local stdin = os.File.open("/home/anegrel/TODO.md", "r")
 
 local buf = ""
-while true do
-	local byte = stdin:read_exact(1)
-	if byte == "\n" then
-		print(buf)
-		buf = ""
-	else
-		buf = buf .. byte
+local ok, err = pcall(function()
+	while true do
+		local byte, err = stdin:read_exact(1)
+		if byte == nil or byte == "" then
+			print(err, type(err))
+			break
+		elseif byte == "\n" then
+			print(buf)
+			buf = ""
+		else
+			buf = buf .. byte
+		end
 	end
-end
+end)
+
+print(err, type(err))

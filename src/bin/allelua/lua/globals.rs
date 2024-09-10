@@ -1,4 +1,8 @@
-use mlua::{chunk, AnyUserDataExt, IntoLua, Lua, TableExt};
+use std::sync::Arc;
+
+use mlua::{chunk, AnyUserDataExt, IntoLua, Lua};
+
+use super::errors::LuaError;
 
 async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<()> {
     let fut = func.call_async::<_, ()>(());
@@ -134,7 +138,15 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
             | mlua::Value::LightUserData(_)
             | mlua::Value::Function(_)
             | mlua::Value::Thread(_) => value.type_name().into_lua(lua),
-            mlua::Value::Error(err) => Ok(mlua::Value::String(lua.create_string(err.to_string())?)),
+            mlua::Value::Error(err) => {
+                if let mlua::Error::ExternalError(ext_err) = err {
+                    if let Some(lua_err) = ext_err.downcast_ref::<Arc<dyn LuaError>>() {
+                        return Ok(mlua::Value::String(lua.create_string(lua_err.kind())?));
+                    }
+                }
+
+                Ok(mlua::Value::String(lua.create_string("error")?))
+            }
             mlua::Value::Table(ref t) => {
                 let __type = t.get::<_, mlua::Value>("__type")?;
                 match __type {
