@@ -30,7 +30,18 @@
             buildInputs = [ self.packages.${system}.luajit ];
             LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
           };
-          luajit = pkgs.luajit.override { enable52Compat = true; };
+          luajit = pkgs.luajit.overrideAttrs (oldAttrs: {
+            env = (oldAttrs.env or { }) // {
+              NIX_CFLAGS_COMPILE = toString [
+                (oldAttrs.env.NIX_CFLAGS_COMPILE or "")
+                "-DLUAJIT_ENABLE_LUA52COMPAT"
+              ];
+              prePatch = (oldAttrs.prePatch or "") + ''
+                sed -i -E 's/#define LUAI_MAXCSTACK\s+8000/#define LUAI_MAXCSTACK 0xFFFFFFFF/' src/luaconf.h
+                sed -i -E 's/#define LUAI_MAXSTACK\s+65500/#define LUAI_MAXSTACK 0xFFFFFFFF/' src/luaconf.h
+              '';
+            };
+          });
         };
         devShells = {
           default = pkgs.mkShell rec {
