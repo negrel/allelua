@@ -20,7 +20,7 @@ pub fn run(fpath: PathBuf, run_args: Vec<OsString>) -> anyhow::Result<()> {
             // Execute code.
             let local = task::LocalSet::new();
             local
-                .run_until(lua.load(fpath.clone()).eval_async::<()>())
+                .run_until(lua.exec(fpath.clone()))
                 .await
                 .with_context(|| format!("failed to run lua file {:?}", fpath))?;
 
