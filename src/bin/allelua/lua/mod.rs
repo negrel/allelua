@@ -50,8 +50,10 @@ impl Runtime {
                     | StdLib::MATH
                     | StdLib::TABLE
                     | StdLib::PACKAGE
+                    | StdLib::BIT
                     | StdLib::STRING
-                    | StdLib::DEBUG,
+                    | StdLib::DEBUG
+                    | StdLib::FFI,
                 LuaOptions::new(),
             )
             .into_static()

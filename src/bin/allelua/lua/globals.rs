@@ -148,7 +148,9 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
                     }),
                 }
             }
-            mlua::Value::UserData(udata) => udata.get::<_, mlua::Value>("__type"),
+            mlua::Value::UserData(udata) => udata
+                .get::<_, mlua::Value>("__type")
+                .or_else(|_| "userdata".into_lua(lua)),
         })?,
     )?;
 
