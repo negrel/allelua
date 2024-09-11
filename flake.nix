@@ -37,8 +37,8 @@
                 "-DLUAJIT_ENABLE_LUA52COMPAT"
               ];
               prePatch = (oldAttrs.prePatch or "") + ''
-                sed -i -E 's/#define LUAI_MAXCSTACK\s+8000/#define LUAI_MAXCSTACK 0xFFFFFFFF/' src/luaconf.h
-                sed -i -E 's/#define LUAI_MAXSTACK\s+65500/#define LUAI_MAXSTACK 0xFFFFFFFF/' src/luaconf.h
+                sed -i -E 's/#define LUAI_MAXCSTACK\s+8000/#define LUAI_MAXCSTACK 0xFFFFFF00/' src/luaconf.h
+                sed -i -E 's/#define LUAI_MAXSTACK\s+65500/#define LUAI_MAXSTACK 0xFFFFFF00/' src/luaconf.h
               '';
             };
           });
