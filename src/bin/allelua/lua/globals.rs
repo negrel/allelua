@@ -1,4 +1,4 @@
-use mlua::{chunk, AnyUserDataExt, IntoLua, Lua, TableExt};
+use mlua::{chunk, AnyUserDataExt, IntoLua, Lua};
 
 async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<()> {
     let fut = func.call_async::<_, ()>(());
@@ -134,7 +134,7 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
             | mlua::Value::LightUserData(_)
             | mlua::Value::Function(_)
             | mlua::Value::Thread(_) => value.type_name().into_lua(lua),
-            mlua::Value::Error(err) => Ok(mlua::Value::String(lua.create_string(err.to_string())?)),
+            mlua::Value::Error(_) => "error".into_lua(lua),
             mlua::Value::Table(ref t) => {
                 let __type = t.get::<_, mlua::Value>("__type")?;
                 match __type {
