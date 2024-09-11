@@ -52,7 +52,7 @@ pub fn load_byte(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
             buf_constructors.set(
-                "from_string",
+                "fromstring",
                 lua.create_function(|_lua, str: mlua::String| {
                     Ok(LuaByteBuffer(str.as_bytes().to_owned()))
                 })?,
