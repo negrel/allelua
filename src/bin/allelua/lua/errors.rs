@@ -1,46 +1,84 @@
-use mlua::{chunk, Lua};
+use std::sync::Arc;
 
-pub trait LuaError: std::error::Error {
+use mlua::{chunk, IntoLua, Lua, UserData};
+
+use thiserror::Error;
+
+/// AlleluaError define common methods implemented by all errors returned by
+/// std lib.
+pub trait AlleluaError: std::error::Error + Send + Sync + 'static {
+    fn type_name(&self) -> &'static str;
     fn kind(&self) -> &'static str;
+}
+
+/// LuaError define a wrapper around an [AlleluaError] type that implements
+/// [mlua::UserData].
+#[derive(Debug, Error, Clone)]
+#[error("{0}")]
+pub struct LuaError(Arc<dyn AlleluaError>);
+
+impl<T: AlleluaError> From<T> for LuaError {
+    fn from(value: T) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl UserData for LuaError {
+    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field_method_get("__type", |lua, err| lua.create_string(err.0.type_name()));
+        fields.add_field_method_get("kind", |lua, err| lua.create_string(err.0.kind()));
+        fields.add_field_method_get("message", |lua, err| lua.create_string(err.0.to_string()));
+    }
+
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method(mlua::MetaMethod::ToString, |_lua, err, ()| {
+            Ok(format!(
+                "{}(kind={} message={})",
+                err.0.type_name(),
+                err.0.kind(),
+                err.0
+            ))
+        })
+    }
+}
+
+fn to_lua_error(err: &mlua::Error) -> Option<LuaError> {
+    match err {
+        mlua::Error::CallbackError { cause, .. } => to_lua_error(cause),
+        mlua::Error::ExternalError(err) => err
+            .downcast_ref::<LuaError>()
+            .map(|lua_err| lua_err.to_owned()),
+        mlua::Error::WithContext { cause, .. } => to_lua_error(cause),
+        _ => None,
+    }
 }
 
 pub fn load_errors(lua: &'static Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "errors",
-        lua.load(chunk! {
-            return function()
-                local table = require("table")
-                local M = {}
+        lua.create_function(|lua, ()| {
+            let errors = lua
+                .load(chunk! {
+                    local table = require("table")
+                    local M = {}
 
-                M.protect = function(func)
-                    return function(...)
-                        local results = { pcall(func, ...) }
-                        if results[1] then
-                            table.remove(results, 1)
-                            return table.unpack(results)
-                        else
-                            return nil, results[2]
-                        end
-                    end
-                end
+                    return M
+                })
+                .eval::<mlua::Table>()?;
 
-                M.unprotect = function(func)
-                    return function(...)
-                        local results = { func(...) }
-                        if results[1] == nil then
-                            local err = results[#results]
-                            if #results > 1 and err ~= "nil" then
-                                error(err)
-                            end
-                        end
+            errors.set(
+                "__toluaerror",
+                lua.create_function(|lua, err: mlua::Error| {
+                    if let Some(err) = to_lua_error(&err) {
+                        let err = err.to_owned();
+                        Ok(err.into_lua(lua)?)
+                    } else {
+                        Ok(mlua::Value::Nil)
+                    }
+                })?,
+            )?;
 
-                        return table.unpack(results)
-                    end
-                end
-
-                return M
-            end
-        })
-        .eval::<mlua::Function>()?,
+            Ok(errors)
+        })?,
     )
 }

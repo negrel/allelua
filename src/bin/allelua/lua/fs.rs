@@ -6,11 +6,16 @@ use mlua::{FromLua, Lua, MetaMethod, UserData};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
+use super::errors::LuaError;
+use super::io;
+
 #[derive(Debug)]
 struct LuaFile(File);
 
 impl UserData for LuaFile {
-    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field("__type", "File")
+    }
 
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
@@ -22,29 +27,47 @@ impl UserData for LuaFile {
         methods.add_async_method_mut("write", |_, f, str: mlua::String| async move {
             f.0.write_all(str.as_bytes())
                 .await
+                .map_err(io::LuaError::from)
+                .map_err(LuaError::from)
                 .map_err(mlua::Error::external)?;
             Ok(())
         });
 
         methods.add_async_method_mut("read_to_end", |lua, f, ()| async move {
             let mut buf = Vec::new();
-            f.0.read_to_end(&mut buf).await?;
+            f.0.read_to_end(&mut buf)
+                .await
+                .map_err(io::LuaError::from)
+                .map_err(LuaError::from)
+                .map_err(mlua::Error::external)?;
             Ok(lua.create_string(buf))
         });
 
         methods.add_async_method_mut("read_exact", |lua, f, n: usize| async move {
             let mut buf = vec![0; n];
-            f.0.read_exact(&mut buf).await?;
+            f.0.read_exact(&mut buf)
+                .await
+                .map_err(io::LuaError::from)
+                .map_err(LuaError::from)
+                .map_err(mlua::Error::external)?;
             Ok(lua.create_string(buf))
         });
 
         methods.add_async_method_mut("seek", |_, f, seek_from: LuaSeekFrom| async move {
-            f.0.seek(seek_from.0).await.map_err(mlua::Error::external)?;
+            f.0.seek(seek_from.0)
+                .await
+                .map_err(io::LuaError::from)
+                .map_err(LuaError::from)
+                .map_err(mlua::Error::external)?;
             Ok(())
         });
 
         methods.add_async_method_mut("flush", |_, f, ()| async {
-            f.0.flush().await.map_err(mlua::Error::external)?;
+            f.0.flush()
+                .await
+                .map_err(io::LuaError::from)
+                .map_err(LuaError::from)
+                .map_err(mlua::Error::external)?;
             Ok(())
         });
     }
@@ -99,7 +122,12 @@ pub fn load_fs(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                             options.write(true).append(true);
                         }
 
-                        let file = options.open(path).await.map_err(mlua::Error::external)?;
+                        let file = options
+                            .open(path)
+                            .await
+                            .map_err(io::LuaError::from)
+                            .map_err(LuaError::from)
+                            .map_err(mlua::Error::external)?;
                         Ok(LuaFile(file))
                     },
                 )?,

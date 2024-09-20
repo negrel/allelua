@@ -154,5 +154,21 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
         })?,
     )?;
 
+    globals.set(
+        "pcall",
+        lua.load(chunk! {
+            local pcall = pcall
+            local toluaerror = _G.package.loaded.errors.__toluaerror
+            return function(...)
+                local results = {pcall(...)}
+                if not results[1] then
+                    return false, toluaerror(results[2])
+                end
+                return table.unpack(results)
+            end
+        })
+        .eval::<mlua::Function>()?,
+    )?;
+
     Ok(())
 }
