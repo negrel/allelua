@@ -162,7 +162,8 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
             return function(...)
                 local results = {pcall(...)}
                 if not results[1] then
-                    return false, toluaerror(results[2])
+                    local lua_err = toluaerror(results[2])
+                    return false, lua_err or results[2]
                 end
                 return table.unpack(results)
             end

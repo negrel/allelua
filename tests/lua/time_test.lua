@@ -10,9 +10,10 @@ t.test("duration arithmetic 1s - 1s == 0 * 1s", function()
 end)
 
 t.test("duration unary minus (-1s) is not supported", function()
-	local _, err = pcall(function()
+	local ok, err = pcall(function()
 		print(-time.second)
 	end)
 
+	assert(not ok, "no error thrown")
 	assert(string.contains(err, "attempt to perform arithmetic on field 'second' (a userdata value)"))
 end)
