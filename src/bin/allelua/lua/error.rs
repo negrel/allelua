@@ -53,11 +53,11 @@ fn to_lua_error(err: &mlua::Error) -> Option<LuaError> {
     }
 }
 
-pub fn load_errors(lua: &'static Lua) -> mlua::Result<mlua::Table> {
+pub fn load_error(lua: &'static Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
-        "errors",
+        "error",
         lua.create_function(|lua, ()| {
-            let errors = lua
+            let error = lua
                 .load(chunk! {
                     local table = require("table")
                     local M = {}
@@ -66,7 +66,7 @@ pub fn load_errors(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                 })
                 .eval::<mlua::Table>()?;
 
-            errors.set(
+            error.set(
                 "__toluaerror",
                 lua.create_function(|lua, err: mlua::Error| {
                     if let Some(err) = to_lua_error(&err) {
@@ -78,7 +78,7 @@ pub fn load_errors(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            Ok(errors)
+            Ok(error)
         })?,
     )
 }

@@ -7,7 +7,7 @@ mod file;
 
 use file::*;
 
-use super::{errors::LuaError, io};
+use super::{error::LuaError, io};
 
 pub fn load_os(lua: &'static Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(

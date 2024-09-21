@@ -5,7 +5,7 @@ use mlua::{FromLua, MetaMethod, UserData};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-use crate::lua::errors::LuaError;
+use crate::lua::error::LuaError;
 use crate::lua::io;
 
 #[derive(Debug)]

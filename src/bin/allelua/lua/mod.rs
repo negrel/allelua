@@ -1,16 +1,17 @@
 use std::{ffi::OsString, fmt::Display, ops::Deref, path::Path, process::exit};
 
+use error::load_error;
 use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
 
 use self::{
-    byte::load_byte, env::load_env, errors::load_errors, globals::register_globals, os::load_os,
-    package::load_package, path::load_path, string::load_string, sync::load_sync,
-    table::load_table, test::load_test, time::load_time,
+    byte::load_byte, env::load_env, globals::register_globals, os::load_os, package::load_package,
+    path::load_path, string::load_string, sync::load_sync, table::load_table, test::load_test,
+    time::load_time,
 };
 
 mod byte;
 mod env;
-mod errors;
+mod error;
 mod globals;
 mod io;
 mod os;
@@ -89,7 +90,7 @@ fn prepare_runtime(lua: &'static Lua, fpath: &Path, run_args: Vec<OsString>) {
     handle_result(load_env(lua, run_args));
     handle_result(load_path(lua));
     handle_result(load_os(lua));
-    handle_result(load_errors(lua));
+    handle_result(load_error(lua));
     handle_result(load_string(lua));
     handle_result(load_sync(lua));
     handle_result(load_table(lua));
