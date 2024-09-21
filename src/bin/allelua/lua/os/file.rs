@@ -1,16 +1,15 @@
 use std::io::SeekFrom;
 use std::os::fd::AsRawFd;
-use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path};
 
-use mlua::{FromLua, Lua, MetaMethod, UserData};
-use tokio::fs::{File, OpenOptions};
+use mlua::{FromLua, MetaMethod, UserData};
+use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-use super::errors::LuaError;
-use super::io;
+use crate::lua::errors::LuaError;
+use crate::lua::io;
 
 #[derive(Debug)]
-struct LuaFile(File);
+pub(super) struct LuaFile(pub File);
 
 impl UserData for LuaFile {
     fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
@@ -90,68 +89,4 @@ impl UserData for LuaSeekFrom {
             Ok(str)
         });
     }
-}
-
-pub fn load_fs(lua: &'static Lua) -> mlua::Result<mlua::Table> {
-    lua.load_from_function(
-        "fs",
-        lua.create_function(|lua, ()| {
-            let fs = lua.create_table()?;
-
-            let file_constructors = lua.create_table()?;
-            file_constructors.set(
-                "open",
-                lua.create_async_function(
-                    |_lua, (path, mode): (mlua::String, mlua::String)| async move {
-                        let path = Path::new(OsStr::from_bytes(path.as_bytes()));
-                        let mut options = OpenOptions::new();
-                        let mode = mode.as_bytes();
-                        if mode.contains(&b'c') {
-                            options.create(true);
-                        }
-                        if mode.contains(&b'C') {
-                            options.create_new(true);
-                        }
-                        if mode.contains(&b'r') {
-                            options.read(true);
-                        }
-                        if mode.contains(&b'w') {
-                            options.write(true);
-                        }
-                        if mode.contains(&b'a') {
-                            options.write(true).append(true);
-                        }
-
-                        let file = options
-                            .open(path)
-                            .await
-                            .map_err(io::LuaError::from)
-                            .map_err(LuaError::from)
-                            .map_err(mlua::Error::external)?;
-                        Ok(LuaFile(file))
-                    },
-                )?,
-            )?;
-            fs.set("File", file_constructors)?;
-
-            let seek_from_constructors = lua.create_table()?;
-            seek_from_constructors.set(
-                "start",
-                lua.create_function(|_lua, offset: u64| Ok(LuaSeekFrom(SeekFrom::Start(offset))))?,
-            )?;
-            seek_from_constructors.set(
-                "end",
-                lua.create_function(|_lua, offset: i64| Ok(LuaSeekFrom(SeekFrom::End(offset))))?,
-            )?;
-            seek_from_constructors.set(
-                "current",
-                lua.create_function(|_lua, offset: i64| {
-                    Ok(LuaSeekFrom(SeekFrom::Current(offset)))
-                })?,
-            )?;
-            fs.set("SeekFrom", seek_from_constructors)?;
-
-            Ok(fs)
-        })?,
-    )
 }
