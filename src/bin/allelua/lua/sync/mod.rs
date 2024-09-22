@@ -1,7 +1,7 @@
 use mlua::Lua;
 
 mod channel;
-use channel::*;
+pub use channel::*;
 
 mod waitgroup;
 use waitgroup::*;

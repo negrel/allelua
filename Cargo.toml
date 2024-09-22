@@ -19,7 +19,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-kanal = "0.1.0-pre8"
+flume = "0.11.0"
 # console-subscriber = { version = "0.4.0" }
 mlua = { version = "0.9", features = ["luajit52", "async", "macros"] }
 nanorand = "0.7.0"

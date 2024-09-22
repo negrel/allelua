@@ -1,17 +1,17 @@
 use std::{ffi::c_void, ops::Deref};
 
-use kanal::{AsyncReceiver, AsyncSender};
-use mlua::UserData;
+use flume::{Receiver, Sender};
+use mlua::{FromLua, UserData};
 
 pub(super) fn lua_channel(cap: usize) -> (LuaChannelSender, LuaChannelReceiver) {
-    let (tx, rx) = kanal::bounded_async::<mlua::Value<'static>>(cap);
+    let (tx, rx) = flume::bounded::<mlua::Value<'static>>(cap);
     (LuaChannelSender(tx), LuaChannelReceiver(rx))
 }
 
-pub(super) struct LuaChannelSender(AsyncSender<mlua::Value<'static>>);
+pub struct LuaChannelSender(Sender<mlua::Value<'static>>);
 
 impl Deref for LuaChannelSender {
-    type Target = AsyncSender<mlua::Value<'static>>;
+    type Target = Sender<mlua::Value<'static>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -37,16 +37,17 @@ impl UserData for LuaChannelSender {
                 let val_ref: &mlua::Value<'static> = &*(ptr as *const mlua::Value<'static>);
                 val_ref.to_owned()
             };
-            sender.send(val).await.map_err(mlua::Error::external)?;
+            sender.send_async(val).await.map_err(mlua::Error::runtime)?;
             Ok(())
         });
     }
 }
 
-pub(super) struct LuaChannelReceiver(AsyncReceiver<mlua::Value<'static>>);
+#[derive(Clone, FromLua)]
+pub struct LuaChannelReceiver(pub Receiver<mlua::Value<'static>>);
 
 impl Deref for LuaChannelReceiver {
-    type Target = AsyncReceiver<mlua::Value<'static>>;
+    type Target = Receiver<mlua::Value<'static>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -65,12 +66,7 @@ impl UserData for LuaChannelReceiver {
         });
 
         methods.add_async_method("recv", |_, receiver, ()| async {
-            receiver.recv().await.map_err(mlua::Error::external)
-        });
-
-        methods.add_method("close", |_, receiver, ()| {
-            receiver.close();
-            Ok(())
+            receiver.recv_async().await.map_err(mlua::Error::external)
         });
     }
 }
