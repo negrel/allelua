@@ -1,4 +1,13 @@
-use mlua::{chunk, AnyUserDataExt, IntoLua, Lua};
+use std::{
+    future::{poll_fn, Future},
+    pin::Pin,
+    task::Poll,
+};
+
+use mlua::{chunk, AnyUserDataExt, FromLua, IntoLua, Lua};
+use nanorand::Rng;
+
+use super::sync::LuaChannelReceiver;
 
 async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<()> {
     let fut = func.call_async::<_, ()>(());
@@ -11,9 +20,77 @@ async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<()> {
     Ok(())
 }
 
+async fn select(lua: &Lua, table: mlua::Table<'static>) -> mlua::Result<()> {
+    let default_callback = table.get::<_, Option<mlua::Function>>("default")?;
+    let has_default_branch = default_callback.is_some();
+
+    let mut callbacks = Vec::new();
+    let mut futures = Vec::new();
+
+    let mut i = 0;
+    for res in table.pairs::<mlua::Value, mlua::Function>() {
+        let (value, callback) = res?;
+        let ch = match LuaChannelReceiver::from_lua(value, lua) {
+            Ok(ch) => ch,
+            Err(_) => continue,
+        };
+        futures.push((i, async move { ch.recv_async().await }, false));
+        callbacks.push(callback);
+        i += 1;
+    }
+
+    let output = poll_fn(|cx| {
+        let branches = futures.len();
+        let start = nanorand::tls_rng().generate::<usize>() % branches;
+
+        for i in 0..branches {
+            let branch = (start + i) % branches;
+            let (i, ref mut fut, ref mut disabled) = futures[branch];
+
+            if *disabled {
+                continue;
+            }
+
+            let fut = unsafe { Pin::new_unchecked(fut) };
+            let out = Future::poll(fut, cx);
+            let out = match out {
+                std::task::Poll::Ready(out) => out,
+                std::task::Poll::Pending => {
+                    continue;
+                }
+            };
+
+            *disabled = true;
+
+            return Poll::Ready(Some((i, out)));
+        }
+
+        if has_default_branch {
+            Poll::Ready(None)
+        } else {
+            Poll::Pending
+        }
+    })
+    .await;
+
+    if let Some((i, val)) = output {
+        let val = val.map_err(mlua::Error::external)?;
+        let callback = &callbacks[i];
+        callback.call_async(val).await?
+    } else if let Some(cb) = default_callback {
+        // Yield so other goroutines have time to send value if select is ran in
+        // a loop.
+        tokio::task::yield_now().await;
+        cb.call_async(()).await?
+    }
+
+    Ok(())
+}
+
 pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
     let globals = lua.globals();
     globals.set("go", lua.create_async_function(go)?)?;
+    globals.set("select", lua.create_async_function(select)?)?;
     globals.set(
         "tostring",
         lua.load(chunk! {
