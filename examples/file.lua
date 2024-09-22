@@ -1,7 +1,7 @@
-local fs = require("fs")
+local os = require("os")
 
 -- Open stdin with read permissions.
-local stdin = fs.File.open("/proc/self/fd/0", "r")
+local stdin = os.File.open("/proc/self/fd/0", "r")
 
 local buf = ""
 while true do
