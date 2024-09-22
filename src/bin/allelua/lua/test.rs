@@ -7,6 +7,7 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
             lua.load(chunk! {
                 local debug = require("debug")
                 local table = require("table")
+                local sync = require("sync")
                 local os = require("os")
                 local time = require("time")
 
@@ -22,14 +23,14 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                     end
                 end
 
-                function M.test(name, test)
+                function M.test(name, test, opts)
                     assert(type(name) == "string", "test name is not a string")
                     assert(type(test) == "function", "test body is not a function")
                     local info = debug.getinfo(2, "S")
                     local filename = info.short_src
 
                     local test_file_table = M.__tests[filename] or {}
-                    table.insert(test_file_table, { name = name, test = test })
+                    table.insert(test_file_table, { name = name, test = test, opts = opts })
 
                     M.__tests[filename] = test_file_table
                 end
@@ -46,7 +47,9 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
 
                         // Run all tests from the same file
                         for _, test in ipairs(tests) do
-                            local test_passed = M.__execute_test(test_file, test.name, test.test)
+                            local opts = test.opts or {}
+                            if not opts.timeout then opts.timeout = 5 * time.second end
+                            local test_passed = M.__execute_test(test_file, test.name, test.test, opts)
                             if test_passed then
                                 passed = passed + 1
                             else
@@ -61,12 +64,30 @@ pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                     return failed == 0
                 end
 
-                function M.__execute_test(file, name, test)
+                function M.__execute_test(file, name, test, opts)
                     local start_instant = time.Instant.now()
                     print = test_print(file, name) // replace std print
 
-                    local success, error_msg = pcall(test)
+                    local tx, rx = sync.channel()
+                    local abort_test = go(function()
+                        local results = { pcall(test) }
+                        tx:send(results)
+                    end)
 
+                    local success, error_msg
+                    local timeout, abort_timeout = time.after(opts.timeout)
+                    select {
+                        [timeout] = function()
+                            abort_test()
+                            success = false
+                            error_msg = "test timed out"
+                        end,
+                        [rx] = function(result)
+                            abort_timeout()
+                            success = result[1]
+                            error_msg = result[2]
+                        end,
+                    }
                     print = real_print // restore std print
 
                     local test_duration = start_instant:elapsed()
