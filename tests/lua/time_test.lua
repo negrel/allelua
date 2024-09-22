@@ -17,3 +17,14 @@ t.test("duration unary minus (-1s) is not supported", function()
 	assert(not ok, "no error thrown")
 	assert(string.contains(err, "attempt to perform arithmetic on field 'second' (a userdata value)"))
 end)
+
+t.test("time.after(time.millisecond) sends nil after 1ms", function()
+	local dur = 5 * time.millisecond
+	local rx = time.after(dur)
+	local now = time.Instant.now()
+	local v = rx:recv()
+	local elapsed = now:elapsed()
+
+	t.assert_eq(v, nil)
+	assert(elapsed >= dur and elapsed < (2 * dur), "elapsed duration exceed expectation: " .. tostring(elapsed))
+end)
