@@ -1,23 +1,48 @@
 use std::{
     future::{poll_fn, Future},
     pin::Pin,
+    sync::atomic::AtomicUsize,
     task::Poll,
 };
 
-use mlua::{chunk, AnyUserDataExt, FromLua, IntoLua, Lua};
+use mlua::{chunk, AnyUserDataExt, FromLua, IntoLua, Lua, MetaMethod, UserData};
 use nanorand::Rng;
+use tokio::task::AbortHandle;
 
 use super::sync::LuaChannelReceiver;
 
-async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<()> {
+static GOROUTINE_ID: AtomicUsize = AtomicUsize::new(1);
+
+#[derive(Debug)]
+pub struct LuaAbortHandle(AbortHandle, usize);
+
+impl UserData for LuaAbortHandle {
+    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field_method_get("id", |_lua, abort| Ok(abort.1))
+    }
+
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method(MetaMethod::ToString, |lua, abort, ()| {
+            lua.create_string(format!("AbortHandle(id={})", abort.1))
+        });
+
+        methods.add_meta_method(MetaMethod::Call, |_lua, abort, ()| {
+            abort.0.abort();
+            Ok(())
+        })
+    }
+}
+
+async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<LuaAbortHandle> {
     let fut = func.call_async::<_, ()>(());
-    tokio::task::spawn_local(async {
+    let goroutine_id = GOROUTINE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let handle = tokio::task::spawn_local(async move {
         if let Err(err) = fut.await {
-            panic!("{err}")
+            eprintln!("goroutine {goroutine_id}: {err}");
         }
     });
 
-    Ok(())
+    Ok(LuaAbortHandle(handle.abort_handle(), goroutine_id))
 }
 
 async fn select(lua: &Lua, table: mlua::Table<'static>) -> mlua::Result<()> {
