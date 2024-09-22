@@ -82,10 +82,16 @@ impl UserData for LuaDuration {
                     }
                 } else {
                     let ns = ns % 1_000_000;
-                    Ok(format!("{ms}.{ns:06}ms"))
+                    if ns == 0 {
+                        Ok(format!("{ms}ms"))
+                    } else {
+                        let (ns, zeros) = remove_trailing_zeros(ns);
+                        let prec = 6 - zeros;
+                        Ok(format!("{ms}.{ns:0prec$}ms"))
+                    }
                 }
             } else {
-                let ns = remove_trailing_zeros(dur.as_nanos() % 1_000_000_000);
+                let (ns, _) = remove_trailing_zeros(dur.as_nanos() % 1_000_000_000);
 
                 let hours = dur.as_secs() / 3600;
                 let minutes = (dur.as_secs() % 3600) / 60;
@@ -101,8 +107,11 @@ impl UserData for LuaDuration {
                 } else {
                     match (hours, minutes, seconds) {
                         (0, 0, s) => Ok(format!("{s}s")),
+                        (0, m, 0) => Ok(format!("{m}m")),
                         (0, m, s) => Ok(format!("{m}m{s}s")),
+                        (h, 0, 0) => Ok(format!("{h}h")),
                         (h, 0, s) => Ok(format!("{h}h{s}s")),
+                        (h, m, 0) => Ok(format!("{h}h{m}m")),
                         (h, m, s) => Ok(format!("{h}h{m}m{s}s")),
                     }
                 }
@@ -218,12 +227,14 @@ pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table> {
     )
 }
 
-fn remove_trailing_zeros(mut n: u128) -> u128 {
+fn remove_trailing_zeros(mut n: u128) -> (u128, usize) {
     if n == 0 {
-        return 0;
+        return (0, 0);
     }
+    let mut i = 0;
     while n % 10 == 0 {
         n /= 10;
+        i += 1;
     }
-    n
+    (n, i)
 }
