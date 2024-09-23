@@ -65,6 +65,14 @@ impl UserData for LuaChannelReceiver {
             Ok(format!("ChannelReceiver 0x{address:x}"))
         });
 
+        methods.add_async_method("iter", |lua, receiver, ()| async {
+            let next =
+                lua.create_async_function(|_lua, receiver: LuaChannelReceiver| async move {
+                    receiver.recv_async().await.map_err(mlua::Error::external)
+                })?;
+            Ok((next, receiver.to_owned()))
+        });
+
         methods.add_async_method("recv", |_, receiver, ()| async {
             receiver.recv_async().await.map_err(mlua::Error::external)
         });
