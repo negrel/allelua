@@ -1,6 +1,6 @@
 use mlua::{chunk, Lua};
 
-pub fn load_string(lua: &'static Lua) -> mlua::Result<()> {
+pub fn load_string(lua: Lua) -> mlua::Result<()> {
     // TODO: support mlua::String instead of String which are UTF-8 only.
     let contains =
         lua.create_function(|_lua, (str1, str2): (String, String)| Ok(str1.contains(&str2)))?;

@@ -1,6 +1,6 @@
 use mlua::{chunk, Lua};
 
-pub fn load_test(lua: &'static Lua) -> mlua::Result<mlua::Table> {
+pub fn load_test(lua: Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "test",
         lua.create_function(|lua, ()| {

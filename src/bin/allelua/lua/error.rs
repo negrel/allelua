@@ -24,13 +24,13 @@ impl<T: AlleluaError> From<T> for LuaError {
 }
 
 impl UserData for LuaError {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("__type", |lua, err| lua.create_string(err.0.type_name()));
         fields.add_field_method_get("kind", |lua, err| lua.create_string(err.0.kind()));
         fields.add_field_method_get("message", |lua, err| lua.create_string(err.0.to_string()));
     }
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_lua, err, ()| {
             Ok(format!(
                 "{}(kind={} message={})",
@@ -53,7 +53,7 @@ fn to_lua_error(err: &mlua::Error) -> Option<LuaError> {
     }
 }
 
-pub fn load_error(lua: &'static Lua) -> mlua::Result<mlua::Table> {
+pub fn load_error(lua: Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "error",
         lua.create_function(|lua, ()| {

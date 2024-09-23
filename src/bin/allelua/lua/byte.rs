@@ -13,11 +13,11 @@ impl Deref for LuaByteBuffer {
 }
 
 impl UserData for LuaByteBuffer {
-    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+    fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         fields.add_field("__type", "ByteBuffer");
     }
 
-    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::Len, |_, b, ()| Ok(b.0.len()));
         methods.add_meta_method(MetaMethod::ToString, |lua, b, ()| {
             Ok(lua.create_string(&*b.0))
@@ -89,10 +89,10 @@ impl UserData for LuaByteBuffer {
     }
 }
 
-pub fn load_byte(lua: &'static Lua) -> mlua::Result<mlua::Table> {
+pub fn load_byte(lua: Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "byte",
-        lua.create_function(|_, ()| {
+        lua.create_function(|lua, ()| {
             let byte = lua.create_table()?;
 
             let buf_constructors = lua.create_table()?;

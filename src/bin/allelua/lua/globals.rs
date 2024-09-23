@@ -5,7 +5,7 @@ use std::{
     task::Poll,
 };
 
-use mlua::{chunk, AnyUserDataExt, FromLua, IntoLua, Lua, MetaMethod, UserData};
+use mlua::{chunk, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
 use nanorand::Rng;
 use tokio::task::AbortHandle;
 
@@ -20,11 +20,11 @@ static GOROUTINE_ID: AtomicUsize = AtomicUsize::new(1);
 pub struct LuaAbortHandle(AbortHandle, usize);
 
 impl UserData for LuaAbortHandle {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("id", |_lua, abort| Ok(abort.1))
     }
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::ToString, |lua, abort, ()| {
             lua.create_string(format!("AbortHandle(id={})", abort.1))
         });
@@ -36,8 +36,8 @@ impl UserData for LuaAbortHandle {
     }
 }
 
-async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<LuaAbortHandle> {
-    let fut = func.call_async::<_, ()>(());
+async fn go(_lua: Lua, func: mlua::Function) -> mlua::Result<LuaAbortHandle> {
+    let fut = func.call_async::<()>(());
     let goroutine_id = GOROUTINE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let handle = tokio::task::spawn_local(async move {
         if let Err(err) = fut.await {
@@ -48,8 +48,8 @@ async fn go(_lua: &Lua, func: mlua::Function<'static>) -> mlua::Result<LuaAbortH
     Ok(LuaAbortHandle(handle.abort_handle(), goroutine_id))
 }
 
-async fn select(lua: &Lua, table: mlua::Table<'static>) -> mlua::Result<()> {
-    let default_callback = table.get::<_, Option<mlua::Function>>("default")?;
+async fn select(lua: Lua, table: mlua::Table) -> mlua::Result<()> {
+    let default_callback = table.get::<Option<mlua::Function>>("default")?;
     let has_default_branch = default_callback.is_some();
 
     let mut callbacks = Vec::new();
@@ -58,7 +58,7 @@ async fn select(lua: &Lua, table: mlua::Table<'static>) -> mlua::Result<()> {
     let mut i = 0;
     for res in table.pairs::<mlua::Value, mlua::Function>() {
         let (value, callback) = res?;
-        let ch = match LuaChannelReceiver::from_lua(value, lua) {
+        let ch = match LuaChannelReceiver::from_lua(value, &lua) {
             Ok(ch) => ch,
             Err(_) => continue,
         };
@@ -115,7 +115,7 @@ async fn select(lua: &Lua, table: mlua::Table<'static>) -> mlua::Result<()> {
     Ok(())
 }
 
-pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
+pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     let globals = lua.globals();
     globals.set("go", lua.create_async_function(go)?)?;
     globals.set("select", lua.create_async_function(select)?)?;
@@ -212,12 +212,12 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
             .eval::<mlua::Function>()?,
     )?;
 
-    let tostring = globals.get::<_, mlua::Function>("tostring").unwrap();
+    let tostring = globals.get::<mlua::Function>("tostring").unwrap();
     globals.set(
         "print",
         lua.create_function(move |_lua, values: mlua::MultiValue| {
             for v in values {
-                let str = tostring.call::<mlua::Value, String>(v)?;
+                let str = tostring.call::<String>(v)?;
                 print!("{str} ");
             }
             println!();
@@ -225,7 +225,7 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
         })?,
     )?;
 
-    let rawtype = globals.get::<_, mlua::Function>("type")?;
+    let rawtype = globals.get::<mlua::Function>("type")?;
     globals.set("rawtype", rawtype)?;
 
     globals.set(
@@ -241,11 +241,11 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
             | mlua::Value::Thread(_) => value.type_name().into_lua(lua),
             mlua::Value::Error(_) => "error".into_lua(lua),
             mlua::Value::Table(ref t) => {
-                let __type = t.get::<_, mlua::Value>("__type")?;
+                let __type = t.get::<mlua::Value>("__type")?;
                 match __type {
                     mlua::Value::Nil => value.type_name().into_lua(lua),
                     mlua::Value::String(_) => Ok(__type),
-                    mlua::Value::Function(func) => func.call::<_, mlua::Value>(t),
+                    mlua::Value::Function(func) => func.call::<mlua::Value>(t),
                     _ => Err(mlua::Error::FromLuaConversionError {
                         from: value.type_name(),
                         to: "function",
@@ -254,7 +254,7 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
                 }
             }
             mlua::Value::UserData(udata) => udata
-                .get::<_, mlua::Value>("__type")
+                .get::<mlua::Value>("__type")
                 .or_else(|_| "userdata".into_lua(lua)),
         })?,
     )?;

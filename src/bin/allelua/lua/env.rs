@@ -7,10 +7,10 @@ use std::{
 
 use mlua::Lua;
 
-pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua::Table> {
+pub fn load_env(lua: Lua, run_args: Vec<OsString>) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "env",
-        lua.create_function(move |_, ()| {
+        lua.create_function(move |lua, ()| {
             let env = lua.create_table()?;
 
             let args = lua.create_table()?;
@@ -25,8 +25,8 @@ pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua
             vars_mt.set("__type", lua.create_string("Vars")?)?;
             vars_mt.set(
                 "__index",
-                lua.create_function(|_, (_, varname): (mlua::Table, mlua::String)| {
-                    let var = env::var_os(OsStr::from_bytes(varname.as_bytes()));
+                lua.create_function(|lua, (_, varname): (mlua::Table, mlua::String)| {
+                    let var = env::var_os(OsStr::from_bytes(&varname.as_bytes()));
                     match var {
                         Some(var) => Ok(Some(lua.create_string(var.as_bytes())?)),
                         None => Ok(None),
@@ -39,8 +39,8 @@ pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua
                     |_, (_, name, value): (mlua::Table, mlua::String, mlua::String)| {
                         unsafe {
                             env::set_var(
-                                OsStr::from_bytes(name.as_bytes()),
-                                OsStr::from_bytes(value.as_bytes()),
+                                OsStr::from_bytes(&name.as_bytes()),
+                                OsStr::from_bytes(&value.as_bytes()),
                             );
                         }
                         Ok(())
@@ -57,8 +57,8 @@ pub fn load_env(lua: &'static Lua, run_args: Vec<OsString>) -> mlua::Result<mlua
                             lua.create_string(varvalue.as_bytes())?,
                         )?;
                     }
-                    let tostring = lua.globals().get::<_, mlua::Function>("tostring")?;
-                    tostring.call::<_, mlua::String>((table, opts))
+                    let tostring = lua.globals().get::<mlua::Function>("tostring")?;
+                    tostring.call::<mlua::String>((table, opts))
                 })?,
             )?;
 

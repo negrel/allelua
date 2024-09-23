@@ -24,7 +24,7 @@ mod test;
 mod time;
 
 /// Runtime define ready to use Lua VM with the allelua std lib loaded.
-pub struct Runtime(&'static Lua);
+pub struct Runtime(Lua);
 
 impl Drop for Runtime {
     fn drop(&mut self) {
@@ -37,7 +37,7 @@ impl Drop for Runtime {
 }
 
 impl Deref for Runtime {
-    type Target = &'static Lua;
+    type Target = Lua;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -58,17 +58,16 @@ impl Runtime {
                     | StdLib::FFI,
                 LuaOptions::new(),
             )
-            .into_static()
         };
 
-        prepare_runtime(vm, fpath, run_args);
+        prepare_runtime(vm.clone(), fpath, run_args);
 
         Runtime(vm)
     }
 
-    pub async fn exec<'a, T>(&self, chunk: impl AsChunk<'static, 'a>) -> mlua::Result<T>
+    pub async fn exec<'a, T>(&self, chunk: impl AsChunk<'_>) -> mlua::Result<T>
     where
-        T: FromLuaMulti<'a> + 'a,
+        T: FromLuaMulti + 'a,
     {
         self.load(chunk).eval_async::<T>().await
     }
@@ -84,24 +83,24 @@ fn handle_result<T, E: Display>(result: Result<T, E>) {
     }
 }
 
-fn prepare_runtime(lua: &'static Lua, fpath: &Path, run_args: Vec<OsString>) {
+fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
     // Load libraries.
-    handle_result(load_byte(lua));
-    handle_result(load_env(lua, run_args));
-    handle_result(load_path(lua));
-    handle_result(load_os(lua));
-    handle_result(load_error(lua));
-    handle_result(load_string(lua));
-    handle_result(load_sync(lua));
-    handle_result(load_table(lua));
-    handle_result(load_time(lua));
-    handle_result(register_globals(lua));
+    handle_result(load_byte(lua.clone()));
+    handle_result(load_env(lua.clone(), run_args));
+    handle_result(load_path(lua.clone()));
+    handle_result(load_os(lua.clone()));
+    handle_result(load_error(lua.clone()));
+    handle_result(load_string(lua.clone()));
+    handle_result(load_sync(lua.clone()));
+    handle_result(load_table(lua.clone()));
+    handle_result(load_time(lua.clone()));
+    handle_result(register_globals(lua.clone()));
 
     // Depends on other package.
-    handle_result(load_test(lua));
+    handle_result(load_test(lua.clone()));
 
     // overwrite require.
-    handle_result(load_package(lua, fpath));
+    handle_result(load_package(lua.clone(), fpath));
 
     let result = lua
         .load(chunk! {

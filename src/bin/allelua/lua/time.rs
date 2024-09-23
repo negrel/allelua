@@ -16,11 +16,11 @@ impl Deref for LuaDuration {
 }
 
 impl UserData for LuaDuration {
-    fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
+    fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         fields.add_field("__type", "Duration");
     }
 
-    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::Eq, |_lua, dur1, dur2: LuaDuration| {
             Ok(dur1.0 == dur2.0)
         });
@@ -132,11 +132,11 @@ impl Deref for LuaInstant {
 }
 
 impl UserData for LuaInstant {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field("__type", "Instant");
     }
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(
             mlua::MetaMethod::Eq,
             |_lua, instant1, instant2: LuaInstant| Ok(instant1.0 == instant2.0),
@@ -175,7 +175,7 @@ impl UserData for LuaInstant {
     }
 }
 
-pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table> {
+pub fn load_time(lua: Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "time",
         lua.create_function(|lua, ()| {
@@ -207,7 +207,7 @@ pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table> {
             )?;
             time.set("Instant", instant.clone())?;
 
-            let sleep = time.get::<_, mlua::Function>("sleep")?;
+            let sleep = time.get::<mlua::Function>("sleep")?;
             time.set(
                 "after",
                 lua.load(chunk! {
@@ -219,7 +219,7 @@ pub fn load_time(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                         end)
                     end
                 })
-                .eval::<mlua::Function<'static>>()?,
+                .eval::<mlua::Function>()?,
             )?;
 
             Ok(time)

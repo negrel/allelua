@@ -1,6 +1,6 @@
-use mlua::chunk;
+use mlua::{chunk, Lua};
 
-pub fn load_table(lua: &'static mlua::Lua) -> mlua::Result<()> {
+pub fn load_table(lua: Lua) -> mlua::Result<()> {
     let is_empty = lua.create_function(|_lua, t: mlua::Table| Ok(t.is_empty()))?;
 
     lua.load(chunk! {

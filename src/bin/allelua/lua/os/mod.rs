@@ -9,7 +9,7 @@ use file::*;
 
 use super::{error::LuaError, io};
 
-pub fn load_os(lua: &'static Lua) -> mlua::Result<mlua::Table> {
+pub fn load_os(lua: Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "os",
         lua.create_function(|lua, ()| {
@@ -20,7 +20,8 @@ pub fn load_os(lua: &'static Lua) -> mlua::Result<mlua::Table> {
                 "open",
                 lua.create_async_function(
                     |_lua, (path, mode): (mlua::String, mlua::String)| async move {
-                        let path = Path::new(OsStr::from_bytes(path.as_bytes()));
+                        let path = path.as_bytes();
+                        let path = Path::new(OsStr::from_bytes(&path));
                         let mut options = OpenOptions::new();
                         let mode = mode.as_bytes();
                         if mode.contains(&b'c') {

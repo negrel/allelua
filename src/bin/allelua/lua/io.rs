@@ -56,11 +56,11 @@ impl AlleluaError for LuaError {
 }
 
 impl UserData for LuaError {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field("__type", "IoError")
     }
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("kind", |_lua, err, ()| Ok(LuaErrorKind(err.0.kind())))
     }
 }
@@ -75,9 +75,9 @@ impl From<io::ErrorKind> for LuaErrorKind {
 }
 
 impl UserData for LuaErrorKind {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(_fields: &mut F) {}
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, errkind, ()| {
             Ok(io::Error::from(errkind.0).to_string())
         });
