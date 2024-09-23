@@ -43,9 +43,37 @@ pub fn load_table(lua: &'static mlua::Lua) -> mlua::Result<()> {
         M.push = function(t, ...)
             local args = {...}
             for _, v in ipairs(args) do
-                t[#t + 1] = v
+                M.insert(t, v)
             end
-            return t
+            return #t
+        end
+        M.pop = function(t)
+            return M.remove(t)
+        end
+        M.unshift = function(t, ...)
+            local args = {...}
+            for _, v in ipairs(args) do
+                M.insert(t, 1, v)
+            end
+            return #t
+        end
+        M.shift = function(t)
+            return M.remove(t, 1)
+        end
+
+        M.indexof = function(t, elem, start)
+            start = start or 1
+            local i = start
+            while true do
+                if t[i] == elem then
+                    return i
+                end
+                if t[i] == nil then
+                    break
+                end
+                i = i + 1
+            end
+            return -1
         end
 
         M.map = function(t, map_fn)
