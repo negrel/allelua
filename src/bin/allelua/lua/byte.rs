@@ -1,6 +1,16 @@
-use mlua::{AnyUserData, Lua, MetaMethod, UserData};
+use std::ops::Deref;
+
+use mlua::{AnyUserData, FromLua, Lua, MetaMethod, UserData};
 
 struct LuaByteBuffer(Vec<u8>);
+
+impl Deref for LuaByteBuffer {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl UserData for LuaByteBuffer {
     fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
@@ -16,9 +26,13 @@ impl UserData for LuaByteBuffer {
             let other = other.borrow::<LuaByteBuffer>()?;
             Ok(b.0 == other.0)
         });
-        methods.add_meta_method(MetaMethod::Index, |_, b, i: usize| {
-            Ok(b.0.get(i - 1).map(ToOwned::to_owned))
-        });
+        // methods.add_meta_method(MetaMethod::Index, |lua, b, v: mlua::Value| {
+        //     if let Ok(i) = usize::from_lua(v, lua) {
+        //         Ok(b.0.get(i - 1).map(ToOwned::to_owned))
+        //     } else {
+        //         Ok(Some(0u8))
+        //     }
+        // });
         methods.add_meta_method_mut(MetaMethod::NewIndex, |_, b, (i, byte): (usize, u8)| {
             let i = i - 1;
             if i >= b.0.len() {
@@ -31,6 +45,47 @@ impl UserData for LuaByteBuffer {
             b.0[i] = byte;
             Ok(b.0.len())
         });
+
+        methods.add_method_mut("push", |lua, b, values: mlua::MultiValue| {
+            for v in values {
+                let byte = u8::from_lua(v, lua)?;
+                b.0.push(byte);
+            }
+            Ok(b.0.len())
+        });
+        methods.add_method_mut("unshift", |lua, b, values: mlua::MultiValue| {
+            for v in values {
+                let byte = u8::from_lua(v, lua)?;
+                b.0.insert(0, byte);
+            }
+
+            Ok((b.0.pop(), b.0.len()))
+        });
+
+        methods.add_method_mut("pop", |_lua, b, ()| Ok((b.0.pop(), b.0.len())));
+        methods.add_method_mut("shift", |_lua, b, ()| Ok((b.0.pop(), b.0.len())));
+
+        methods.add_method_mut("reserve", |_lua, b, additional: usize| {
+            b.0.reserve(additional);
+            Ok(())
+        });
+
+        methods.add_method_mut("resize", |_lua, b, (len, byte): (usize, Option<u8>)| {
+            b.0.resize(len, byte.unwrap_or(0));
+            Ok(())
+        });
+
+        methods.add_method_mut("fill", |_lua, b, byte: u8| {
+            b.0.fill(byte);
+            Ok(())
+        });
+
+        methods.add_method_mut("truncate", |_lua, b, len: usize| {
+            b.0.truncate(len);
+            Ok(())
+        });
+
+        methods.add_method("__clone", |_lua, b, ()| Ok(LuaByteBuffer(b.0.clone())));
     }
 }
 
