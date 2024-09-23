@@ -9,7 +9,10 @@ use mlua::{chunk, AnyUserDataExt, FromLua, IntoLua, Lua, MetaMethod, UserData};
 use nanorand::Rng;
 use tokio::task::AbortHandle;
 
-use super::sync::LuaChannelReceiver;
+use super::{
+    error::{AlleluaError, LuaError},
+    sync::LuaChannelReceiver,
+};
 
 static GOROUTINE_ID: AtomicUsize = AtomicUsize::new(1);
 
@@ -273,5 +276,68 @@ pub fn register_globals(lua: &'static Lua) -> mlua::Result<()> {
         .eval::<mlua::Function>()?,
     )?;
 
+    let clone_not_impl_err = LuaError::from(LuaCloneError::NotImplemented);
+    globals.set(
+        "clone",
+        lua.load(chunk! {
+            local clone_impl = function(v, opts)
+                if rawtype(v) == "table" then
+                    local meta = getmetatable(v)
+                    if meta then
+                        if rawtype(meta.__clone) == "function" then
+                            return meta.__clone(v, opts)
+                        else
+                            return meta.__clone
+                        end
+                    end
+                    return $clone_not_impl_err
+                elseif rawtype(v) == "userdata" then
+                    if v.__clone then
+                        if rawtype(v.__clone) == "function" then
+                            return v.__clone(v, opts)
+                        else
+                            return v.__clone
+                        end
+                    end
+                    return $clone_not_impl_err
+                end
+
+                return v
+            end
+
+            return function(v, opts)
+                local opts = opts or {}
+                opts.deep = opts.deep or false
+                opts.replace = opts.replace or {}
+                local replace = opts.replace
+
+                if replace[v] then
+                    return replace[v]
+                end
+
+                return clone_impl(v, opts)
+            end
+        })
+        .eval::<mlua::Function>()?,
+    )?;
+
     Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+enum LuaCloneError {
+    #[error("__clone metamethod is not implemented")]
+    NotImplemented,
+}
+
+impl AlleluaError for LuaCloneError {
+    fn type_name(&self) -> &'static str {
+        "CloneError"
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            LuaCloneError::NotImplemented => "NotImplemented",
+        }
+    }
 }
