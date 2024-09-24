@@ -19,7 +19,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-flume = "0.11.0"
 # console-subscriber = { version = "0.4.0" }
 mlua = { git = "https://github.com/mlua-rs/mlua", rev = "3714da5ec8a1029aac077756c6531918e0b64915", features = ["luajit52", "async", "macros"] }
 nanorand = "0.7.0"

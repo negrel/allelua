@@ -332,34 +332,4 @@ mod tests {
             now.elapsed()
         );
     }
-
-    #[tokio::test]
-    async fn bench_1_000_000_flume() {
-        const CAP: usize = 1000;
-        const ITER: usize = 1_000_000;
-        let (tx, rx) = flume::bounded(CAP);
-
-        let set = tokio::task::LocalSet::new();
-
-        // Push.
-        set.spawn_local(async move {
-            for i in 0..ITER {
-                tx.send_async(mlua::Value::Integer(i as i64)).await.unwrap();
-            }
-        });
-
-        // Pop.
-        set.spawn_local(async move {
-            for _ in 0..ITER {
-                rx.recv_async().await.unwrap();
-            }
-        });
-
-        let now = Instant::now();
-        set.await;
-        println!(
-            "buffered flume {ITER} iteration done in {:?}",
-            now.elapsed()
-        );
-    }
 }
