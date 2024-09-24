@@ -215,7 +215,7 @@ pub fn load_time(lua: Lua) -> mlua::Result<mlua::Table> {
                         local tx, rx = require("sync").channel();
                         return rx, go(function()
                             $sleep(dur)
-                            tx:send(nil)
+                            tx:close()
                         end)
                     end
                 })

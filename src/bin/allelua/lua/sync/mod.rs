@@ -1,7 +1,6 @@
-use mlua::Lua;
+use mlua::{IntoLuaMulti, Lua};
 
 mod channel;
-mod queue;
 pub use channel::*;
 
 mod waitgroup;
@@ -19,7 +18,13 @@ pub fn load_sync(lua: Lua) -> mlua::Result<mlua::Table> {
 
             sync.set(
                 "channel",
-                lua.create_function(|_lua, cap: Option<usize>| Ok(lua_channel(cap.unwrap_or(0))))?,
+                lua.create_function(|lua, cap: Option<usize>| {
+                    if let Some(cap) = cap {
+                        lua_buffered_channel(cap).into_lua_multi(lua)
+                    } else {
+                        lua_unbuffered_channel().into_lua_multi(lua)
+                    }
+                })?,
             )?;
 
             Ok(sync)

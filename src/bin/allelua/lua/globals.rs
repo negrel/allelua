@@ -5,13 +5,13 @@ use std::{
     task::Poll,
 };
 
-use mlua::{chunk, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
+use mlua::{chunk, AnyUserData, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
 use nanorand::Rng;
 use tokio::task::AbortHandle;
 
 use super::{
     error::{AlleluaError, LuaError},
-    sync::LuaChannelReceiver,
+    sync::{BufferedQueue, ChannelReceiver, LuaChannelReceiver, UnbufferedQueue},
 };
 
 static GOROUTINE_ID: AtomicUsize = AtomicUsize::new(1);
@@ -58,11 +58,17 @@ async fn select(lua: Lua, table: mlua::Table) -> mlua::Result<()> {
     let mut i = 0;
     for res in table.pairs::<mlua::Value, mlua::Function>() {
         let (value, callback) = res?;
-        let ch = match LuaChannelReceiver::from_lua(value, &lua) {
-            Ok(ch) => ch,
+        let ch = match AnyUserData::from_lua(value, &lua) {
+            Ok(userdata) => match userdata.borrow::<LuaChannelReceiver<BufferedQueue>>() {
+                Ok(ch) => ChannelReceiver::Buffered(ch.clone()),
+                Err(_) => match userdata.borrow::<LuaChannelReceiver<UnbufferedQueue>>() {
+                    Ok(ch) => ChannelReceiver::Unbuffered(ch.clone()),
+                    Err(_) => continue,
+                },
+            },
             Err(_) => continue,
         };
-        futures.push((i, async move { ch.recv_async().await }, false));
+        futures.push((i, async move { ch.recv().await }, false));
         callbacks.push(callback);
         i += 1;
     }
@@ -101,13 +107,12 @@ async fn select(lua: Lua, table: mlua::Table) -> mlua::Result<()> {
     })
     .await;
 
-    if let Some((i, val)) = output {
-        let val = val.map_err(mlua::Error::external)?;
+    if let Some((i, (val, true))) = output {
         let callback = &callbacks[i];
         callback.call_async(val).await?
     } else if let Some(cb) = default_callback {
-        // Yield so other goroutines have time to send value if select is ran in
-        // a loop.
+        // Yield so other goroutines have time to send value if select is in a
+        // loop.
         tokio::task::yield_now().await;
         cb.call_async(()).await?
     }

@@ -79,7 +79,7 @@ impl Waiter {
             self.next.unwrap().wake();
         }
 
-        self.waker.wake_by_ref()
+        self.waker.wake()
     }
 }
 

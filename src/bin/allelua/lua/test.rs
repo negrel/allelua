@@ -72,6 +72,7 @@ pub fn load_test(lua: Lua) -> mlua::Result<mlua::Table> {
                     local abort_test = go(function()
                         local results = { pcall(test) }
                         tx:send(results)
+                        tx:close()
                     end)
 
                     local success, error_msg
