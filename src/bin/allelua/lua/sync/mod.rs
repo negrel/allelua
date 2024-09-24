@@ -1,6 +1,7 @@
 use mlua::Lua;
 
 mod channel;
+mod queue;
 pub use channel::*;
 
 mod waitgroup;
