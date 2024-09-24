@@ -13,12 +13,15 @@ t.test("goroutines runs concurrently", function()
 
 	local is_seq = true
 	for i = 1, 1000 do
-		local v = rx:recv()
-		is_seq = is_seq and v ~= i
+		local v, ok = rx:recv()
+		assert(v ~= nil and ok)
+		is_seq = is_seq and v == i
 	end
 
+	tx:close()
+
 	assert(not is_seq, "goroutines execution is sequential")
-end)
+end, { timeout = 10 * time.second })
 
 t.test("abort goroutine", function()
 	local goroutine_complete = false
