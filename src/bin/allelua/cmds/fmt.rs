@@ -51,7 +51,20 @@ pub fn fmt(path: Option<PathBuf>, check: bool) -> anyhow::Result<()> {
             format_code(&source, cfg, None, stylua_lib::OutputVerification::None)
                 .with_context(|| format!("failed to format lua file {fpath:?}"))?;
 
-        if !check {
+        if check {
+            let text_diff = similar::TextDiff::from_lines(&source, &formatted_source);
+            // If there are no changes, return nothing
+            if text_diff.ratio() == 1.0 {
+                eprintln!("ok");
+            } else {
+                eprintln!("FAILED");
+                eprintln!(
+                    "{}",
+                    text_diff.unified_diff().header("original", "formatted")
+                );
+                has_error = true;
+            }
+        } else {
             match fs::write(fpath.clone(), formatted_source) {
                 Ok(_) => eprintln!("ok"),
                 Err(err) => {
@@ -64,7 +77,11 @@ pub fn fmt(path: Option<PathBuf>, check: bool) -> anyhow::Result<()> {
     }
 
     if has_error {
-        bail!("failed to format one or more files");
+        if check {
+            bail!("failed to check one or more files");
+        } else {
+            bail!("failed to format one or more files");
+        }
     }
 
     Ok(())
