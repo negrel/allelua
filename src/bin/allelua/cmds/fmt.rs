@@ -16,7 +16,7 @@ const CONFIG: Config = Config {
     indent_width: 2,
     quote_style: QuoteStyle::AutoPreferDouble,
     call_parentheses: stylua_lib::CallParenType::NoSingleTable,
-    collapse_simple_statement: stylua_lib::CollapseSimpleStatement::Always,
+    collapse_simple_statement: stylua_lib::CollapseSimpleStatement::ConditionalOnly,
     sort_requires: SortRequiresConfig { enabled: true },
     no_call_parentheses: false,
 };
