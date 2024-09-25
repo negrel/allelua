@@ -16,6 +16,7 @@ struct Cli {
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
     /// Run a Lua program.
+    #[command(alias = "r")]
     Run {
         /// Path of file to run.
         file: PathBuf,
@@ -25,18 +26,21 @@ enum Command {
     },
 
     /// Run tests using built-in test runner.
+    #[command(alias = "t", alias = "tests")]
     Test {
         /// Path of test file or directory containing test files.
         path: Option<PathBuf>,
     },
 
     /// Run benchmarks using built-in bench runner.
+    #[command(alias = "b")]
     Bench {
         /// Path of bench file or directory containing bench files.
         path: Option<PathBuf>,
     },
 
     /// Format lua files.
+    #[command(alias = "f", alias = "format")]
     Fmt {
         /// Path of lua file or directory containing lua files.
         path: Option<PathBuf>,
