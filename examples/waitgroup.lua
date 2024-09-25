@@ -1,5 +1,5 @@
-local time = require("time")
 local sync = require("sync")
+local time = require("time")
 
 local wg = sync.WaitGroup.new()
 wg:add(2)

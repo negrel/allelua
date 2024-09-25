@@ -24,17 +24,19 @@ enum Command {
         run_args: Vec<OsString>,
     },
 
+    /// Run tests using built-in test runner.
     Test {
         /// Path of test file or directory containing test files.
         path: Option<PathBuf>,
     },
 
+    /// Run benchmarks using built-in bench runner.
     Bench {
         /// Path of bench file or directory containing bench files.
         path: Option<PathBuf>,
     },
 
-    /// Format a lua file.
+    /// Format lua files.
     Fmt {
         /// Path of lua file or directory containing lua files.
         path: Option<PathBuf>,
