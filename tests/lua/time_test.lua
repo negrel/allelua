@@ -30,6 +30,26 @@ t.test("tostring(time.second) is 1s", function()
 	t.assert_eq(tostring(time.second), "1s")
 end)
 
+t.test("tostring(time.second + time.nanosecond) is 1s", function()
+	t.assert_eq(tostring(time.second + time.nanosecond), "1s")
+end)
+
+t.test("tostring(time.second + time.microsecond) is 1s", function()
+	t.assert_eq(tostring(time.second + time.microsecond), "1s")
+end)
+
+t.test("tostring(time.second + time.millisecond) is 1.001s", function()
+	t.assert_eq(tostring(time.second + time.millisecond), "1.001s")
+end)
+
+t.test("tostring(time.second + 10 * time.millisecond) is 1.01s", function()
+	t.assert_eq(tostring(time.second + 10 * time.millisecond), "1.01s")
+end)
+
+t.test("tostring(time.second + 100 * time.millisecond) is 1.01s", function()
+	t.assert_eq(tostring(time.second + 100 * time.millisecond), "1.1s")
+end)
+
 t.test("tostring(time.millisecond) is 1ms", function()
 	t.assert_eq(tostring(time.millisecond), "1ms")
 end)

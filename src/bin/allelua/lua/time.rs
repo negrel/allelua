@@ -91,18 +91,19 @@ impl UserData for LuaDuration {
                     }
                 }
             } else {
-                let (ns, _) = remove_trailing_zeros(dur.as_nanos() % 1_000_000_000);
+                let (ms, zeros) = remove_trailing_zeros(dur.as_millis() % 1_000);
+                let prec = 3 - zeros;
 
                 let hours = dur.as_secs() / 3600;
                 let minutes = (dur.as_secs() % 3600) / 60;
                 let seconds = dur.as_secs() % 60;
 
-                if ns != 0 {
+                if ms != 0 {
                     match (hours, minutes, seconds) {
-                        (0, 0, s) => Ok(format!("{s}.{ns}s")),
-                        (0, m, s) => Ok(format!("{m}m{s}.{ns}s")),
-                        (h, 0, s) => Ok(format!("{h}h{s}.{ns}s")),
-                        (h, m, s) => Ok(format!("{h}h{m}m{s}.{ns}s")),
+                        (0, 0, s) => Ok(format!("{s}.{ms:0prec$}s")),
+                        (0, m, s) => Ok(format!("{m}m{s}.{ms:0prec$}s")),
+                        (h, 0, s) => Ok(format!("{h}h{s}.{ms:0prec$}s")),
+                        (h, m, s) => Ok(format!("{h}h{m}m{s}.{ms:0prec$}s")),
                     }
                 } else {
                     match (hours, minutes, seconds) {
