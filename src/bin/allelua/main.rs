@@ -28,34 +28,34 @@ enum Command {
     /// Run tests using built-in test runner.
     #[command(alias = "t", alias = "tests")]
     Test {
-        /// Path of test file or directory containing test files.
-        path: Option<PathBuf>,
+        /// Path of test files or directory containing test files.
+        path: Vec<PathBuf>,
     },
 
     /// Run benchmarks using built-in bench runner.
     #[command(alias = "b")]
     Bench {
-        /// Path of bench file or directory containing bench files.
-        path: Option<PathBuf>,
+        /// Path of bench files or directory containing bench files.
+        path: Vec<PathBuf>,
     },
 
     /// Format lua files.
     #[command(alias = "f", alias = "format")]
     Fmt {
-        /// Path of lua file or directory containing lua files.
-        path: Option<PathBuf>,
+        /// Path of lua files or directory containing lua files.
+        path: Vec<PathBuf>,
 
         #[arg(long)]
         check: bool,
     },
 
-    // Starts language server.
+    /// Starts language server.
     Lsp,
 
-    // Lint lua files.
+    /// Lint lua files.
     Lint {
-        /// Path of lua file or directory containing lua files.
-        path: Option<PathBuf>,
+        /// Path of lua files or directory containing lua files.
+        path: Vec<PathBuf>,
     },
 }
 

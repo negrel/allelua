@@ -21,58 +21,64 @@ const CONFIG: Config = Config {
     no_call_parentheses: false,
 };
 
-pub fn fmt(path: Option<PathBuf>, check: bool) -> anyhow::Result<()> {
-    let path = path.unwrap_or(env::current_dir()?);
+pub fn fmt(paths: Vec<PathBuf>, check: bool) -> anyhow::Result<()> {
+    let paths = if paths.is_empty() {
+        vec![env::current_dir()?]
+    } else {
+        paths
+    };
 
     let mut files = 0;
     let mut has_error = false;
 
-    let iter = WalkDir::new(path)
-        .into_iter()
-        .filter_entry(is_dir_or_lua_file);
+    for path in paths {
+        let iter = WalkDir::new(path)
+            .into_iter()
+            .filter_entry(is_dir_or_lua_file);
 
-    for entry in iter {
-        let entry = entry?;
-        if entry.file_type().is_dir() {
-            continue;
-        }
-
-        files += 1;
-
-        let fpath = entry.into_path();
-
-        let source = fs::read_to_string(fpath.clone())
-            .with_context(|| format!("failed to read lua file {fpath:?}"))?;
-
-        if check {
-            eprint!("checking file {fpath:?} ... ");
-        } else {
-            eprint!("formatting file {fpath:?} ... ");
-        }
-
-        let formatted_source =
-            format_str(&source).with_context(|| format!("failed to format lua file {fpath:?}"))?;
-
-        if check {
-            let text_diff = similar::TextDiff::from_lines(&source, &formatted_source);
-            // If there are no changes, return nothing
-            if text_diff.ratio() == 1.0 {
-                eprintln!("ok");
-            } else {
-                eprintln!("FAILED");
-                eprintln!(
-                    "{}",
-                    text_diff.unified_diff().header("original", "formatted")
-                );
-                has_error = true;
+        for entry in iter {
+            let entry = entry?;
+            if entry.file_type().is_dir() {
+                continue;
             }
-        } else {
-            match fs::write(fpath.clone(), formatted_source) {
-                Ok(_) => eprintln!("ok"),
-                Err(err) => {
+
+            files += 1;
+
+            let fpath = entry.into_path();
+
+            let source = fs::read_to_string(fpath.clone())
+                .with_context(|| format!("failed to read lua file {fpath:?}"))?;
+
+            if check {
+                eprint!("checking file {fpath:?} ... ");
+            } else {
+                eprint!("formatting file {fpath:?} ... ");
+            }
+
+            let formatted_source = format_str(&source)
+                .with_context(|| format!("failed to format lua file {fpath:?}"))?;
+
+            if check {
+                let text_diff = similar::TextDiff::from_lines(&source, &formatted_source);
+                // If there are no changes, return nothing
+                if text_diff.ratio() == 1.0 {
+                    eprintln!("ok");
+                } else {
                     eprintln!("FAILED");
-                    eprintln!("{err}");
+                    eprintln!(
+                        "{}",
+                        text_diff.unified_diff().header("original", "formatted")
+                    );
                     has_error = true;
+                }
+            } else {
+                match fs::write(fpath.clone(), formatted_source) {
+                    Ok(_) => eprintln!("ok"),
+                    Err(err) => {
+                        eprintln!("FAILED");
+                        eprintln!("{err}");
+                        has_error = true;
+                    }
                 }
             }
         }
