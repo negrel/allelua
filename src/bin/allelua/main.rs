@@ -28,6 +28,11 @@ enum Command {
         /// Path of test file or directory containing test files.
         path: Option<PathBuf>,
     },
+
+    Bench {
+        /// Path of bench file or directory containing bench files.
+        path: Option<PathBuf>,
+    },
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -37,6 +42,7 @@ pub fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Run { file, run_args } => cmds::run(file, run_args)?,
         Command::Test { path } => cmds::test(path)?,
+        Command::Bench { path } => cmds::bench(path)?,
     }
 
     Ok(())

@@ -10,9 +10,13 @@ pub fn load_test(lua: Lua) -> mlua::Result<mlua::Table> {
                 local sync = require("sync")
                 local os = require("os")
                 local time = require("time")
+                local path = require("path")
+                local package = require("package")
+                local jit = require("jit")
 
                 local M = {
-                  __tests = {}
+                    __tests = {},
+                    __benchs = {}
                 }
 
                 local real_print = print
@@ -23,11 +27,25 @@ pub fn load_test(lua: Lua) -> mlua::Result<mlua::Table> {
                     end
                 end
 
+                local assert_called_from_test_file = function()
+                    local fpath = package.meta.path
+                    if not path.file_stem(fpath):has_suffix("_test") then
+                        error("this function must be called from a *_test.lua file", 2)
+                    end
+                end
+
+                local assert_called_from_bench_file = function()
+                    local fpath = package.meta.path
+                    if not path.file_stem(fpath):has_suffix("_bench") then
+                        error("this function must be called from a *_bench.lua file", 2)
+                    end
+                end
+
                 function M.test(name, test, opts)
+                    assert_called_from_test_file()
                     assert(type(name) == "string", "test name is not a string")
                     assert(type(test) == "function", "test body is not a function")
-                    local info = debug.getinfo(2, "S")
-                    local filename = info.short_src
+                    local filename = package.meta.path
 
                     local test_file_table = M.__tests[filename] or {}
                     table.insert(test_file_table, { name = name, test = test, opts = opts })
@@ -35,7 +53,7 @@ pub fn load_test(lua: Lua) -> mlua::Result<mlua::Table> {
                     M.__tests[filename] = test_file_table
                 end
 
-                function M.__execute_suite()
+                function M.__execute_test_suite()
                     local passed = 0
                     local failed = 0
                     local test_suite_result = "ok"
@@ -105,6 +123,92 @@ pub fn load_test(lua: Lua) -> mlua::Result<mlua::Table> {
                     end
 
                     return success
+                end
+
+                function M.bench(name, bench, opts)
+                    assert_called_from_bench_file()
+                    assert(type(name) == "string", "benchmark name is not a string")
+                    assert(type(bench) == "function", "benchmark body is not a function")
+
+                    local filename = package.meta.path
+
+                    local bench_file_table = M.__benchs[filename] or {}
+                    table.insert(bench_file_table, { name = name, bench = bench, opts = opts })
+
+                    M.__benchs[filename] = bench_file_table
+                end
+
+                function M.__execute_bench_suite()
+                    local error = 0
+                    local bench_suite_result = "ok"
+                    local start_instant = time.Instant.now()
+
+                    // Run benchs per source file.
+                    for bench_file, benchs in pairs(M.__benchs) do
+                        print("running", #benchs, "benchmarks from", bench_file)
+
+                        // Run all tests from the same file
+                        for _, bench in ipairs(benchs) do
+                            local opts = bench.opts or {}
+                            opts.bench_time = opts.bench_time or time.second
+                            local bench_ok = M.__execute_bench(bench_file, bench.name, bench.bench, opts)
+                            if not bench_ok then
+                                error = error + 1
+                                bench_suite_result = "FAILED"
+                            end
+                        end
+                    end
+                    // Sum up results.
+                    print(bench_suite_result, "|", error, "error |", start_instant:elapsed(), "\n")
+
+                    return error == 0
+                end
+
+                local run_n = function(n, bench)
+                    // Try to get a comparable environment for each run
+                    // by clearing garbage from previous runs.
+                    collectgarbage()
+                    collectgarbage()
+                    local b = { n = n }
+
+                    // Execute bench.
+                    local success, error_msg = pcall(bench, b)
+                    if not success then
+                        print("\t", name, "...", "FAILED")
+                        if error_msg then
+                            print(debug.traceback(error_msg))
+                        end
+                        print()
+                    end
+
+                    return success
+                end
+
+                function M.__execute_bench(file, name, bench, opts)
+                    jit.on(bench, true)
+
+                    local n = 1
+                    local dur = 0 * time.second
+                    while dur < opts.bench_time do
+                        local now = time.Instant.now()
+
+                        local success = run_n(n, bench)
+                        if not success then
+                            print("\t", name, "...", "FAILED")
+                            if error_msg then
+                                print(debug.traceback(error_msg))
+                            end
+                            print()
+                            return false
+                        end
+
+                        dur = now:elapsed()
+                        n = n * 2
+                    end
+
+                    print("\t", name, "...", n, "iter", dur / n, "/ op")
+
+                    return true
                 end
 
                 M.assert = assert

@@ -23,6 +23,12 @@ mod table;
 mod test;
 mod time;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum RuntimeSafetyLevel {
+    Unsafe,
+    Safe,
+}
+
 /// Runtime define ready to use Lua VM with the allelua std lib loaded.
 pub struct Runtime(Lua);
 
@@ -45,22 +51,21 @@ impl Deref for Runtime {
 }
 
 impl Runtime {
-    pub fn new(fpath: &Path, run_args: Vec<OsString>) -> Self {
-        let vm = unsafe {
-            Lua::unsafe_new_with(
-                StdLib::NONE
-                    | StdLib::MATH
-                    | StdLib::TABLE
-                    | StdLib::PACKAGE
-                    | StdLib::BIT
-                    | StdLib::STRING
-                    | StdLib::DEBUG
-                    | StdLib::FFI,
-                LuaOptions::new(),
-            )
-        };
+    pub fn new(fpath: &Path, run_args: Vec<OsString>, safety: RuntimeSafetyLevel) -> Self {
+        let mut stdlib = StdLib::NONE
+            | StdLib::MATH
+            | StdLib::TABLE
+            | StdLib::PACKAGE
+            | StdLib::BIT
+            | StdLib::STRING;
 
-        prepare_runtime(vm.clone(), fpath, run_args);
+        if safety == RuntimeSafetyLevel::Unsafe {
+            stdlib = stdlib | StdLib::FFI | StdLib::JIT | StdLib::DEBUG
+        }
+
+        let vm = unsafe { Lua::unsafe_new_with(stdlib, LuaOptions::new()) };
+
+        prepare_runtime(vm.clone(), fpath, run_args, safety);
 
         Runtime(vm)
     }
@@ -83,7 +88,7 @@ fn handle_result<T, E: Display>(result: Result<T, E>) {
     }
 }
 
-fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
+fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: RuntimeSafetyLevel) {
     // Load libraries.
     handle_result(load_byte(lua.clone()));
     handle_result(load_env(lua.clone(), run_args));
@@ -96,8 +101,9 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
     handle_result(load_time(lua.clone()));
     handle_result(register_globals(lua.clone()));
 
-    // Depends on other package.
-    handle_result(load_test(lua.clone()));
+    if safety == RuntimeSafetyLevel::Unsafe {
+        handle_result(load_test(lua.clone()));
+    }
 
     // overwrite require.
     handle_result(load_package(lua.clone(), fpath));

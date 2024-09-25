@@ -6,7 +6,7 @@ use std::{
 use anyhow::Context;
 use tokio::task;
 
-use crate::lua::Runtime;
+use crate::lua::{Runtime, RuntimeSafetyLevel};
 
 pub fn run(fpath: PathBuf, run_args: Vec<OsString>) -> anyhow::Result<()> {
     tokio::runtime::Builder::new_current_thread()
@@ -15,12 +15,12 @@ pub fn run(fpath: PathBuf, run_args: Vec<OsString>) -> anyhow::Result<()> {
         .expect("Failed building the tokio Runtime")
         .block_on(async {
             let fpath = path::absolute(&fpath)?;
-            let lua = Runtime::new(&fpath, run_args);
+            let runtime = Runtime::new(&fpath, run_args, RuntimeSafetyLevel::Safe);
 
             // Execute code.
             let local = task::LocalSet::new();
             local
-                .run_until(lua.exec(fpath.clone()))
+                .run_until(runtime.exec(fpath.clone()))
                 .await
                 .with_context(|| format!("failed to run lua file {:?}", fpath))?;
 

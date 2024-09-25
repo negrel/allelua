@@ -6,20 +6,23 @@ use walkdir::WalkDir;
 
 use crate::lua::{Runtime, RuntimeSafetyLevel};
 
-fn is_dir_or_test_file(entry: &walkdir::DirEntry) -> bool {
+fn is_dir_or_bench_file(entry: &walkdir::DirEntry) -> bool {
     entry.file_type().is_dir()
         || (entry.file_type().is_file()
-            && entry.file_name().as_encoded_bytes().ends_with(b"_test.lua"))
+            && entry
+                .file_name()
+                .as_encoded_bytes()
+                .ends_with(b"_bench.lua"))
 }
 
-pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
+pub fn bench(path: Option<PathBuf>) -> anyhow::Result<()> {
     let path = path.unwrap_or(env::current_dir()?);
 
     let iter = WalkDir::new(path)
         .into_iter()
-        .filter_entry(is_dir_or_test_file);
+        .filter_entry(is_dir_or_bench_file);
 
-    let mut all_test_suite_ok = true;
+    let mut all_bench_suite_ok = true;
 
     for entry in iter {
         let entry = entry?;
@@ -37,26 +40,26 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
             .block_on(async {
                 // Execute code.
                 let local = task::LocalSet::new();
-                let test_suite_ok = local
+                let bench_suite_ok = local
                     .run_until(async {
                         runtime
                             .exec::<()>(fpath.clone())
                             .await
-                            .with_context(|| format!("failed to load lua test file {fpath:?}"))?;
+                            .with_context(|| format!("failed to load lua bench file {fpath:?}"))?;
 
                         runtime
                             .exec::<bool>(chunk! {
                                 local test = require("test")
-                                return test.__execute_test_suite()
+                                return test.__execute_bench_suite()
                             })
                             .await
                             .with_context(|| {
-                                format!("failed to execute test suite of lua file {fpath:?}",)
+                                format!("failed to execute bench suite of lua file {fpath:?}",)
                             })
                     })
                     .await?;
 
-                all_test_suite_ok &= test_suite_ok;
+                all_bench_suite_ok &= bench_suite_ok;
 
                 // Wait for background tasks.
                 local.await;
@@ -65,8 +68,8 @@ pub fn test(path: Option<PathBuf>) -> anyhow::Result<()> {
             })?;
     }
 
-    if !all_test_suite_ok {
-        bail!("some test failed")
+    if !all_bench_suite_ok {
+        bail!("some bench returned an error")
     }
 
     Ok(())
