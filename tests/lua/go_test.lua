@@ -1,6 +1,6 @@
 local sync = require("sync")
-local time = require("time")
 local t = require("test")
+local time = require("time")
 
 t.test("goroutines runs concurrently", function()
 	local tx, rx = sync.channel()
@@ -25,7 +25,6 @@ t.test("goroutines runs concurrently", function()
 		assert(v ~= nil and ok)
 		is_seq = is_seq and v == i
 	end
-
 
 	assert(not is_seq, "goroutines execution is sequential")
 end, { timeout = 10 * time.second })

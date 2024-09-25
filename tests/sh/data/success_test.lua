@@ -1,5 +1,5 @@
 local t = require("test")
 
-t.test('test that succeed', function()
+t.test("test that succeed", function()
 	-- OK
 end)

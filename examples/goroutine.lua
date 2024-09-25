@@ -1,4 +1,4 @@
-local time = require('time')
+local time = require("time")
 
 for i = 1, 1000 do
 	go(function()

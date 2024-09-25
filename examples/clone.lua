@@ -1,6 +1,6 @@
+local byte = require("byte")
 local os = require("os")
 local table = require("table")
-local byte = require("byte")
 
 local t = { 1, 2 }
 table.push(t, t)
@@ -16,7 +16,7 @@ setmetatable(t, {
 
 		setmetatable(result, getmetatable(t))
 		return result
-	end
+	end,
 })
 
 print(t, clone(t))

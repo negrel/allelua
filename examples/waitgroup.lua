@@ -1,15 +1,15 @@
-local time = require('time')
-local sync = require('sync')
+local time = require("time")
+local sync = require("sync")
 
 local wg = sync.WaitGroup.new()
 wg:add(2)
 
 function work(n, secs)
 	for i = 0, secs - 1 do
-		print('goroutine', n, 'is working...', (secs - i) * time.second)
+		print("goroutine", n, "is working...", (secs - i) * time.second)
 		time.sleep(time.second)
 	end
-	print('goroutine', n, 'work is done!')
+	print("goroutine", n, "work is done!")
 end
 
 go(function()

@@ -1,6 +1,6 @@
 local sync = require("sync")
-local time = require("time")
 local t = require("test")
+local time = require("time")
 
 t.bench("1_000_000 send on unbuffered channel", function(b)
 	local tx, rx = sync.channel()
