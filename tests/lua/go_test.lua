@@ -4,10 +4,18 @@ local t = require("test")
 
 t.test("goroutines runs concurrently", function()
 	local tx, rx = sync.channel()
+	local wg = sync.WaitGroup.new()
+	wg:add(1000)
 	for i = 1, 1000 do
 		go(function()
 			time.sleep(1 * time.microsecond)
 			tx:send(i)
+			wg:done()
+		end)
+
+		go(function()
+			wg:wait()
+			tx:close()
 		end)
 	end
 
@@ -18,7 +26,6 @@ t.test("goroutines runs concurrently", function()
 		is_seq = is_seq and v == i
 	end
 
-	tx:close()
 
 	assert(not is_seq, "goroutines execution is sequential")
 end, { timeout = 10 * time.second })

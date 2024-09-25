@@ -73,11 +73,7 @@ impl<T: Queue + 'static> Clone for LuaChannelReceiver<T> {
 impl<T: Queue + 'static> LuaChannelReceiver<T> {
     pub async fn recv(&self) -> (mlua::Value, bool) {
         match self.0.pop().await {
-            Ok(v) => {
-                // Yield so associated push task can finish.
-                tokio::task::yield_now().await;
-                (v, true)
-            }
+            Ok(v) => (v, true),
             Err(queue::QueueError::Closed) => (mlua::Value::Nil, false),
         }
     }
