@@ -1,11 +1,11 @@
 local byte = require("byte")
-local os = require("os")
 local table = require("table")
 
 local t = { 1, 2 }
 table.push(t, t)
 
 setmetatable(t, {
+	-- selene: allow(shadowing)
 	__clone = function(t, opts)
 		local result = {}
 		opts.replace[t] = result

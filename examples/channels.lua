@@ -1,5 +1,4 @@
 local sync = require("sync")
-local time = require("time")
 
 -- Change channel buf size and observes ouput.
 local size = 0

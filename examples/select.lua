@@ -4,9 +4,13 @@ local time = require("time")
 local tx1, rx1 = sync.channel()
 local tx2, rx2 = sync.channel()
 
-go(function() tx1:send("tx1") end)
+go(function()
+	tx1:send("tx1")
+end)
 
-go(function() tx2:send("tx2") end)
+go(function()
+	tx2:send("tx2")
+end)
 
 local timeout, abort_timeout = time.after(2 * time.second)
 
@@ -25,6 +29,8 @@ while not done do
 			print("timeout after 2s")
 			done = true
 		end,
-		default = function() print("default") end,
+		default = function()
+			print("default")
+		end,
 	}
 end
