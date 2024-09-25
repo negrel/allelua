@@ -51,6 +51,12 @@ enum Command {
 
     // Starts language server.
     Lsp,
+
+    // Lint lua files.
+    Lint {
+        /// Path of lua file or directory containing lua files.
+        path: Option<PathBuf>,
+    },
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -63,6 +69,7 @@ pub fn main() -> anyhow::Result<()> {
         Command::Bench { path } => cmds::bench(path)?,
         Command::Fmt { path, check } => cmds::fmt(path, check)?,
         Command::Lsp => cmds::lsp()?,
+        Command::Lint { path } => cmds::lint(path)?,
     }
 
     Ok(())

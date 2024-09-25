@@ -6,6 +6,8 @@ use stylua_lib::{
 };
 use walkdir::WalkDir;
 
+use super::is_dir_or_lua_file;
+
 #[allow(deprecated)]
 const CONFIG: Config = Config {
     column_width: 80,
@@ -19,14 +21,10 @@ const CONFIG: Config = Config {
     no_call_parentheses: false,
 };
 
-fn is_dir_or_lua_file(entry: &walkdir::DirEntry) -> bool {
-    entry.file_type().is_dir()
-        || (entry.file_type().is_file() && entry.file_name().as_encoded_bytes().ends_with(b".lua"))
-}
-
 pub fn fmt(path: Option<PathBuf>, check: bool) -> anyhow::Result<()> {
     let path = path.unwrap_or(env::current_dir()?);
 
+    let mut files = 0;
     let mut has_error = false;
 
     let iter = WalkDir::new(path)
@@ -38,6 +36,8 @@ pub fn fmt(path: Option<PathBuf>, check: bool) -> anyhow::Result<()> {
         if entry.file_type().is_dir() {
             continue;
         }
+
+        files += 1;
 
         let fpath = entry.into_path();
 
@@ -78,6 +78,7 @@ pub fn fmt(path: Option<PathBuf>, check: bool) -> anyhow::Result<()> {
         }
     }
 
+    println!("Checked {files} files.");
     if has_error {
         if check {
             bail!("failed to check one or more files");
