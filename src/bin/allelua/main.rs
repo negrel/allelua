@@ -33,6 +33,15 @@ enum Command {
         /// Path of bench file or directory containing bench files.
         path: Option<PathBuf>,
     },
+
+    /// Format a lua file.
+    Fmt {
+        /// Path of lua file or directory containing lua files.
+        path: Option<PathBuf>,
+
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -43,6 +52,7 @@ pub fn main() -> anyhow::Result<()> {
         Command::Run { file, run_args } => cmds::run(file, run_args)?,
         Command::Test { path } => cmds::test(path)?,
         Command::Bench { path } => cmds::bench(path)?,
+        Command::Fmt { path, check } => cmds::fmt(path, check)?,
     }
 
     Ok(())
