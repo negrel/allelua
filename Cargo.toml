@@ -18,14 +18,15 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["cargo", "derive"] }
 # console-subscriber = { version = "0.4.0" }
 mlua = { git = "https://github.com/mlua-rs/mlua", rev = "3714da5ec8a1029aac077756c6531918e0b64915", features = ["luajit52", "async", "macros"] }
 nanorand = "0.7.0"
 similar = "2.6.0"
 stylua = { version = "0.20.0", features = ["lua52"] }
 thiserror = "1.0.63"
-tokio = { version = "1", features = ["time", "rt", "macros", "sync", "fs", "io-util"] }
+tokio = { version = "1", features = ["time", "rt", "macros", "sync", "fs", "io-util", "io-std"] }
+tower-lsp = "0.20.0"
 walkdir = "2.5.0"
 
 [profile.release]

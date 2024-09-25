@@ -48,6 +48,9 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+
+    // Starts language server.
+    Lsp,
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -59,6 +62,7 @@ pub fn main() -> anyhow::Result<()> {
         Command::Test { path } => cmds::test(path)?,
         Command::Bench { path } => cmds::bench(path)?,
         Command::Fmt { path, check } => cmds::fmt(path, check)?,
+        Command::Lsp => cmds::lsp()?,
     }
 
     Ok(())
