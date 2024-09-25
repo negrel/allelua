@@ -41,15 +41,22 @@ pub fn fmt(path: Option<PathBuf>, check: bool) -> anyhow::Result<()> {
         let source = fs::read_to_string(fpath.clone())
             .with_context(|| format!("failed to read lua file {fpath:?}"))?;
 
+        if check {
+            eprint!("checking file {fpath:?} ... ");
+        } else {
+            eprint!("formatting file {fpath:?} ... ");
+        }
+
         let formatted_source =
             format_code(&source, cfg, None, stylua_lib::OutputVerification::None)
                 .with_context(|| format!("failed to format lua file {fpath:?}"))?;
 
         if !check {
             match fs::write(fpath.clone(), formatted_source) {
-                Ok(_) => {}
+                Ok(_) => eprintln!("ok"),
                 Err(err) => {
-                    eprintln!("failed to write file {fpath:?}: {err}");
+                    eprintln!("FAILED");
+                    eprintln!("{err}");
                     has_error = true;
                 }
             }
