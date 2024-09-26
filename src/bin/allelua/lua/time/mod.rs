@@ -1,7 +1,7 @@
 use core::time;
 use std::{ops::Deref, time::Duration};
 
-use mlua::{chunk, FromLua, Lua, UserData};
+use mlua::{FromLua, Lua, UserData};
 use tokio::{task::spawn_blocking, time::Instant};
 
 #[derive(Clone, Copy, FromLua)]
@@ -208,20 +208,9 @@ pub fn load_time(lua: Lua) -> mlua::Result<mlua::Table> {
             )?;
             time.set("Instant", instant.clone())?;
 
-            let sleep = time.get::<mlua::Function>("sleep")?;
-            time.set(
-                "after",
-                lua.load(chunk! {
-                    return function(dur)
-                        local tx, rx = require("sync").channel();
-                        return rx, go(function()
-                            $sleep(dur)
-                            tx:close()
-                        end)
-                    end
-                })
-                .eval::<mlua::Function>()?,
-            )?;
+            lua.load(include_str!("./time.lua"))
+                .eval::<mlua::Function>()?
+                .call::<()>(time.clone())?;
 
             Ok(time)
         })?,

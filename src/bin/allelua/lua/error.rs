@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mlua::{chunk, IntoLua, Lua, UserData};
+use mlua::{IntoLua, Lua, UserData};
 
 use thiserror::Error;
 
@@ -57,15 +57,7 @@ pub fn load_error(lua: Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "error",
         lua.create_function(|lua, ()| {
-            let error = lua
-                .load(chunk! {
-                    local table = require("table")
-                    local M = {}
-
-                    return M
-                })
-                .eval::<mlua::Table>()?;
-
+            let error = lua.create_table()?;
             error.set(
                 "__toluaerror",
                 lua.create_function(|lua, err: mlua::Error| {

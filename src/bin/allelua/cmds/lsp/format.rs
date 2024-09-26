@@ -46,7 +46,17 @@ pub fn format(source: &str) -> anyhow::Result<Option<Vec<TextEdit>>> {
                 ),
                 new_text: "".to_owned(),
             }),
-            similar::DiffOp::Insert { .. } => unreachable!(),
+            similar::DiffOp::Insert {
+                old_index,
+                new_index,
+                new_len,
+            } => edits.push(TextEdit {
+                range: Range::new(
+                    byte_index_to_position(source, *old_index),
+                    byte_index_to_position(source, *old_index),
+                ),
+                new_text: formatted_source[*new_index..*new_index + *new_len].to_owned(),
+            }),
             similar::DiffOp::Replace {
                 old_index,
                 old_len,

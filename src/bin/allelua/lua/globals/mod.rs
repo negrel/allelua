@@ -5,7 +5,7 @@ use std::{
     task::Poll,
 };
 
-use mlua::{chunk, AnyUserData, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
+use mlua::{AnyUserData, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
 use nanorand::Rng;
 use tokio::task::AbortHandle;
 
@@ -124,111 +124,6 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     let globals = lua.globals();
     globals.set("go", lua.create_async_function(go)?)?;
     globals.set("select", lua.create_async_function(select)?)?;
-    globals.set(
-        "tostring",
-        lua.load(chunk! {
-            local string = require("string")
-            local table = require("table")
-
-            rawtostring = tostring
-
-            local tostring = nil
-
-            local function tostring_table(value, opts)
-                local space = opts.space <= 0 and "" or "\n" .. string.rep(" ", opts.space * opts.depth)
-                local close = opts.space <= 0 and " }" or "\n" .. string.rep(" ", opts.space * (opts.depth - 1)) .. "}"
-
-                local inner_opts = {
-                    space = opts.space,
-                    depth = opts.depth + 1,
-                    __stringified = opts.__stringified
-                }
-
-                local items = {}
-                for k, v in pairs(value) do
-                    local kv = { space }
-                    if type(k) == "string" or type(k) == "number" then
-                        table.push(kv, k)
-                    else
-                        table.push(kv, "[", tostring(k, inner_opts), "]")
-                    end
-                    table.push(kv, " = ")
-
-                    if type(v) == "string" then
-                        table.push(kv, '"', v, '"')
-                    else
-                        table.push(kv, tostring(v, inner_opts))
-                    end
-
-                    table.push(items, table.concat(kv))
-                end
-
-                // empty table ?
-                if #items == 0 then return "{}" end
-
-                return "{ " .. table.concat(items, ", ") .. close
-            end
-
-            local function tostring_impl(value, opts)
-                // Call metamethod if any.
-                local v_mt = getmetatable(value)
-                if type(v_mt) == "table" and v_mt.__tostring ~= nil then
-                    return v_mt.__tostring(value, opts)
-                end
-
-                // Custom default tostring for table.
-                if type(value) == "table" then
-                    return tostring_table(value, opts)
-                end
-
-                return rawtostring(value)
-            end
-
-            // A custom to string function that pretty format table and support
-            // recursive values.
-            tostring = function(v, opts)
-                opts = opts or {}
-                opts.__stringified = opts.__stringified or {}
-                local stringified = opts.__stringified
-
-                opts.space = opts.space or 2
-                opts.depth = opts.depth or 1
-
-                if type(v) == "function" or v == nil then return rawtostring(v) end
-
-                if stringified[v] then
-                    stringified[v] = stringified[v] + 1
-                    return rawtostring(v)
-                end
-                stringified[v] = 1
-
-                local result = tostring_impl(v, opts)
-
-                if stringified[v] ~= 1 then // recursive value
-                    // prepend type and address to output so
-                    return rawtostring(v) .. " " .. result
-                end
-
-                return result
-            end
-
-            return tostring
-        })
-            .eval::<mlua::Function>()?,
-    )?;
-
-    let tostring = globals.get::<mlua::Function>("tostring").unwrap();
-    globals.set(
-        "print",
-        lua.create_function(move |_lua, values: mlua::MultiValue| {
-            for v in values {
-                let str = tostring.call::<String>(v)?;
-                print!("{str} ");
-            }
-            println!();
-            Ok(())
-        })?,
-    )?;
 
     let rawtype = globals.get::<mlua::Function>("type")?;
     globals.set("rawtype", rawtype)?;
@@ -265,66 +160,22 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     )?;
 
     globals.set(
-        "pcall",
-        lua.load(chunk! {
-            local pcall = pcall
-            local toluaerror = _G.package.loaded.error.__toluaerror
-            return function(...)
-                local results = {pcall(...)}
-                if not results[1] then
-                    local lua_err = toluaerror(results[2])
-                    return false, lua_err or results[2]
-                end
-                return table.unpack(results)
-            end
-        })
-        .eval::<mlua::Function>()?,
+        "print",
+        lua.create_function(move |lua, values: mlua::MultiValue| {
+            let tostring = lua.globals().get::<mlua::Function>("tostring").unwrap();
+            for v in values {
+                let str = tostring.call::<String>(v)?;
+                print!("{str} ");
+            }
+            println!();
+            Ok(())
+        })?,
     )?;
 
     let clone_not_impl_err = LuaError::from(LuaCloneError::NotImplemented);
-    globals.set(
-        "clone",
-        lua.load(chunk! {
-            local clone_impl = function(v, opts)
-                if rawtype(v) == "table" then
-                    local meta = getmetatable(v)
-                    if meta then
-                        if rawtype(meta.__clone) == "function" then
-                            return meta.__clone(v, opts)
-                        else
-                            return meta.__clone
-                        end
-                    end
-                    return $clone_not_impl_err
-                elseif rawtype(v) == "userdata" then
-                    if v.__clone then
-                        if rawtype(v.__clone) == "function" then
-                            return v.__clone(v, opts)
-                        else
-                            return v.__clone
-                        end
-                    end
-                    return $clone_not_impl_err
-                end
-
-                return v
-            end
-
-            return function(v, opts)
-                local opts = opts or {}
-                opts.deep = opts.deep or false
-                opts.replace = opts.replace or {}
-                local replace = opts.replace
-
-                if replace[v] then
-                    return replace[v]
-                end
-
-                return clone_impl(v, opts)
-            end
-        })
-        .eval::<mlua::Function>()?,
-    )?;
+    lua.load(include_str!("./globals.lua"))
+        .eval::<mlua::Function>()?
+        .call::<()>((globals.clone(), clone_not_impl_err))?;
 
     Ok(())
 }
