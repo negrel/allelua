@@ -1,6 +1,5 @@
 local debug = require("debug")
 local jit = require("jit")
-local os = require("os")
 local package = require("package")
 local path = require("path")
 local sync = require("sync")
@@ -87,6 +86,7 @@ end
 
 function M.__execute_test(file, name, test, opts)
 	local start_instant = time.Instant.now()
+	-- selene: allow(unscoped_variables)
 	print = test_print(file, name) -- replace std print
 
 	local tx, rx = sync.channel()
@@ -191,7 +191,7 @@ local run_n = function(n, bench)
 	return success
 end
 
-function M.__execute_bench(file, name, bench, opts)
+function M.__execute_bench(_file, name, bench, opts)
 	jit.on(bench, true)
 
 	local n = 1
@@ -228,7 +228,7 @@ function M.assert_eq(left, right, msg)
 end
 
 function M.assert_err(func, expected_err)
-	local ok, err = pcall(func)
+	local _, err = pcall(func)
 	M.assert_eq(err, expected_err, "error doesn't match expected error")
 end
 

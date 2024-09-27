@@ -120,7 +120,7 @@ return function(is_empty)
 		return setmetatable(clone, getmetatable(t))
 	end
 
-	M.deep_eq = function(a, b)
+	M.deep_eq = function(a, b, seen)
 		if a == b then return true end
 
 		-- If either value is not a table, they're not equal (since a ~= b)
@@ -167,24 +167,24 @@ return function(is_empty)
 	M.collect_entries = M.collect_map(function(k, v)
 		return { k, v }
 	end)
-	M.collect_keys = M.collect_map(function(k, v)
+	M.collect_keys = M.collect_map(function(k, _v)
 		return k
 	end)
-	M.collect_values = M.collect_map(function(k, v)
+	M.collect_values = M.collect_map(function(_k, v)
 		return v
 	end)
 
-	M.keys = function(table)
-		return M.collect_keys(pairs(table))
+	M.keys = function(t)
+		return M.collect_keys(pairs(t))
 	end
-	M.values = function(table)
-		return M.collect_values(pairs(table))
+	M.values = function(t)
+		return M.collect_values(pairs(t))
 	end
-	M.ivalues = function(table)
-		return M.collect_values(ipairs(table))
+	M.ivalues = function(t)
+		return M.collect_values(ipairs(t))
 	end
-	M.entries = function(table)
-		return M.collect_entries(pairs(table))
+	M.entries = function(t)
+		return M.collect_entries(pairs(t))
 	end
 	M.from_entries = function(entries)
 		local result = {}

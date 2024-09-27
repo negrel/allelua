@@ -1,8 +1,6 @@
-local string = require("string")
-
 function pcall_impl()
 	local table = require("table")
-	local toluaerror = _G.package.loaded.error.__toluaerror
+	local toluaerror = package.loaded.error.__toluaerror
 	local pcall = pcall
 
 	return function(...)
@@ -16,6 +14,9 @@ function pcall_impl()
 end
 
 function tostring_impl()
+	local string = require("string")
+	local table = require("table")
+
 	local rawtostring = tostring
 
 	local tostring = nil
@@ -57,6 +58,7 @@ function tostring_impl()
 		return "{ " .. table.concat(items, ", ") .. close
 	end
 
+	-- selene: allow(shadowing)
 	local function tostring_impl(value, opts)
 		-- Call metamethod if any.
 		local v_mt = getmetatable(value)
@@ -102,7 +104,7 @@ function tostring_impl()
 end
 
 function clone_impl(clone_not_impl_err)
-	local clone_impl = function(v, opts)
+	local clone = function(v, opts)
 		if rawtype(v) == "table" then
 			local meta = getmetatable(v)
 			if meta then
@@ -128,14 +130,14 @@ function clone_impl(clone_not_impl_err)
 	end
 
 	return function(v, opts)
-		local opts = opts or {}
+		opts = opts or {}
 		opts.deep = opts.deep or false
 		opts.replace = opts.replace or {}
 		local replace = opts.replace
 
 		if replace[v] then return replace[v] end
 
-		return clone_impl(v, opts)
+		return clone(v, opts)
 	end
 end
 

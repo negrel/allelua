@@ -1,4 +1,4 @@
-return function(fpath)
+return function(main_path)
 	local package = require("package")
 	local table = require("table")
 	local env = require("env")
@@ -16,7 +16,7 @@ return function(fpath)
 	package.cpath = ""
 
 	-- Add meta table.
-	M.meta = table.freeze { path = fpath, main = true }
+	M.meta = table.freeze { path = main_path, main = true }
 
 	local file_loaded = {} -- file_searcher loaded cache table.
 	local function file_searcher(modname)
