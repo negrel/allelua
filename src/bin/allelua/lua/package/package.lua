@@ -1,4 +1,4 @@
-return function(main_path)
+return function(main_path, path_canonicalize)
 	local package = require("package")
 	local table = require("table")
 	local env = require("env")
@@ -20,6 +20,7 @@ return function(main_path)
 
 	local file_loaded = {} -- file_searcher loaded cache table.
 	local function file_searcher(modname)
+
 		local fpath = modname
 		if string.has_prefix(fpath, "@/") then -- relative to current working dir.
 			fpath = path.join(env.current_dir(), string.slice(fpath, 3))
@@ -27,19 +28,23 @@ return function(main_path)
 			fpath = path.join(path.parent(M.meta.path), fpath)
 		end
 
-		if not path.exists(fpath) then
-			return "\n\tno file " .. fpath .. " found"
+		local ok, err = pcall(function()
+			fpath = path_canonicalize(fpath)
+		end)
+		if not ok then
+			if err.kind == "NotFound" then
+				error("failed to find " .. modname)
+			else
+				error(err)
+			end
 		end
-
-		fpath = path.absolute(fpath)
 
 		return function()
 			if file_loaded[fpath] then return file_loaded[fpath] end
 			local result = dofile(fpath)
 			file_loaded[fpath] = result
-			return result
-		end,
-			fpath
+			return table.freeze(result)
+		end, fpath
 	end
 
 	package.loaders = {
