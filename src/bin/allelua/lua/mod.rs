@@ -122,3 +122,38 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
 
     handle_result(result);
 }
+
+/// IncludeChunk is an helper type used by include_lua macro.
+pub struct IncludeChunk {
+    name: String,
+    source: &'static [u8],
+}
+
+impl<'a> mlua::AsChunk<'a> for IncludeChunk {
+    fn source(self) -> std::io::Result<std::borrow::Cow<'a, [u8]>> {
+        Ok(std::borrow::Cow::Borrowed(self.source))
+    }
+
+    fn name(&self) -> Option<String> {
+        Some(self.name.clone())
+    }
+
+    fn environment(&self, _lua: &Lua) -> mlua::prelude::LuaResult<Option<mlua::prelude::LuaTable>> {
+        Ok(None)
+    }
+
+    fn mode(&self) -> Option<mlua::ChunkMode> {
+        Some(mlua::ChunkMode::Text)
+    }
+}
+
+#[macro_export]
+macro_rules! include_lua {
+    ($path:tt) => {{
+        let path = ::std::path::Path::new($path);
+        $crate::lua::IncludeChunk {
+            name: path.file_stem().unwrap().to_string_lossy().to_string(),
+            source: include_bytes!($path),
+        }
+    }};
+}

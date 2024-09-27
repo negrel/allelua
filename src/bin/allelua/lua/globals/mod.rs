@@ -9,6 +9,8 @@ use mlua::{AnyUserData, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData}
 use nanorand::Rng;
 use tokio::task::AbortHandle;
 
+use crate::include_lua;
+
 use super::{
     error::{AlleluaError, LuaError},
     sync::{BufferedQueue, ChannelReceiver, LuaChannelReceiver, UnbufferedQueue},
@@ -173,7 +175,7 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     )?;
 
     let clone_not_impl_err = LuaError::from(LuaCloneError::NotImplemented);
-    lua.load(include_str!("./globals.lua"))
+    lua.load(include_lua!("./globals.lua"))
         .eval::<mlua::Function>()?
         .call::<()>((globals.clone(), clone_not_impl_err))?;
 

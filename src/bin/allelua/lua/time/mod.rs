@@ -4,6 +4,8 @@ use std::{ops::Deref, time::Duration};
 use mlua::{FromLua, Lua, UserData};
 use tokio::{task::spawn_blocking, time::Instant};
 
+use crate::include_lua;
+
 #[derive(Clone, Copy, FromLua)]
 struct LuaDuration(time::Duration);
 
@@ -208,7 +210,7 @@ pub fn load_time(lua: Lua) -> mlua::Result<mlua::Table> {
             )?;
             time.set("Instant", instant.clone())?;
 
-            lua.load(include_str!("./time.lua"))
+            lua.load(include_lua!("./time.lua"))
                 .eval::<mlua::Function>()?
                 .call::<()>(time.clone())?;
 

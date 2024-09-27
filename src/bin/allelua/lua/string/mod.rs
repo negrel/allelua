@@ -1,5 +1,7 @@
 use mlua::Lua;
 
+use crate::include_lua;
+
 pub fn load_string(lua: Lua) -> mlua::Result<()> {
     // TODO: support mlua::String instead of String which are UTF-8 only.
     let contains =
@@ -7,7 +9,7 @@ pub fn load_string(lua: Lua) -> mlua::Result<()> {
 
     lua.globals().set("__contains", contains)?;
     let string_mt = lua
-        .load(include_str!("./string.lua"))
+        .load(include_lua!("./string.lua"))
         .eval::<mlua::Table>()?;
     lua.globals().set("__contains", mlua::Value::Nil)?;
 

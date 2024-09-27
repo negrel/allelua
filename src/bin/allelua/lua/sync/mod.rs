@@ -20,10 +20,12 @@ pub fn load_sync(lua: Lua) -> mlua::Result<mlua::Table> {
                 "channel",
                 lua.create_function(|lua, cap: Option<usize>| {
                     if let Some(cap) = cap {
-                        lua_buffered_channel(cap).into_lua_multi(lua)
-                    } else {
-                        lua_unbuffered_channel().into_lua_multi(lua)
+                        if cap > 0 {
+                            return lua_buffered_channel(cap).into_lua_multi(lua);
+                        }
                     }
+
+                    lua_unbuffered_channel().into_lua_multi(lua)
                 })?,
             )?;
 
