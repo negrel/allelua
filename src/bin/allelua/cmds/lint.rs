@@ -6,22 +6,13 @@ use codespan_reporting::term::termcolor::{self};
 use selene_lib::{
     lints::Severity, standard_library::StandardLibrary, Checker, CheckerConfig, RobloxStdSource,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use walkdir::WalkDir;
 
 use super::is_dir_or_lua_file;
 
-pub fn lint(paths: Vec<PathBuf>) -> anyhow::Result<()> {
-    let paths = if paths.is_empty() {
-        vec![env::current_dir()?]
-    } else {
-        paths
-    };
-
-    let mut file_count = 0;
-    let mut problems = 0;
-
-    let checker = Checker::new(
+pub fn lint_checker() -> Checker<Value> {
+    Checker::new(
         CheckerConfig {
             config: HashMap::from([(
                 "multiple_statements".to_owned(),
@@ -34,7 +25,20 @@ pub fn lint(paths: Vec<PathBuf>) -> anyhow::Result<()> {
         },
         StandardLibrary::default(),
     )
-    .unwrap();
+    .unwrap()
+}
+
+pub fn lint(paths: Vec<PathBuf>) -> anyhow::Result<()> {
+    let paths = if paths.is_empty() {
+        vec![env::current_dir()?]
+    } else {
+        paths
+    };
+
+    let mut file_count = 0;
+    let mut problems = 0;
+
+    let checker = lint_checker();
 
     let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
 

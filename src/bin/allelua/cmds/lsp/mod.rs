@@ -5,15 +5,18 @@ use documents::Documents;
 use tower_lsp::{
     jsonrpc::{Error as LspError, ErrorCode as LspErrorCode, Result as LspResult},
     lsp_types::{
-        DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        DocumentFormattingParams, InitializeParams, InitializeResult, InitializedParams,
-        MessageType, OneOf, PositionEncodingKind, ServerCapabilities, ServerInfo,
-        TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-        TextDocumentSyncSaveOptions, TextEdit,
+        DiagnosticOptions, DiagnosticServerCapabilities, DidChangeTextDocumentParams,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+        DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
+        FullDocumentDiagnosticReport, InitializeParams, InitializeResult, InitializedParams,
+        MessageType, OneOf, PositionEncodingKind, RelatedFullDocumentDiagnosticReport,
+        ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+        TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TextEdit, WorkDoneProgressOptions,
     },
     Client, LanguageServer, LspService, Server,
 };
 
+mod doc;
 mod documents;
 mod format;
 
@@ -56,6 +59,14 @@ impl LanguageServer for Backend {
                         save: Some(TextDocumentSyncSaveOptions::Supported(true)),
                     },
                 )),
+                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                    DiagnosticOptions {
+                        identifier: Some("allelua".to_string()),
+                        inter_file_dependencies: false,
+                        workspace_diagnostics: false,
+                        work_done_progress_options: WorkDoneProgressOptions::default(),
+                    },
+                )),
                 ..Default::default()
             },
         };
@@ -64,7 +75,7 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        lsp_log!(self, INFO, "server initialized!");
+        lsp_log!(self, INFO, "allelua LSP initialized!");
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -102,15 +113,16 @@ impl LanguageServer for Backend {
         let inner = self.inner.read().await;
 
         let uri = params.text_document.uri;
-        let doc = match inner.documents.get(uri) {
-            Some(doc) => doc,
-            None => return Err(LspError::invalid_request()),
-        };
+        let doc = inner
+            .documents
+            .get(uri)
+            .ok_or_else(LspError::invalid_request)?;
 
-        match format(&doc.text) {
+        match format(&doc.item.text) {
             Ok(Some(edits)) => {
                 for edit in edits.clone() {
                     let source = doc
+                        .item
                         .text
                         .to_owned()
                         .lines()
@@ -148,8 +160,33 @@ impl LanguageServer for Backend {
         }
     }
 
+    async fn diagnostic(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> LspResult<DocumentDiagnosticReportResult> {
+        lsp_log!(self, LOG, "diagnostic {params:?}");
+
+        let inner = self.inner.read().await;
+
+        let uri = params.text_document.uri;
+        let doc = inner
+            .documents
+            .get(uri)
+            .ok_or_else(LspError::invalid_request)?;
+
+        Ok(DocumentDiagnosticReportResult::Report(
+            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                related_documents: None,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id: None,
+                    items: doc.diagnostic(),
+                },
+            }),
+        ))
+    }
+
     async fn shutdown(&self) -> LspResult<()> {
-        lsp_log!(self, LOG, "shutdown");
+        lsp_log!(self, LOG, "allelua LSP shutdown");
 
         Ok(())
     }

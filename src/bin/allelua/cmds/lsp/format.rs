@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::{Position, Range, TextEdit};
 
 use crate::cmds::fmt;
 
-fn byte_index_to_position(str: &str, bindex: usize) -> Position {
+pub fn byte_index_to_position(str: &str, bindex: usize) -> Position {
     let mut cursor = bindex;
     let mut line_pos = 0;
     let mut col = 0;

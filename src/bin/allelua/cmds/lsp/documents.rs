@@ -1,18 +1,20 @@
 use std::collections::HashMap;
 
-use anyhow::{bail, Context};
+use anyhow::Context;
 use tower_lsp::lsp_types::{
     TextDocumentContentChangeEvent, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
 };
 
+use super::doc::Doc;
+
 #[derive(Debug, Default)]
 pub struct Documents {
-    open_docs: HashMap<Url, TextDocumentItem>,
+    open_docs: HashMap<Url, Doc>,
 }
 
 impl Documents {
     pub fn open(&mut self, doc: TextDocumentItem) {
-        self.open_docs.insert(doc.uri.clone(), doc);
+        self.open_docs.insert(doc.uri.clone(), doc.into());
     }
 
     pub fn change(
@@ -24,24 +26,14 @@ impl Documents {
             .get_mut(id.uri)
             .context("can't change a closed document")?;
 
-        if changes.len() != 1 {
-            bail!("only full TextDocumentSyncKind is supported")
-        }
-
-        if id.version <= doc.version {
-            bail!("changes is older than stored document")
-        }
-
-        doc.version = id.version;
-        doc.text = changes[0].text.clone();
-        Ok(())
+        doc.change(id.version, changes)
     }
 
-    pub fn get(&self, url: Url) -> Option<&TextDocumentItem> {
+    pub fn get(&self, url: Url) -> Option<&Doc> {
         self.open_docs.get(&url)
     }
 
-    pub fn get_mut(&mut self, url: Url) -> Option<&mut TextDocumentItem> {
+    pub fn get_mut(&mut self, url: Url) -> Option<&mut Doc> {
         self.open_docs.get_mut(&url)
     }
 
