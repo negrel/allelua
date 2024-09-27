@@ -1,7 +1,7 @@
 use anyhow::bail;
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range,
-    TextDocumentContentChangeEvent, TextDocumentItem,
+    CodeDescription, Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range,
+    TextDocumentContentChangeEvent, TextDocumentItem, Url,
 };
 
 use crate::cmds::lint_checker;
@@ -56,6 +56,10 @@ impl Doc {
                             byte_index_to_position(&self.item.text, range.0 as usize),
                             byte_index_to_position(&self.item.text, range.1 as usize),
                         );
+                        let code_desc_url = format!(
+                            "https://kampfkarren.github.io/selene/lints/{}.html",
+                            diag.code
+                        );
 
                         Diagnostic {
                             range,
@@ -71,7 +75,9 @@ impl Doc {
                                 }
                             },
                             code: Some(NumberOrString::String(diag.code.to_owned())),
-                            code_description: None,
+                            code_description: Some(CodeDescription {
+                                href: Url::parse(&code_desc_url).unwrap(),
+                            }),
                             source: Some("selene".to_string()),
                             message: diag.message,
                             related_information: None,
