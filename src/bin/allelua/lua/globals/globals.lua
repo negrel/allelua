@@ -1,4 +1,4 @@
-function pcall_impl()
+local function pcall_impl()
 	local table = require("table")
 	local toluaerror = package.loaded.error.__toluaerror
 	local pcall = pcall
@@ -13,7 +13,7 @@ function pcall_impl()
 	end
 end
 
-function tostring_impl()
+local function tostring_impl()
 	local string = require("string")
 	local table = require("table")
 
@@ -103,7 +103,7 @@ function tostring_impl()
 	return tostring
 end
 
-function clone_impl(clone_not_impl_err)
+local function clone_impl(clone_not_impl_err)
 	local clone = function(v, opts)
 		if rawtype(v) == "table" then
 			local meta = getmetatable(v)
@@ -141,8 +141,18 @@ function clone_impl(clone_not_impl_err)
 	end
 end
 
+local function switch_impl(v, cases, default)
+	local case = cases[v]
+	if case then
+		case()
+	else
+		if default then default() end
+	end
+end
+
 return function(M, clone_not_impl_err)
 	M.pcall = pcall_impl()
 	M.tostring = tostring_impl()
 	M.clone = clone_impl(clone_not_impl_err)
+	M.switch = switch_impl
 end
