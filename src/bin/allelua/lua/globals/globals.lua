@@ -1,3 +1,10 @@
+local rawgetmetatable = __rawgetmetatable
+
+local function is_table_like(v)
+	local t = rawtype(v)
+	return t == "table" or t == "userdata"
+end
+
 local function pcall_impl()
 	local table = require("table")
 	local toluaerror = package.loaded.error.__toluaerror
@@ -16,12 +23,11 @@ end
 local function tostring_impl()
 	local string = require("string")
 	local table = require("table")
-
 	local rawtostring = tostring
 
 	local tostring = nil
 
-	local function tostring_table(value, opts)
+	local function tostring_pairs(value, opts)
 		local space = opts.space <= 0 and ""
 			or "\n" .. string.rep(" ", opts.space * opts.depth)
 		local close = opts.space <= 0 and " }"
@@ -36,14 +42,14 @@ local function tostring_impl()
 		local items = {}
 		for k, v in pairs(value) do
 			local kv = { space }
-			if type(k) == "string" or type(k) == "number" then
+			if rawtype(k) == "string" or rawtype(k) == "number" then
 				table.push(kv, k)
 			else
 				table.push(kv, "[", tostring(k, inner_opts), "]")
 			end
 			table.push(kv, " = ")
 
-			if type(v) == "string" then
+			if rawtype(v) == "string" then
 				table.push(kv, '"', v, '"')
 			else
 				table.push(kv, tostring(v, inner_opts))
@@ -61,13 +67,21 @@ local function tostring_impl()
 	-- selene: allow(shadowing)
 	local function tostring_impl(value, opts)
 		-- Call metamethod if any.
-		local v_mt = getmetatable(value)
-		if type(v_mt) == "table" and v_mt.__tostring ~= nil then
-			return v_mt.__tostring(value, opts)
+		local v_mt = rawgetmetatable(value)
+
+		if is_table_like(v_mt) then
+			if rawtype(v_mt.__tostring) == "function" then
+				return v_mt.__tostring(value, opts)
+			end
+
+			-- Custom default tostring for __pairs.
+			if rawtype(v_mt.__pairs) == "function" then
+				return tostring_pairs(value, opts)
+			end
 		end
 
 		-- Custom default tostring for table.
-		if type(value) == "table" then return tostring_table(value, opts) end
+		if rawtype(value) == "table" then return tostring_pairs(value, opts) end
 
 		return rawtostring(value)
 	end
@@ -82,7 +96,7 @@ local function tostring_impl()
 		opts.space = opts.space or 2
 		opts.depth = opts.depth or 1
 
-		if type(v) == "function" or v == nil then return rawtostring(v) end
+		if rawtype(v) == "function" or v == nil then return rawtostring(v) end
 
 		if stringified[v] then
 			stringified[v] = stringified[v] + 1
@@ -103,42 +117,66 @@ local function tostring_impl()
 	return tostring
 end
 
-local function clone_impl(clone_not_impl_err)
-	local clone = function(v, opts)
-		if rawtype(v) == "table" then
-			local meta = getmetatable(v)
-			if meta then
-				if rawtype(meta.__clone) == "function" then
-					return meta.__clone(v, opts)
-				else
-					return meta.__clone
-				end
+local function clone_impl()
+	local clone = nil
+
+	local clone_pairs = function(value, opts)
+		local value_clone = {}
+		opts.replace[value] = value_clone
+
+		local mt = rawgetmetatable(value)
+		local mt_clone = mt
+		if mt then
+			if opts.metatable.skip then
+				mt_clone = nil
+			elseif opts.metatable.deep then
+				mt_clone = clone(mt, opts.metatable)
 			end
-			return clone_not_impl_err
-		elseif rawtype(v) == "userdata" then
-			if v.__clone then
-				if rawtype(v.__clone) == "function" then
-					return v.__clone(v, opts)
-				else
-					return v.__clone
-				end
-			end
-			return clone_not_impl_err
 		end
+
+		for k, v in pairs(value) do
+			if opts.deep then k = clone(k, opts) end
+			if opts.deep then v = clone(v, opts) end
+			value_clone[k] = v
+		end
+		setmetatable(value_clone, mt_clone)
+
+		return value_clone
+	end
+
+	clone_any = function(v, opts)
+		local v_mt = rawgetmetatable(v)
+		if is_table_like(v_mt) then
+			-- clone metamethod is defined
+			if rawtype(v_mt.__clone) == "function" then
+				return v_mt.__clone(v, opts)
+			end
+
+			-- __pairs is defined, clone using iterator.
+			if rawtype(v_mt.__pairs) == "function" then
+				return clone_pairs(v, opts)
+			end
+		end
+
+		-- clone table using __pairs.
+		if rawtype(v) == "table" then return clone_pairs(v, opts) end
 
 		return v
 	end
 
-	return function(v, opts)
+	clone = function(v, opts)
 		opts = opts or {}
 		opts.deep = opts.deep or false
+		opts.metatable = opts.metatable or {}
 		opts.replace = opts.replace or {}
 		local replace = opts.replace
 
 		if replace[v] then return replace[v] end
 
-		return clone(v, opts)
+		return clone_any(v, opts)
 	end
+
+	return clone
 end
 
 local function switch_impl(v, cases, default)
@@ -150,9 +188,9 @@ local function switch_impl(v, cases, default)
 	end
 end
 
-return function(M, clone_not_impl_err)
+return function(M)
 	M.pcall = pcall_impl()
 	M.tostring = tostring_impl()
-	M.clone = clone_impl(clone_not_impl_err)
+	M.clone = clone_impl()
 	M.switch = switch_impl
 end

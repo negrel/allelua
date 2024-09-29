@@ -5,7 +5,9 @@ use std::{
     task::Poll,
 };
 
-use mlua::{AnyUserData, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
+use mlua::{
+    AnyUserData, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData, UserDataMetatable,
+};
 use nanorand::Rng;
 use tokio::task::AbortHandle;
 
@@ -155,9 +157,12 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
                     }),
                 }
             }
-            mlua::Value::UserData(udata) => udata
-                .get::<mlua::Value>("__type")
-                .or_else(|_| "userdata".into_lua(lua)),
+            mlua::Value::UserData(udata) => {
+                match udata.get::<Option<mlua::String>>("__type").unwrap_or(None) {
+                    Some(v) => Ok(mlua::Value::String(v)),
+                    None => "userdata".into_lua(lua),
+                }
+            }
         })?,
     )?;
 
@@ -174,12 +179,71 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
         })?,
     )?;
 
+    let get_metatable = globals.get::<mlua::Function>("getmetatable")?;
+    globals.set(
+        "__rawgetmetatable",
+        lua.create_function(move |lua, v: mlua::Value| match v {
+            mlua::Value::Nil
+            | mlua::Value::Boolean(_)
+            | mlua::Value::LightUserData(_)
+            | mlua::Value::Integer(_)
+            | mlua::Value::Number(_)
+            | mlua::Value::String(_)
+            | mlua::Value::Function(_)
+            | mlua::Value::Thread(_)
+            | mlua::Value::Error(_) => get_metatable.call(v),
+            mlua::Value::Table(tab) => Ok(tab
+                .get_metatable()
+                .map(mlua::Value::Table)
+                .unwrap_or(mlua::Value::Nil)),
+            mlua::Value::UserData(udata) => match udata.get_metatable() {
+                Ok(v) => LuaUserDataMetadataTable(v).into_lua(lua),
+                Err(_) => Ok(mlua::Value::Nil),
+            },
+        })?,
+    )?;
+
     let clone_not_impl_err = LuaError::from(LuaCloneError::NotImplemented);
     lua.load(include_lua!("./globals.lua"))
         .eval::<mlua::Function>()?
         .call::<()>((globals.clone(), clone_not_impl_err))?;
 
     Ok(())
+}
+
+#[derive(Debug, Clone, FromLua)]
+struct LuaUserDataMetadataTable(UserDataMetatable);
+
+impl UserData for LuaUserDataMetadataTable {
+    fn add_fields<F: mlua::UserDataFields<Self>>(_fields: &mut F) {}
+
+    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_meta_method(mlua::MetaMethod::Index, |_lua, mt, k: mlua::String| match k
+            .to_str()
+        {
+            Ok(k) => mt.0.get(k),
+            Err(_) => Ok(mlua::Value::Nil),
+        });
+
+        methods.add_meta_method(
+            mlua::MetaMethod::NewIndex,
+            |_lua, mt, (k, v): (mlua::String, mlua::Value)| {
+                let k = k.to_str()?;
+                mt.0.set(k, v)
+            },
+        );
+
+        methods.add_meta_method(mlua::MetaMethod::Pairs, |lua, mt, ()| {
+            let table = lua.create_table()?;
+            for res in mt.0.pairs::<mlua::Value>() {
+                let (k, v) = res?;
+                table.set(k, v)?;
+            }
+
+            let next = lua.globals().get::<mlua::Function>("next")?;
+            Ok((next, table))
+        });
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
