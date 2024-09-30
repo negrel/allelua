@@ -6,44 +6,91 @@ return function(is_empty)
 	M.new = require("table.new")
 	M.clear = require("table.clear")
 
-	-- Freeze table.
-	M.frozen_table_key = "__freeze"
-	M.frozen_table_mt = {
-		__index = function(t, k)
-			return t[M.frozen_table_key][k]
+	-- Frozen table error.
+	local FrozenTableError = {
+		__type = "FrozenTableError",
+		__tostring = function(t)
+			if t.kind == "Set" then
+				return "cannot set "
+					.. tostring(t.key)
+					.. " to "
+					.. tostring(t.value)
+					.. " in frozen table "
+					.. tostring(t.table)
+			else
+				error("unknown, please report this is a bug.")
+			end
 		end,
-		__newindex = function()
-			error("attempt to update a frozen table", 2)
-		end,
-		__len = function(t)
-			return #t[M.frozen_table_key]
-		end,
-		__tostring = function(t, opts)
-			return tostring(t[M.frozen_table_key], opts)
-		end,
-		__pairs = function(t)
-			return pairs(t[M.frozen_table_key])
-		end,
-		__ipairs = function(t)
-			return ipairs(t[M.frozen_table_key])
-		end,
-		__iter = function(t)
-			return iter(t[M.frozen_table_key])
-		end,
-		__metatable = false, -- protect metatable
 	}
-	M.freeze = function(t)
+
+	function FrozenTableError:new(table, k, v)
+		local o = { kind = "Set", table = table, key = k, value = v }
+		setmetatable(o, self)
+		self.__index = self
+		return o
+	end
+
+	-- Freeze table.
+	M.freeze = function(t, opts)
 		assert(
-			type(t) == "table",
-			"invalid input: " .. tostring(t) .. " is not a table"
+			rawtype(t) == "table" or rawtype(t) == "userdata",
+			"invalid input: " .. tostring(t) .. " is not table like"
 		)
-		if t[M.frozen_table_key] ~= nil then return t end
-		local proxy = { [M.frozen_table_key] = t }
-		setmetatable(proxy, M.frozen_table_mt)
+
+		opts = opts or {}
+		opts.deep = opts.deep or false
+		opts.metatable = opts.metatable or false
+		opts.replace = opts.replace or {}
+
+		local t_mt = __rawgetmetatable(t)
+
+		-- Return table if it is already frozen.
+		if rawtype(t_mt) == "table" and t_mt.__frozen then return t end
+
+		-- If this is a self referential table, returns already frozen table to
+		-- prevent infinite loop.
+		if opts.replace[t] then return opts.replace[t] end
+
+		-- Create proxy table.
+		local proxy = M.new(0, 0)
+		opts.replace[t] = proxy
+
+		-- Create proxy metatable.
+		local proxy_mt = {
+			__frozen = true,
+			__index = t,
+			__newindex = function(_, k)
+				error(FrozenTableError:new(t, k))
+			end,
+			__ipairs = function()
+				return ipairs(t)
+			end,
+			__pairs = function()
+				return pairs(t)
+			end,
+			-- fallback to false instead of nil otherwise,
+			-- proxy_mt would be returned.
+			__metatable = t_mt or false,
+		}
+		-- Set metatable of proxy metatable to fallback on table's metatable.
+		-- This way we don't have to forward __tostring and other metamethod unless
+		-- they're implemented.
+		setmetatable(proxy_mt, { __index = t_mt })
+
+		-- Freeze metatable.
+		if rawtype(t_mt) == "table" and opts.metatable then
+			proxy_mt.__metatable = M.freeze(t_mt, opts)
+		end
+
+		-- Set proxy metatable.
+		setmetatable(proxy, proxy_mt)
+
 		return proxy
 	end
+
 	M.is_frozen = function(t)
-		return t[M.frozen_table_key] ~= nil
+		local t_mt = __rawgetmetatable(t)
+		return rawtype(t_mt) == "table" and t_mt.__frozen
 	end
 
 	M.is_empty = is_empty
@@ -94,40 +141,15 @@ return function(is_empty)
 		return result
 	end
 
-	M.clone = function(t)
-		local t_mt = getmetatable(t)
-		local can_pairs = t_mt and t_mt.__pairs
-		if not can_pairs then return t end
-
-		local clone = {}
-		for k, v in pairs(t) do
-			clone[k] = v
-		end
-
-		return setmetatable(clone, getmetatable(t))
-	end
-
-	M.deep_clone = function(t)
-		local t_mt = getmetatable(t)
-		local can_pairs = t_mt and t_mt.__pairs
-		if not can_pairs then return t end
-
-		local clone = {}
-		for k, v in pairs(t) do
-			clone[M.deep_clone(k)] = M.deep_clone(v)
-		end
-
-		return setmetatable(clone, getmetatable(t))
-	end
-
 	M.deep_eq = function(a, b, seen)
 		if a == b then return true end
 
 		-- If either value is not a table, they're not equal (since a ~= b)
 		if type(a) ~= "table" or type(b) ~= "table" then return false end
 
-		-- Fast is_empty check.
-		if M.is_empty(a) ~= M.is_empty(b) then return false end
+		-- We can't use M.is_empty for fast checks has table may have __index
+		-- metamethod.
+		-- if M.is_empty(a) ~= M.is_empty(b) then return false end
 
 		-- Check for cycles
 		seen = seen or {}
@@ -141,12 +163,18 @@ return function(is_empty)
 
 		-- Check if all keys in 'a' exist in 'b' and have the same values
 		for k, v in pairs(a) do
-			if not M.deep_eq(v, b[k], seen) then return false end
+			if not M.deep_eq(v, b[k], seen) then
+				print("a has keys different in b", k)
+				return false
+			end
 		end
 
 		-- Check if 'b' has any keys that 'a' doesn't have
 		for k in pairs(b) do
-			if a[k] == nil then return false end
+			if a[k] == nil then
+				print("b has keys not in a", k)
+				return false
+			end
 		end
 
 		return true
