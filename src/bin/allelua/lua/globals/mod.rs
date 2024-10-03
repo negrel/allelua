@@ -132,6 +132,7 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     let rawtype = globals.get::<mlua::Function>("type")?;
     globals.set("rawtype", rawtype)?;
 
+    let getmetatable = globals.get::<mlua::Function>("getmetatable")?;
     globals.set(
         "type",
         lua.create_function(move |lua, value: mlua::Value| match value {
@@ -160,7 +161,10 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
             mlua::Value::UserData(udata) => {
                 match udata.get::<Option<mlua::String>>("__type").unwrap_or(None) {
                     Some(v) => Ok(mlua::Value::String(v)),
-                    None => "userdata".into_lua(lua),
+                    None => match getmetatable.call::<mlua::Value>(udata) {
+                        Ok(mlua::Value::String(str)) => Ok(mlua::Value::String(str)),
+                        _ => "userdata".into_lua(lua),
+                    },
                 }
             }
         })?,

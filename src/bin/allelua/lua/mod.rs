@@ -4,12 +4,10 @@ use error::load_error;
 use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
 
 use self::{
-    byte::load_byte, env::load_env, globals::register_globals, os::load_os, package::load_package,
-    path::load_path, string::load_string, sync::load_sync, table::load_table, test::load_test,
-    time::load_time,
+    env::load_env, globals::register_globals, os::load_os, package::load_package, path::load_path,
+    string::load_string, sync::load_sync, table::load_table, test::load_test, time::load_time,
 };
 
-mod byte;
 mod env;
 mod error;
 mod globals;
@@ -90,7 +88,6 @@ fn handle_result<T, E: Display>(result: Result<T, E>) {
 
 fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: RuntimeSafetyLevel) {
     // Load libraries.
-    handle_result(load_byte(lua.clone()));
     handle_result(load_env(lua.clone(), run_args));
     handle_result(load_path(lua.clone()));
     handle_result(load_os(lua.clone()));
@@ -125,8 +122,8 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
 
 /// IncludeChunk is an helper type used by include_lua macro.
 pub struct IncludeChunk {
-    name: String,
-    source: &'static [u8],
+    pub name: String,
+    pub source: &'static [u8],
 }
 
 impl<'a> mlua::AsChunk<'a> for IncludeChunk {
