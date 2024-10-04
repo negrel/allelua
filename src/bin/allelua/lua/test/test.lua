@@ -1,5 +1,6 @@
 local debug = require("debug")
 local jit = require("jit")
+local math = require("math")
 local package = require("package")
 local path = require("path")
 local sync = require("sync")
@@ -178,6 +179,7 @@ local run_n = function(n, bench)
 	-- by clearing garbage from previous runs.
 	collectgarbage()
 	collectgarbage()
+	local initial_mem = collectgarbage("count") * 1024
 	local b = { n = n }
 
 	-- Execute bench.
@@ -188,18 +190,21 @@ local run_n = function(n, bench)
 		print()
 	end
 
-	return success
+	local after_mem = collectgarbage("count") * 1024
+
+	return success, after_mem - initial_mem
 end
 
 function M.__execute_bench(_file, name, bench, opts)
 	jit.on(bench, true)
 
-	local n = 1
+	local op = 1
 	local dur = 0 * time.second
+	local mem_usage = nil
 	while dur < opts.bench_time do
 		local now = time.Instant.now()
 
-		local success = run_n(n, bench)
+		local success, mem = run_n(op, bench)
 		if not success then
 			print("\t", name, "...", "FAILED")
 			if error_msg then print(debug.traceback(error_msg)) end
@@ -208,10 +213,23 @@ function M.__execute_bench(_file, name, bench, opts)
 		end
 
 		dur = now:elapsed()
-		n = n * 2
+		op = op * 2
+		mem_usage = mem
 	end
 
-	print("\t", name, "...", n, "iter", dur / n, "/ op")
+	op = op / 2
+
+	print(
+		"\t",
+		name,
+		"...",
+		op,
+		"iter",
+		dur / op,
+		"/ op",
+		math.floor(mem_usage / op),
+		"B/op"
+	)
 
 	return true
 end
