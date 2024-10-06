@@ -224,11 +224,10 @@ function M.__execute_bench(_file, name, bench, opts)
 		name,
 		"...",
 		op,
-		"iter",
+		"iter,",
 		dur / op,
-		"/ op",
-		math.floor(mem_usage / op),
-		"B/op"
+		"/ op,",
+		tostring(math.floor(mem_usage / op)) .. "B / op"
 	)
 
 	return true
