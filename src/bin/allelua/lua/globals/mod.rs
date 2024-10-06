@@ -132,7 +132,6 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     let rawtype = globals.get::<mlua::Function>("type")?;
     globals.set("rawtype", rawtype)?;
 
-    let getmetatable = globals.get::<mlua::Function>("getmetatable")?;
     globals.set(
         "type",
         lua.create_function(move |lua, value: mlua::Value| match value {
@@ -153,7 +152,7 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
                     mlua::Value::Function(func) => func.call::<mlua::Value>(t),
                     _ => Err(mlua::Error::FromLuaConversionError {
                         from: value.type_name(),
-                        to: "function",
+                        to: "function".to_owned(),
                         message: None,
                     }),
                 }
@@ -161,12 +160,10 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
             mlua::Value::UserData(udata) => {
                 match udata.get::<Option<mlua::String>>("__type").unwrap_or(None) {
                     Some(v) => Ok(mlua::Value::String(v)),
-                    None => match getmetatable.call::<mlua::Value>(udata) {
-                        Ok(mlua::Value::String(str)) => Ok(mlua::Value::String(str)),
-                        _ => "userdata".into_lua(lua),
-                    },
+                    None => "userdata".into_lua(lua),
                 }
             }
+            mlua::Value::Other(..) => value.type_name().into_lua(lua),
         })?,
     )?;
 
@@ -175,8 +172,8 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
         lua.create_function(move |lua, values: mlua::MultiValue| {
             let tostring = lua.globals().get::<mlua::Function>("tostring").unwrap();
             for v in values {
-                let str = tostring.call::<String>(v)?;
-                print!("{str} ");
+                let str = tostring.call::<mlua::String>(v)?;
+                print!("{} ", str.to_string_lossy());
             }
             println!();
             Ok(())
@@ -197,13 +194,14 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
             | mlua::Value::Thread(_)
             | mlua::Value::Error(_) => get_metatable.call(v),
             mlua::Value::Table(tab) => Ok(tab
-                .get_metatable()
+                .metatable()
                 .map(mlua::Value::Table)
                 .unwrap_or(mlua::Value::Nil)),
-            mlua::Value::UserData(udata) => match udata.get_metatable() {
+            mlua::Value::UserData(udata) => match udata.metatable() {
                 Ok(v) => LuaUserDataMetadataTable(v).into_lua(lua),
                 Err(_) => Ok(mlua::Value::Nil),
             },
+            mlua::Value::Other(..) => Ok(mlua::Value::Nil),
         })?,
     )?;
 

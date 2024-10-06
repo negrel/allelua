@@ -6,93 +6,6 @@ return function(is_empty)
 	M.new = require("table.new")
 	M.clear = require("table.clear")
 
-	-- Frozen table error.
-	local FrozenTableError = {
-		__type = "FrozenTableError",
-		__tostring = function(t)
-			if t.kind == "Set" then
-				return "cannot set "
-					.. tostring(t.key)
-					.. " to "
-					.. tostring(t.value)
-					.. " in frozen table "
-					.. tostring(t.table)
-			else
-				error("unknown, please report this is a bug.")
-			end
-		end,
-	}
-
-	function FrozenTableError:new(table, k, v)
-		local o = { kind = "Set", table = table, key = k, value = v }
-		setmetatable(o, self)
-		self.__index = self
-		return o
-	end
-
-	-- Freeze table.
-	M.freeze = function(t, opts)
-		assert(
-			rawtype(t) == "table" or rawtype(t) == "userdata",
-			"invalid input: " .. tostring(t) .. " is not table like"
-		)
-
-		opts = opts or {}
-		opts.deep = opts.deep or false
-		opts.metatable = opts.metatable or false
-		opts.replace = opts.replace or {}
-
-		local t_mt = __rawgetmetatable(t)
-
-		-- Return table if it is already frozen.
-		if rawtype(t_mt) == "table" and t_mt.__frozen then return t end
-
-		-- If this is a self referential table, returns already frozen table to
-		-- prevent infinite loop.
-		if opts.replace[t] then return opts.replace[t] end
-
-		-- Create proxy table.
-		local proxy = M.new(0, 0)
-		opts.replace[t] = proxy
-
-		-- Create proxy metatable.
-		local proxy_mt = {
-			__frozen = true,
-			__index = t,
-			__newindex = function(_, k)
-				error(FrozenTableError:new(t, k))
-			end,
-			__ipairs = function()
-				return ipairs(t)
-			end,
-			__pairs = function()
-				return pairs(t)
-			end,
-			-- fallback to false instead of nil otherwise,
-			-- proxy_mt would be returned.
-			__metatable = t_mt or false,
-		}
-		-- Set metatable of proxy metatable to fallback on table's metatable.
-		-- This way we don't have to forward __tostring and other metamethod unless
-		-- they're implemented.
-		setmetatable(proxy_mt, { __index = t_mt })
-
-		-- Freeze metatable.
-		if rawtype(t_mt) == "table" and opts.metatable then
-			proxy_mt.__metatable = M.freeze(t_mt, opts)
-		end
-
-		-- Set proxy metatable.
-		setmetatable(proxy, proxy_mt)
-
-		return proxy
-	end
-
-	M.is_frozen = function(t)
-		local t_mt = __rawgetmetatable(t)
-		return rawtype(t_mt) == "table" and t_mt.__frozen
-	end
-
 	M.is_empty = is_empty
 
 	M.push = function(t, ...)
@@ -135,7 +48,7 @@ return function(is_empty)
 				new_v = new_k
 				new_k = k
 			end
-			t[new_k] = new_v
+			result[new_k] = new_v
 		end
 		setmetatable(result, getmetatable(t))
 		return result

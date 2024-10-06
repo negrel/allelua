@@ -129,14 +129,14 @@ local function clone_impl()
 		if mt then
 			if opts.metatable.skip then
 				mt_clone = nil
-			elseif opts.metatable.deep then
+			elseif not opts.metatable.shallow then
 				mt_clone = clone(mt, opts.metatable)
 			end
 		end
 
 		for k, v in pairs(value) do
-			if opts.deep then k = clone(k, opts) end
-			if opts.deep then v = clone(v, opts) end
+			if not opts.shallow then k = clone(k, opts) end
+			if not opts.shallow then v = clone(v, opts) end
 			value_clone[k] = v
 		end
 		setmetatable(value_clone, mt_clone)
@@ -166,7 +166,7 @@ local function clone_impl()
 
 	clone = function(v, opts)
 		opts = opts or {}
-		opts.deep = opts.deep or false
+		opts.shallow = opts.shallow or false
 		opts.metatable = opts.metatable or {}
 		opts.replace = opts.replace or {}
 		local replace = opts.replace
@@ -188,9 +188,102 @@ local function switch_impl(v, cases, default)
 	end
 end
 
+local function freeze_impl()
+	local table = require("table")
+
+	-- Frozen object error.
+	local FrozenObjectError = {
+		__type = "FrozenObjectError",
+		__tostring = function(t)
+			if t.kind == "Set" then
+				return "cannot set "
+					.. tostring(t.key)
+					.. " to "
+					.. tostring(t.value)
+					.. " in frozen object "
+					.. tostring(t.obj)
+			else
+				error("unknown, please report this is a bug.")
+			end
+		end,
+	}
+
+	function FrozenObjectError:new(obj, k, v)
+		local o = { kind = "Set", obj = obj, key = k, value = v }
+		setmetatable(o, self)
+		self.__index = self
+		return o
+	end
+
+	-- Freeze table.
+	local freeze = nil
+	freeze = function(t, opts)
+		if rawtype(t) ~= "table" and rawtype(t) ~= "userdata" then return t end
+
+		opts = opts or {}
+		opts.shallow = opts.shallow or false
+		opts.metatable = opts.metatable or false
+		opts.replace = opts.replace or {}
+
+		local t_mt = __rawgetmetatable(t)
+
+		-- Return table if it is already frozen.
+		if rawtype(t_mt) == "table" and t_mt.__frozen then return t end
+
+		-- If this is a self referential table, returns already frozen table to
+		-- prevent infinite loop.
+		if opts.replace[t] then return opts.replace[t] end
+
+		-- Create proxy table.
+		local proxy = table.new(0, 0)
+		opts.replace[t] = proxy
+
+		-- Create proxy metatable.
+		local proxy_mt = {
+			__frozen = true,
+			__index = t,
+			__newindex = function(_, k, v)
+				error(FrozenObjectError:new(t, k, v))
+			end,
+			__ipairs = function()
+				return ipairs(t)
+			end,
+			__pairs = function()
+				return pairs(t)
+			end,
+			-- fallback to false instead of nil otherwise,
+			-- proxy_mt would be returned.
+			__metatable = t_mt or false,
+		}
+		-- Set metatable of proxy metatable to fallback on table's metatable.
+		-- This way we don't have to forward __tostring and other metamethod.
+		setmetatable(proxy_mt, { __index = t_mt })
+
+		-- Deep freeze.
+		if not opts.shallow then
+			proxy_mt.__index = function(_, k)
+				return freeze(t[k], opts)
+			end
+		end
+
+		-- Freeze metatable.
+		if rawtype(t_mt) == "table" and opts.metatable then
+			proxy_mt.__metatable = freeze(t_mt, opts)
+		end
+
+		-- Set proxy metatable.
+		setmetatable(proxy, proxy_mt)
+
+		return proxy
+	end
+
+	return freeze
+end
+
 return function(M)
 	M.pcall = pcall_impl()
 	M.tostring = tostring_impl()
 	M.clone = clone_impl()
 	M.switch = switch_impl
+	M.freeze = freeze_impl()
 end

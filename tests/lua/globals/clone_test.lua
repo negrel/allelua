@@ -11,8 +11,9 @@ t.test("clone table and its metatable", function()
 
 	local tab_clone = clone(tab)
 
-	-- Metatable was copied.
-	assert(getmetatable(tab_clone) == getmetatable(tab))
+	-- Metatable was cloned.
+	assert(getmetatable(tab_clone) ~= getmetatable(tab))
+	assert(getmetatable(tab_clone).extra == 1)
 
 	-- Table are different...
 	assert(tab ~= tab_clone, "clone returned same table")
@@ -22,11 +23,11 @@ t.test("clone table and its metatable", function()
 	t.assert_eq(tab.bool, tab_clone.bool)
 	t.assert_eq(tab.num, tab_clone.num)
 	t.assert_eq(tab.extra, tab_clone.extra)
-	t.assert_eq(tab.inner[tab], tab_clone.inner[tab])
-	assert(tab.inner == tab_clone.inner)
+	t.assert_eq(tab.inner[tab], tab_clone.inner[tab_clone])
+	assert(tab.inner ~= tab_clone.inner)
 
-	-- Self referential data points to old data.
-	assert(tab == tab_clone.inner.parent)
+	-- Self referential data points to new data.
+	assert(tab_clone == tab_clone.inner.parent)
 end)
 
 t.test("clone table without its associated metatable", function()
@@ -45,7 +46,7 @@ t.test("clone table without its associated metatable", function()
 	assert(tab ~= tab_clone, "clone returned same table")
 end)
 
-t.test("deep clone table", function()
+t.test("shallow clone table", function()
 	local mt = { extra = 1 }
 	mt.__index = mt
 	local tab = { foo = "bar", bool = true, num = 1, inner = {} }
@@ -54,10 +55,11 @@ t.test("deep clone table", function()
 
 	setmetatable(tab, mt)
 
-	local tab_clone = clone(tab, { deep = true })
+	local tab_clone = clone(tab, { shallow = true })
 
-	-- Metatable was copied.
-	assert(getmetatable(tab_clone) == getmetatable(tab))
+	-- Metatable was cloned.
+	assert(getmetatable(tab_clone) ~= getmetatable(tab))
+	assert(getmetatable(tab_clone).extra == 1)
 
 	-- Table are different...
 	assert(tab ~= tab_clone, "clone returned same table")
@@ -67,17 +69,17 @@ t.test("deep clone table", function()
 	t.assert_eq(tab.bool, tab_clone.bool)
 	t.assert_eq(tab.num, tab_clone.num)
 	t.assert_eq(tab.extra, tab_clone.extra)
-	t.assert_eq(tab.inner[tab], tab_clone.inner[tab_clone])
-	assert(tab.inner ~= tab_clone.inner)
+	t.assert_eq(tab.inner[tab], tab_clone.inner[tab])
+	assert(tab.inner == tab_clone.inner)
 
 	-- Self referential data points to new data.
-	assert(tab_clone == tab_clone.inner.parent)
+	assert(tab_clone ~= tab_clone.inner.parent)
 end)
 
 t.test("clone table using __clone metamethod", function()
 	local mt = {
 		__clone = function(tab, opts)
-			assert(opts.deep == false)
+			assert(opts.shallow == false)
 			t.assert_eq(opts.metatable, {})
 
 			local clone = { count = (tab.count or 0) + 1 }

@@ -20,6 +20,3 @@ setmetatable(t, {
 })
 
 print(t, clone(t))
-
-local buf = byte.Buffer.fromstring("foo")
-print(type(buf), buf, clone(buf))

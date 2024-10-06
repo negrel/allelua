@@ -111,8 +111,8 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
             local table = require("table")
 
             // Freeze modules.
-            table.map(package.loaded, function(k, v)
-                return table.freeze(v)
+            table.map(package.loaded, function(_k, v)
+                return freeze(v)
             end)
         })
         .eval::<()>();
