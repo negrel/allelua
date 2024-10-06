@@ -20,25 +20,23 @@ local test_print = function(file, name)
 	end
 end
 
-local assert_called_from_test_file = function()
-	local fpath = package.meta.path
+local assert_called_from_test_file = function(fpath)
 	if not path.file_stem(fpath):has_suffix("_test") then
 		error("this function must be called from a *_test.lua file", 2)
 	end
 end
 
-local assert_called_from_bench_file = function()
-	local fpath = package.meta.path
+local assert_called_from_bench_file = function(fpath)
 	if not path.file_stem(fpath):has_suffix("_bench") then
 		error("this function must be called from a *_bench.lua file", 2)
 	end
 end
 
 function M.test(name, test, opts)
-	assert_called_from_test_file()
+	local filename = debug.getinfo(2).short_src
+	assert_called_from_test_file(filename)
 	assert(type(name) == "string", "test name is not a string")
 	assert(type(test) == "function", "test body is not a function")
-	local filename = package.meta.path
 
 	local test_file_table = M.__tests[filename] or {}
 	table.insert(test_file_table, { name = name, test = test, opts = opts })
@@ -128,11 +126,10 @@ function M.__execute_test(file, name, test, opts)
 end
 
 function M.bench(name, bench, opts)
-	assert_called_from_bench_file()
+	local filename = debug.getinfo(2).short_src
+	assert_called_from_bench_file(filename)
 	assert(type(name) == "string", "benchmark name is not a string")
 	assert(type(bench) == "function", "benchmark body is not a function")
-
-	local filename = package.meta.path
 
 	local bench_file_table = M.__benchs[filename] or {}
 	table.insert(bench_file_table, { name = name, bench = bench, opts = opts })
