@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 
 mod cmds;
 mod lua;
+mod luadoc;
 
 /// Lua distribution blessed by the gods of programming.
 #[derive(Parser, Debug)]
@@ -57,6 +58,12 @@ enum Command {
         /// Path of lua files or directory containing lua files.
         path: Vec<PathBuf>,
     },
+
+    /// Print documentation of lua files.
+    Doc {
+        /// Path of lua files or directory containing lua files.
+        path: Vec<PathBuf>,
+    },
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -70,6 +77,7 @@ pub fn main() -> anyhow::Result<()> {
         Command::Fmt { path, check } => cmds::fmt(path, check)?,
         Command::Lsp => cmds::lsp()?,
         Command::Lint { path } => cmds::lint(path)?,
+        Command::Doc { path: _ } => todo!(),
     }
 
     Ok(())

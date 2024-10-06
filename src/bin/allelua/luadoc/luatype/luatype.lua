@@ -448,8 +448,105 @@ function M.Env:new_child()
 	return env
 end
 
--- add subtypes.
 M.Env:register_type(M.Env:get_type_by_name("number"):subtype("integer"))
--- M.Env:register_type(M.Env:get_type_by_name("Call"):subtype("function"))
+
+M.Env:get_type_by_name("boolean").metatable =
+	M.StructType:new("Metatable<boolean>", {
+		{
+			name = "__eq",
+			type = M.FunctionType:new(
+				M.Env:get_type_by_name("any"),
+				M.Env:get_type_by_name("any")
+			),
+		},
+	})
+
+local types = M.Env._types
+
+local function set_type_metatable(type_name, meta)
+	local t = types[type_name]
+	local fields = {}
+
+	for name, type in pairs(meta) do
+		table.push(fields, {
+			name = name,
+			type = M.FunctionType:new(
+				M.TupleType:new(table.unpack(type.params)),
+				M.TupleType:new(table.unpack(type.returns))
+			),
+		})
+	end
+
+	t.metatable = M.StructType:new("Metatable<" .. type_name .. ">", fields)
+end
+
+set_type_metatable("boolean", {
+	__eq = {
+		params = { types.boolean, types.boolean },
+		returns = { types.boolean },
+	},
+	__tostring = {
+		params = { types.boolean },
+		returns = { types.string },
+	},
+})
+
+set_type_metatable("string", {
+	__eq = {
+		params = { types.string, types.string },
+		returns = { types.boolean },
+	},
+	__tostring = {
+		params = { types.string },
+		returns = { types.string },
+	},
+})
+
+set_type_metatable("number", {
+	__eq = {
+		params = { types.number, types.number },
+		returns = { types.boolean },
+	},
+	__lt = {
+		params = { types.number, types.number },
+		returns = { types.boolean },
+	},
+	__le = {
+		params = { types.number, types.number },
+		returns = { types.boolean },
+	},
+	__add = {
+		params = { types.number, types.number },
+		returns = { types.number },
+	},
+	__sub = {
+		params = { types.number, types.number },
+		returns = { types.number },
+	},
+	__mul = {
+		params = { types.number, types.number },
+		returns = { types.number },
+	},
+	__div = {
+		params = { types.number, types.number },
+		returns = { types.number },
+	},
+	__unm = {
+		params = { types.number, types.number },
+		returns = { types.number },
+	},
+	__mod = {
+		params = { types.number, types.number },
+		returns = { types.number },
+	},
+	__pow = {
+		params = { types.number, types.number },
+		returns = { types.number },
+	},
+	__tostring = {
+		params = { types.number },
+		returns = { types.string },
+	},
+})
 
 return M
