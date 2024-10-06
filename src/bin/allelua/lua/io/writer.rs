@@ -3,7 +3,7 @@ use std::slice;
 use mlua::ObjectLike;
 use tokio::io::AsyncWriteExt;
 
-use super::LuaError;
+use super::{add_io_closer_methods, Close, LuaError, MaybeClosed};
 
 macro_rules! lua_buffer_from_userdata {
     ($udata:ident) => {{
@@ -36,7 +36,8 @@ macro_rules! slice_from_userdata {
 
 pub fn add_io_writer_methods<
     T: AsyncWriteExt + Unpin,
-    R: AsMut<T> + 'static,
+    C: MaybeClosed<T>,
+    R: AsMut<C> + 'static,
     M: mlua::UserDataMethods<R>,
 >(
     methods: &mut M,
@@ -44,7 +45,7 @@ pub fn add_io_writer_methods<
     methods.add_async_method_mut(
         "write",
         |_, mut writer, udata: mlua::AnyUserData| async move {
-            let writer = writer.as_mut();
+            let writer = writer.as_mut().ok_or_broken_pipe()?;
             let buf = slice_from_userdata!(udata);
 
             let write = writer
@@ -54,6 +55,12 @@ pub fn add_io_writer_methods<
                 .map_err(LuaError::from)
                 .map_err(mlua::Error::external)?;
 
+            if write > 0 {
+                udata
+                    .get::<mlua::Function>("skip")?
+                    .call::<()>((udata.to_owned(), write))?;
+            }
+
             Ok(write)
         },
     );
@@ -61,7 +68,7 @@ pub fn add_io_writer_methods<
     methods.add_async_method_mut(
         "write_all",
         |_, mut writer, udata: mlua::AnyUserData| async move {
-            let writer = writer.as_mut();
+            let writer = writer.as_mut().ok_or_broken_pipe()?;
             let buf = slice_from_userdata!(udata);
 
             writer
@@ -71,7 +78,47 @@ pub fn add_io_writer_methods<
                 .map_err(LuaError::from)
                 .map_err(mlua::Error::external)?;
 
+            udata
+                .get::<mlua::Function>("skip")?
+                .call::<()>((udata.to_owned(), buf.len()))?;
+
             Ok(buf.len())
         },
     );
+
+    methods.add_async_method_mut("flush", |_, mut writer, ()| async move {
+        let writer = writer.as_mut().ok_or_broken_pipe()?;
+        writer
+            .flush()
+            .await
+            .map_err(super::LuaError::from)
+            .map_err(LuaError::from)
+            .map_err(mlua::Error::external)
+    });
+}
+
+pub fn add_io_write_closer_methods<
+    T: AsyncWriteExt + Unpin,
+    C: MaybeClosed<T> + Close,
+    R: AsMut<C> + 'static,
+    M: mlua::UserDataMethods<R>,
+>(
+    methods: &mut M,
+) {
+    add_io_closer_methods(methods);
+    add_io_writer_methods(methods);
+
+    methods.add_async_method_mut("close", |_, mut writer, ()| async move {
+        let writer_closer = writer.as_mut();
+        let writer = writer_closer.ok_or_broken_pipe()?;
+        writer
+            .shutdown()
+            .await
+            .map_err(super::LuaError::from)
+            .map_err(LuaError::from)
+            .map_err(mlua::Error::external)?;
+
+        writer_closer.close()?;
+        Ok(())
+    });
 }

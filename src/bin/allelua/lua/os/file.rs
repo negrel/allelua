@@ -1,15 +1,27 @@
-use std::io::SeekFrom;
 use std::os::fd::AsRawFd;
 
-use mlua::{FromLua, MetaMethod, UserData};
+use mlua::{MetaMethod, UserData};
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::io::BufStream;
 
-use crate::lua::error::LuaError;
-use crate::lua::io;
+use crate::lua::io::{
+    add_io_buf_reader_methods, add_io_closer_methods, add_io_seeker_methods, add_io_writer_methods,
+};
 
 #[derive(Debug)]
-pub(super) struct LuaFile(pub File);
+pub(super) struct LuaFile(Option<BufStream<File>>);
+
+impl LuaFile {
+    pub fn new(f: File) -> Self {
+        Self(Some(BufStream::new(f)))
+    }
+}
+
+impl AsMut<Option<BufStream<File>>> for LuaFile {
+    fn as_mut(&mut self) -> &mut Option<BufStream<File>> {
+        &mut self.0
+    }
+}
 
 impl UserData for LuaFile {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
@@ -17,76 +29,20 @@ impl UserData for LuaFile {
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        add_io_buf_reader_methods(methods);
+        add_io_writer_methods(methods);
+        add_io_closer_methods(methods);
+        add_io_seeker_methods(methods);
+
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
-            let fd = f.0.as_raw_fd();
-            Ok(format!("File(fd={fd}) 0x{address:x}"))
-        });
-
-        methods.add_async_method_mut("write", |_, mut f, str: mlua::String| async move {
-            f.0.write_all(&str.as_bytes())
-                .await
-                .map_err(io::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
-            Ok(())
-        });
-
-        methods.add_async_method_mut("read_to_end", |lua, mut f, ()| async move {
-            let mut buf = Vec::new();
-            f.0.read_to_end(&mut buf)
-                .await
-                .map_err(io::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
-            Ok(lua.create_string(buf))
-        });
-
-        methods.add_async_method_mut("read_exact", |lua, mut f, n: usize| async move {
-            let mut buf = vec![0; n];
-            f.0.read_exact(&mut buf)
-                .await
-                .map_err(io::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
-            Ok(lua.create_string(buf))
-        });
-
-        methods.add_async_method_mut("seek", |_, mut f, seek_from: LuaSeekFrom| async move {
-            f.0.seek(seek_from.0)
-                .await
-                .map_err(io::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
-            Ok(())
-        });
-
-        methods.add_async_method_mut("flush", |_, mut f, ()| async move {
-            f.0.flush()
-                .await
-                .map_err(io::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
-            Ok(())
-        });
-    }
-}
-
-#[derive(Debug, Clone, Copy, FromLua)]
-struct LuaSeekFrom(SeekFrom);
-
-impl UserData for LuaSeekFrom {
-    fn add_fields<F: mlua::UserDataFields<Self>>(_fields: &mut F) {}
-
-    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
-            let address = f as *const _ as usize;
-            let str = match f.0 {
-                SeekFrom::Start(offset) => format!("SeekFrom(start={offset}) 0x{address:x}"),
-                SeekFrom::End(offset) => format!("SeekFrom(end={offset}) 0x{address:x}"),
-                SeekFrom::Current(offset) => format!("SeekFrom(current={offset}) 0x{address:x}"),
-            };
-            Ok(str)
+            match &f.0 {
+                Some(f) => {
+                    let fd = f.get_ref().as_raw_fd();
+                    Ok(format!("File(fd={fd}) 0x{address:x}"))
+                }
+                None => Ok(format!("File(fd=closed, 0x{address:x})")),
+            }
         });
     }
 }

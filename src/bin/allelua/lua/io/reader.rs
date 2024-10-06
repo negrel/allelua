@@ -1,9 +1,9 @@
 use std::slice;
 
-use mlua::{ObjectLike, UserData};
+use mlua::ObjectLike;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
-use crate::lua::error::LuaError;
+use super::{LuaError, MaybeClosed};
 
 macro_rules! lua_buffer_from_userdata {
     ($udata:ident, $n:ident) => {{
@@ -38,7 +38,8 @@ macro_rules! slice_from_userdata {
 
 pub fn add_io_reader_methods<
     T: AsyncReadExt + Unpin,
-    R: AsMut<T> + 'static,
+    C: MaybeClosed<T>,
+    R: AsMut<C> + 'static,
     M: mlua::UserDataMethods<R>,
 >(
     methods: &mut M,
@@ -46,7 +47,7 @@ pub fn add_io_reader_methods<
     methods.add_async_method_mut(
         "read",
         |_lua, mut reader, (udata, n): (mlua::AnyUserData, usize)| async move {
-            let reader = reader.as_mut();
+            let reader = reader.as_mut().ok_or_broken_pipe()?;
 
             let buf = slice_from_userdata!(udata, n);
 
@@ -67,7 +68,7 @@ pub fn add_io_reader_methods<
     );
 
     methods.add_async_method_mut("read_to_end", |lua, mut reader, ()| async move {
-        let reader = reader.as_mut();
+        let reader = reader.as_mut().ok_or_broken_pipe()?;
 
         let mut buf = Vec::with_capacity(4096);
 
@@ -83,7 +84,8 @@ pub fn add_io_reader_methods<
 
 pub fn add_io_buf_reader_methods<
     T: AsyncBufReadExt + Unpin + 'static,
-    R: UserData + AsMut<T> + 'static,
+    C: MaybeClosed<T>,
+    R: AsMut<C> + 'static,
     M: mlua::UserDataMethods<R>,
 >(
     methods: &mut M,
@@ -91,7 +93,7 @@ pub fn add_io_buf_reader_methods<
     add_io_reader_methods(methods);
 
     methods.add_async_method_mut("read_line", |lua, mut reader, ()| async move {
-        let reader = reader.as_mut();
+        let reader = reader.as_mut().ok_or_broken_pipe()?;
         let mut buf = Vec::with_capacity(4096);
         let read = reader
             .read_until(b'\n', &mut buf)
