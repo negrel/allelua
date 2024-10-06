@@ -1,10 +1,12 @@
-use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path, process};
+use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path, process::exit};
 
 use mlua::Lua;
 use tokio::fs::OpenOptions;
 
+mod child;
 mod file;
 
+use child::*;
 use file::*;
 
 use super::{error::LuaError, io};
@@ -46,7 +48,7 @@ pub fn load_os(lua: Lua) -> mlua::Result<mlua::Table> {
                             .map_err(io::LuaError::from)
                             .map_err(LuaError::from)
                             .map_err(mlua::Error::external)?;
-                        Ok(LuaFile(file))
+                        Ok(LuaFile::new(file))
                     },
                 )?,
             )?;
@@ -55,11 +57,13 @@ pub fn load_os(lua: Lua) -> mlua::Result<mlua::Table> {
             os.set(
                 "exit",
                 lua.create_function(|_, code: i32| {
-                    process::exit(code);
+                    exit(code);
                     #[allow(unreachable_code)]
                     Ok(())
                 })?,
             )?;
+
+            os.set("exec", lua.create_function(exec)?)?;
 
             Ok(os)
         })?,
