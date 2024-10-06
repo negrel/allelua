@@ -3,7 +3,7 @@ use std::{io, ops::Deref, sync::Arc};
 use mlua::{FromLua, UserData};
 use thiserror::Error;
 
-use super::error::AlleluaError;
+use crate::lua::error::AlleluaError;
 
 #[derive(Debug, Error)]
 #[error(transparent)]
