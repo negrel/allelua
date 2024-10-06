@@ -1,3 +1,4 @@
+local buffer = require("string.buffer")
 local string = require("string")
 local M = string
 
@@ -14,6 +15,8 @@ end
 
 -- selene: allow(undefined_variable)
 M.contains = __contains
+
+M.buffer = buffer
 
 return {
 	__index = M,
