@@ -3,7 +3,7 @@ use std::slice;
 use mlua::ObjectLike;
 use tokio::io::AsyncWriteExt;
 
-use super::{add_io_closer_methods, Close, LuaError, MaybeClosed};
+use super::{add_io_closer_methods, Close, LuaBuffer, LuaError, MaybeClosed};
 
 macro_rules! lua_buffer_from_userdata {
     ($udata:ident) => {{
@@ -62,6 +62,22 @@ pub fn add_io_writer_methods<
             }
 
             Ok(write)
+        },
+    );
+
+    methods.add_async_method_mut(
+        "write_buf",
+        |_, mut writer, buf: LuaBuffer<'static>| async move {
+            let writer = writer.as_mut().ok_or_broken_pipe()?;
+
+            writer
+                .write_all(buf.0)
+                .await
+                .map_err(super::LuaError::from)
+                .map_err(LuaError::from)
+                .map_err(mlua::Error::external)?;
+
+            Ok(buf.0.len())
         },
     );
 

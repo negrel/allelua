@@ -4,8 +4,9 @@ use error::load_error;
 use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
 
 use self::{
-    env::load_env, globals::register_globals, os::load_os, package::load_package, path::load_path,
-    string::load_string, sync::load_sync, table::load_table, test::load_test, time::load_time,
+    env::load_env, globals::register_globals, io::load_io, os::load_os, package::load_package,
+    path::load_path, string::load_string, sync::load_sync, table::load_table, test::load_test,
+    time::load_time,
 };
 
 mod env;
@@ -95,6 +96,7 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
     handle_result(load_string(lua.clone()));
     handle_result(load_sync(lua.clone()));
     handle_result(load_table(lua.clone()));
+    handle_result(load_io(&lua));
     handle_result(load_time(lua.clone()));
     handle_result(register_globals(lua.clone()));
 

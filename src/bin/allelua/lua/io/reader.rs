@@ -3,7 +3,7 @@ use std::slice;
 use mlua::ObjectLike;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
-use super::{LuaError, MaybeClosed};
+use super::{LuaBuffer, LuaError, MaybeClosed};
 
 macro_rules! lua_buffer_from_userdata {
     ($udata:ident, $n:ident) => {{
@@ -84,13 +84,63 @@ pub fn add_io_reader_methods<
 
 pub fn add_io_buf_reader_methods<
     T: AsyncBufReadExt + Unpin + 'static,
-    C: MaybeClosed<T>,
+    C: MaybeClosed<T> + 'static,
     R: AsMut<C> + 'static,
     M: mlua::UserDataMethods<R>,
 >(
     methods: &mut M,
 ) {
     add_io_reader_methods(methods);
+
+    methods.add_async_method_mut(
+        "write_to",
+        |_lua, mut reader, writer: mlua::AnyUserData| async move {
+            let reader = reader.as_mut().ok_or_broken_pipe()?;
+            let buf = reader
+                .fill_buf()
+                .await
+                .map_err(super::LuaError::from)
+                .map_err(LuaError::from)
+                .map_err(mlua::Error::external)?;
+
+            if buf.is_empty() {
+                return Ok(0);
+            }
+
+            // Safety: this is safe as buf won't be dropped until end of
+            // function but mlua required static args.
+            let buf = unsafe { LuaBuffer::new_static(buf) };
+
+            let write = writer
+                .get::<mlua::Function>("write_buf")?
+                .call_async::<usize>((writer, buf))
+                .await?;
+
+            // Move buf reader internal cursor.
+            reader.consume(write);
+
+            Ok(write)
+        },
+    );
+
+    methods.add_async_method_mut("read_until", |lua, mut reader, byte: u8| async move {
+        let reader = reader.as_mut().ok_or_broken_pipe()?;
+        let mut buf = Vec::with_capacity(4096);
+        let read = reader
+            .read_until(byte, &mut buf)
+            .await
+            .map_err(super::LuaError::from)
+            .map_err(LuaError::from)
+            .map_err(mlua::Error::external)?;
+
+        let slice = &buf[..];
+
+        if read == 0 {
+            Ok(mlua::Value::Nil)
+        } else {
+            Ok(mlua::Value::String(lua.create_string(slice)?))
+        }
+    });
 
     methods.add_async_method_mut("read_line", |lua, mut reader, ()| async move {
         let reader = reader.as_mut().ok_or_broken_pipe()?;
