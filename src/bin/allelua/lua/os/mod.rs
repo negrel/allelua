@@ -1,7 +1,7 @@
 use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path, process::exit};
 
 use mlua::Lua;
-use tokio::fs::OpenOptions;
+use tokio::fs::{self, OpenOptions};
 
 mod child;
 mod file;
@@ -51,6 +51,20 @@ pub fn load_os(lua: Lua) -> mlua::Result<mlua::Table> {
                         Ok(LuaFile::new(file))
                     },
                 )?,
+            )?;
+            file_constructors.set(
+                "read",
+                lua.create_async_function(|lua, path: mlua::String| async move {
+                    let path = path.as_bytes();
+                    let path = Path::new(OsStr::from_bytes(&path));
+                    let content = fs::read(path)
+                        .await
+                        .map_err(io::LuaError::from)
+                        .map_err(LuaError::from)
+                        .map_err(mlua::Error::external)?;
+
+                    lua.create_string(content)
+                })?,
             )?;
             os.set("File", file_constructors)?;
 
