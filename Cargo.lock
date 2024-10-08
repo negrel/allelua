@@ -44,6 +44,7 @@ dependencies = [
  "stylua",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tower-lsp",
  "walkdir",
 ]

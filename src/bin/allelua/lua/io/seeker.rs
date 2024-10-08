@@ -3,9 +3,7 @@ use std::io::SeekFrom;
 use mlua::{FromLua, MetaMethod, UserData};
 use tokio::io::AsyncSeekExt;
 
-use crate::lua::error::LuaError;
-
-use super::closer::MaybeClosed;
+use super::Closable;
 
 #[derive(Debug, Clone, Copy, FromLua)]
 struct LuaSeekFrom(SeekFrom);
@@ -26,38 +24,22 @@ impl UserData for LuaSeekFrom {
     }
 }
 
-pub fn add_io_seeker_methods<
-    T: AsyncSeekExt + Unpin,
-    C: MaybeClosed<T>,
-    R: AsMut<C> + 'static,
+pub fn add_io_seek_methods<
+    T: AsyncSeekExt + Unpin + 'static,
+    R: AsRef<Closable<T>> + 'static,
     M: mlua::UserDataMethods<R>,
 >(
     methods: &mut M,
 ) {
-    methods.add_async_method_mut(
-        "seek",
-        |_lua, mut seeker, seek_from: LuaSeekFrom| async move {
-            let seeker = seeker.as_mut().ok_or_broken_pipe()?;
-            let pos = seeker
-                .seek(seek_from.0)
-                .await
-                .map_err(super::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
+    methods.add_async_method("seek", |_lua, seeker, seek_from: LuaSeekFrom| async move {
+        let mut seeker = seeker.as_ref().get().await?;
+        let pos = seeker.seek(seek_from.0).await?;
+        Ok(pos)
+    });
 
-            Ok(pos)
-        },
-    );
-
-    methods.add_async_method_mut("rewind", |_lua, mut seeker, ()| async move {
-        let seeker = seeker.as_mut().ok_or_broken_pipe()?;
-        let pos = seeker
-            .rewind()
-            .await
-            .map_err(super::LuaError::from)
-            .map_err(LuaError::from)
-            .map_err(mlua::Error::external)?;
-
+    methods.add_async_method("rewind", |_lua, seeker, ()| async move {
+        let mut seeker = seeker.as_ref().get().await?;
+        let pos = seeker.rewind().await?;
         Ok(pos)
     });
 }

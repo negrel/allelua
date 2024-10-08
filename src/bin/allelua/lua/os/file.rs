@@ -1,24 +1,27 @@
-use std::os::fd::AsRawFd;
-
 use mlua::{MetaMethod, UserData};
-use tokio::fs::File;
-use tokio::io::BufStream;
+use tokio::{fs::File, io::BufStream};
 
 use crate::lua::io::{
-    add_io_buf_reader_methods, add_io_seeker_methods, add_io_write_closer_methods,
+    self, add_io_read_methods, add_io_seek_methods, add_io_write_close_methods, Closable,
 };
 
 #[derive(Debug)]
-pub(super) struct LuaFile(Option<BufStream<File>>);
+pub(super) struct LuaFile(io::Closable<BufStream<File>>);
 
 impl LuaFile {
     pub fn new(f: File) -> Self {
-        Self(Some(BufStream::new(f)))
+        Self(io::Closable::new(BufStream::new(f)))
     }
 }
 
-impl AsMut<Option<BufStream<File>>> for LuaFile {
-    fn as_mut(&mut self) -> &mut Option<BufStream<File>> {
+impl AsRef<Closable<BufStream<File>>> for LuaFile {
+    fn as_ref(&self) -> &Closable<BufStream<File>> {
+        &self.0
+    }
+}
+
+impl AsMut<Closable<BufStream<File>>> for LuaFile {
+    fn as_mut(&mut self) -> &mut Closable<BufStream<File>> {
         &mut self.0
     }
 }
@@ -29,19 +32,25 @@ impl UserData for LuaFile {
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        add_io_buf_reader_methods(methods);
-        add_io_write_closer_methods(methods);
-        add_io_seeker_methods(methods);
+        add_io_write_close_methods(methods);
+        add_io_read_methods(methods);
+        add_io_seek_methods(methods);
 
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
-            match &f.0 {
-                Some(f) => {
-                    let fd = f.get_ref().as_raw_fd();
-                    Ok(format!("File(fd={fd}) 0x{address:x}"))
-                }
-                None => Ok(format!("File(fd=closed, 0x{address:x})")),
+            if f.0.is_closed() {
+                Ok(format!("File(closed) 0x{address:x}"))
+            } else {
+                Ok(format!("File 0x{address:x}"))
             }
         });
+
+        methods.add_async_method("sync", |_lua, file, ()| async move {
+            let file = file.0.get().await?;
+
+            file.get_ref().sync_all().await?;
+
+            Ok(())
+        })
     }
 }

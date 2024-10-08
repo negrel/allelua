@@ -14,12 +14,18 @@ pub trait AlleluaError: std::error::Error + Send + Sync + 'static {
 /// LuaError define a wrapper around an [AlleluaError] type that implements
 /// [mlua::UserData].
 #[derive(Debug, Error, Clone)]
-#[error("{0}")]
+#[error(transparent)]
 pub struct LuaError(Arc<dyn AlleluaError>);
 
 impl<T: AlleluaError> From<T> for LuaError {
     fn from(value: T) -> Self {
         Self(Arc::new(value))
+    }
+}
+
+impl From<LuaError> for mlua::Error {
+    fn from(val: LuaError) -> Self {
+        mlua::Error::external(val)
     }
 }
 

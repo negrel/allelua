@@ -3,10 +3,10 @@ use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path, process::exit};
 use mlua::Lua;
 use tokio::fs::{self, OpenOptions};
 
-mod child;
+// mod child;
 mod file;
 
-use child::*;
+// use child::*;
 use file::*;
 
 use super::{error::LuaError, io};
@@ -77,7 +77,7 @@ pub fn load_os(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            os.set("exec", lua.create_function(exec)?)?;
+            // os.set("exec", lua.create_function(exec)?)?;
 
             Ok(os)
         })?,

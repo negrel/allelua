@@ -1,137 +1,67 @@
-use std::slice;
-
-use mlua::ObjectLike;
+use mlua::{AnyUserData, ObjectLike};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
-use super::{LuaBuffer, LuaError, MaybeClosed};
+use super::{Closable, LuaBuffer, LuaJitBuffer};
 
-macro_rules! lua_buffer_from_userdata {
-    ($udata:ident, $n:ident) => {{
-        let (ptr, len) = $udata
-            .get::<mlua::Function>("reserve")?
-            .call::<(mlua::Value, usize)>(($udata.to_owned(), $n))?;
-
-        if len == 0 || ptr.is_null() {
-            (std::ptr::null_mut(), 0)
-        } else {
-            let ptr = unsafe { *(ptr.to_pointer() as *const *mut u8) };
-            if ptr.is_null() {
-                (ptr, 0)
-            } else {
-                (ptr, len)
-            }
-        }
-    }};
-}
-
-macro_rules! slice_from_userdata {
-    ($udata:ident, $n:ident) => {{
-        let (ptr, len) = lua_buffer_from_userdata!($udata, $n);
-        if len == 0 {
-            return Ok(0);
-        }
-        let len = if len < $n { len } else { $n };
-
-        unsafe { slice::from_raw_parts_mut(ptr, len) }
-    }};
-}
-
-pub fn add_io_reader_methods<
-    T: AsyncReadExt + Unpin,
-    C: MaybeClosed<T>,
-    R: AsMut<C> + 'static,
+pub fn add_io_read_methods<
+    W: AsyncBufReadExt + Unpin,
+    R: AsRef<Closable<W>> + 'static,
     M: mlua::UserDataMethods<R>,
 >(
     methods: &mut M,
 ) {
-    methods.add_async_method_mut(
+    methods.add_async_method(
         "read",
-        |_lua, mut reader, (udata, n): (mlua::AnyUserData, usize)| async move {
-            let reader = reader.as_mut().ok_or_broken_pipe()?;
+        |_, reader, (buf, reserve): (LuaJitBuffer, Option<usize>)| async move {
+            let mut reader = reader.as_ref().get().await?;
 
-            let buf = slice_from_userdata!(udata, n);
+            let bytes = buf.reserve_bytes(reserve.unwrap_or(4096))?;
 
-            let read = AsyncReadExt::read(reader, buf)
-                .await
-                .map_err(super::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
+            let read = reader.read(bytes).await?;
 
-            if read > 0 {
-                udata
-                    .get::<mlua::Function>("commit")?
-                    .call::<()>((udata.to_owned(), read))?;
-            }
+            buf.commit(read)?;
 
             Ok(read)
         },
     );
 
-    methods.add_async_method_mut("read_to_end", |lua, mut reader, ()| async move {
-        let reader = reader.as_mut().ok_or_broken_pipe()?;
+    methods.add_async_method("read_to_end", |lua, reader, ()| async move {
+        let mut reader = reader.as_ref().get().await?;
 
-        let mut buf = Vec::with_capacity(4096);
+        let mut buf = Vec::new();
 
-        AsyncReadExt::read_to_end(reader, &mut buf)
-            .await
-            .map_err(super::LuaError::from)
-            .map_err(LuaError::from)
-            .map_err(mlua::Error::external)?;
+        reader.read_to_end(&mut buf).await?;
 
         lua.create_string(buf)
     });
-}
 
-pub fn add_io_buf_reader_methods<
-    T: AsyncBufReadExt + Unpin + 'static,
-    C: MaybeClosed<T> + 'static,
-    R: AsMut<C> + 'static,
-    M: mlua::UserDataMethods<R>,
->(
-    methods: &mut M,
-) {
-    add_io_reader_methods(methods);
+    methods.add_async_method("write_to", |_, reader, writer: AnyUserData| async move {
+        let mut reader = reader.as_ref().get().await?;
 
-    methods.add_async_method_mut(
-        "write_to",
-        |_lua, mut reader, writer: mlua::AnyUserData| async move {
-            let reader = reader.as_mut().ok_or_broken_pipe()?;
-            let buf = reader
-                .fill_buf()
-                .await
-                .map_err(super::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
+        let buf = reader.fill_buf().await.map_err(super::LuaError::from)?;
 
-            if buf.is_empty() {
-                return Ok(0);
-            }
+        // Safety: this is safe as buf won't be dropped until end of
+        // function but mlua required static args.
+        let buf = unsafe { LuaBuffer::new_static(buf) };
+        let write = buf.as_bytes().len();
 
-            // Safety: this is safe as buf won't be dropped until end of
-            // function but mlua required static args.
-            let buf = unsafe { LuaBuffer::new_static(buf) };
+        // write_buf is implemented by all writers.
+        writer
+            .get::<mlua::Function>("write_buf")?
+            .call_async::<()>((writer, buf))
+            .await?;
 
-            let write = writer
-                .get::<mlua::Function>("write_buf")?
-                .call_async::<usize>((writer, buf))
-                .await?;
+        // Move buf reader internal cursor.
+        reader.consume(write);
 
-            // Move buf reader internal cursor.
-            reader.consume(write);
+        Ok(write)
+    });
 
-            Ok(write)
-        },
-    );
+    methods.add_async_method_mut("read_until", |lua, reader, byte: u8| async move {
+        let mut reader = reader.as_ref().get().await?;
 
-    methods.add_async_method_mut("read_until", |lua, mut reader, byte: u8| async move {
-        let reader = reader.as_mut().ok_or_broken_pipe()?;
         let mut buf = Vec::with_capacity(4096);
-        let read = reader
-            .read_until(byte, &mut buf)
-            .await
-            .map_err(super::LuaError::from)
-            .map_err(LuaError::from)
-            .map_err(mlua::Error::external)?;
+        let read = reader.read_until(byte, &mut buf).await?;
 
         let slice = &buf[..];
 
@@ -142,15 +72,10 @@ pub fn add_io_buf_reader_methods<
         }
     });
 
-    methods.add_async_method_mut("read_line", |lua, mut reader, ()| async move {
-        let reader = reader.as_mut().ok_or_broken_pipe()?;
+    methods.add_async_method_mut("read_line", |lua, reader, ()| async move {
+        let mut reader = reader.as_ref().get().await?;
         let mut buf = Vec::with_capacity(4096);
-        let read = reader
-            .read_until(b'\n', &mut buf)
-            .await
-            .map_err(super::LuaError::from)
-            .map_err(LuaError::from)
-            .map_err(mlua::Error::external)?;
+        let read = reader.read_until(b'\n', &mut buf).await?;
 
         let mut slice = &buf[..];
 
