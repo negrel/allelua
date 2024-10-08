@@ -81,7 +81,7 @@ impl<T: Queue + 'static> LuaChannelReceiver<T> {
 
 impl<T: Queue + 'static> UserData for LuaChannelReceiver<T> {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "ChannelSender")
+        fields.add_field("__type", "ChannelReceiver")
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
