@@ -20,6 +20,17 @@ local function pcall_impl()
 	end
 end
 
+local function xpcall_impl()
+	return function(fn, err_handler, ...)
+		local ok, v_or_err = pcall(fn, ...)
+		if not ok then
+			return err_handler(v_or_err)
+		else
+			return ok, v_or_err
+		end
+	end
+end
+
 local function tostring_impl()
 	local string = require("string")
 	local table = require("table")
@@ -282,6 +293,7 @@ end
 
 return function(M)
 	M.pcall = pcall_impl()
+	M.xpcall = xpcall_impl()
 	M.tostring = tostring_impl()
 	M.clone = clone_impl()
 	M.switch = switch_impl
