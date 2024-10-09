@@ -189,6 +189,9 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                     let base = base.as_bytes();
                     let mut base = path::PathBuf::from(OsStr::from_bytes(&base));
                     for component in join {
+                        if component.is_nil() || component.is_null() {
+                            continue;
+                        }
                         let component = mlua::String::from_lua(component, lua)?;
                         let component = component.as_bytes();
                         let component = path::Path::new(OsStr::from_bytes(&component));
