@@ -24,6 +24,13 @@ pub fn bench(paths: Vec<PathBuf>) -> anyhow::Result<()> {
 
     let mut all_bench_suite_ok = true;
 
+    println!(
+        "OS: {} ({})",
+        std::env::consts::OS,
+        std::env::consts::FAMILY
+    );
+    println!("ARCH: {}", std::env::consts::ARCH);
+
     for path in paths {
         let iter = WalkDir::new(path)
             .into_iter()
