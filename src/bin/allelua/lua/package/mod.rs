@@ -9,8 +9,6 @@ use mlua::Lua;
 
 use crate::include_lua;
 
-use super::{error::LuaError, io};
-
 pub fn load_package(lua: Lua, fpath: &Path) -> mlua::Result<()> {
     let fpath = lua.create_string(fpath.as_os_str().as_bytes())?;
 
@@ -24,10 +22,7 @@ pub fn load_package(lua: Lua, fpath: &Path) -> mlua::Result<()> {
     let path_canonicalize = lua.create_function(|lua, str: mlua::String| {
         let str = str.as_bytes();
         let path = path::Path::new(OsStr::from_bytes(&str));
-        let path = fs::canonicalize(path)
-            .map_err(io::LuaError::from)
-            .map_err(LuaError::from)
-            .map_err(mlua::Error::external)?;
+        let path = fs::canonicalize(path)?;
         lua.create_string(path.as_os_str().as_bytes())
     })?;
 

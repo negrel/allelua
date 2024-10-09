@@ -11,9 +11,8 @@ use tokio::{
     process::{self, Child, ChildStderr, ChildStdin, ChildStdout},
 };
 
-use crate::lua::{
-    error::LuaError,
-    io::{self, add_io_close_methods, add_io_read_methods, add_io_write_close_methods, Closable},
+use crate::lua::io::{
+    add_io_close_methods, add_io_read_methods, add_io_write_close_methods, Closable,
 };
 
 pub struct LuaChild {
@@ -112,24 +111,12 @@ impl UserData for LuaChild {
         });
 
         methods.add_async_method_mut("wait", |_lua, mut child, ()| async move {
-            let status = child
-                .wait()
-                .await
-                .map_err(io::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
-
+            let status = child.wait().await?;
             Ok(LuaExitStatus(status))
         });
 
         methods.add_async_method_mut("kill", |_lua, mut child, ()| async move {
-            child
-                .kill()
-                .await
-                .map_err(io::LuaError::from)
-                .map_err(LuaError::from)
-                .map_err(mlua::Error::external)?;
-
+            child.kill().await?;
             Ok(())
         });
     }
@@ -210,11 +197,7 @@ pub fn exec(_lua: &Lua, (program, opts): (mlua::String, mlua::Table)) -> mlua::R
         }
     }
 
-    let child = cmd
-        .spawn()
-        .map_err(io::LuaError::from)
-        .map_err(LuaError::from)
-        .map_err(mlua::Error::external)?;
+    let child = cmd.spawn()?;
 
     Ok(LuaChild::new(child))
 }

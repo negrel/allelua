@@ -38,7 +38,7 @@ pub fn add_io_read_methods<
     methods.add_async_method("write_to", |_, reader, writer: AnyUserData| async move {
         let mut reader = reader.as_ref().get().await?;
 
-        let buf = reader.fill_buf().await.map_err(super::LuaError::from)?;
+        let buf = reader.fill_buf().await?;
 
         // Safety: this is safe as buf won't be dropped until end of
         // function but mlua required static args.

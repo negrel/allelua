@@ -52,12 +52,7 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
                             options.write(true).append(true);
                         }
 
-                        let file = options
-                            .open(path)
-                            .await
-                            .map_err(io::LuaError::from)
-                            .map_err(LuaError::from)
-                            .map_err(mlua::Error::external)?;
+                        let file = options.open(path).await?;
                         Ok(LuaFile::new(file))
                     },
                 )?,
@@ -67,11 +62,7 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
                 lua.create_async_function(|lua, path: mlua::String| async move {
                     let path = path.as_bytes();
                     let path = Path::new(OsStr::from_bytes(&path));
-                    let content = fs::read(path)
-                        .await
-                        .map_err(io::LuaError::from)
-                        .map_err(LuaError::from)
-                        .map_err(mlua::Error::external)?;
+                    let content = fs::read(path).await?;
 
                     lua.create_string(content)
                 })?,

@@ -64,7 +64,7 @@ pub fn add_io_write_close_methods<
         let mut writer_closer: UserDataRefMut<R> = writer_closer.borrow_mut()?;
         let closer = writer_closer.as_mut();
 
-        closer.close().map_err(mlua::Error::external)?;
+        closer.close()?;
 
         Ok(())
     });

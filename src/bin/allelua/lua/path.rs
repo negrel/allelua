@@ -18,7 +18,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 lua.create_async_function(|lua, str: mlua::String| async move {
                     let str = str.as_bytes();
                     let path = path::Path::new(OsStr::from_bytes(&str));
-                    let path = fs::canonicalize(path).await.map_err(mlua::Error::runtime)?;
+                    let path = fs::canonicalize(path).await?;
                     lua.create_string(path.as_os_str().as_bytes())
                 })?,
             )?;
@@ -28,7 +28,8 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     let str = str.as_bytes();
                     let path = path::Path::new(OsStr::from_bytes(&str));
-                    fs::try_exists(path).await.map_err(mlua::Error::runtime)
+                    fs::try_exists(path).await?;
+                    Ok(())
                 })?,
             )?;
 
@@ -37,7 +38,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     let str = str.as_bytes();
                     let path = path::Path::new(OsStr::from_bytes(&str));
-                    let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+                    let metadata = fs::metadata(path).await?;
 
                     Ok(metadata.file_type().is_file())
                 })?,
@@ -48,7 +49,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     let str = str.as_bytes();
                     let path = path::Path::new(OsStr::from_bytes(&str));
-                    let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+                    let metadata = fs::metadata(path).await?;
 
                     Ok(metadata.file_type().is_dir())
                 })?,
@@ -59,9 +60,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     let str = str.as_bytes();
                     let path = path::Path::new(OsStr::from_bytes(&str));
-                    let metadata = fs::symlink_metadata(path)
-                        .await
-                        .map_err(mlua::Error::runtime)?;
+                    let metadata = fs::symlink_metadata(path).await?;
 
                     Ok(metadata.file_type().is_symlink())
                 })?,
@@ -72,9 +71,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     let str = str.as_bytes();
                     let path = path::Path::new(OsStr::from_bytes(&str));
-                    let metadata = fs::symlink_metadata(path)
-                        .await
-                        .map_err(mlua::Error::runtime)?;
+                    let metadata = fs::symlink_metadata(path).await?;
 
                     Ok(metadata.len())
                 })?,
@@ -86,7 +83,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         let str = str.as_bytes();
                         let path = path::Path::new(OsStr::from_bytes(&str));
-                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+                        let metadata = fs::metadata(path).await?;
 
                         Ok(metadata.file_type().is_block_device())
                     })?,
@@ -96,7 +93,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         let str = str.as_bytes();
                         let path = path::Path::new(OsStr::from_bytes(&str));
-                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+                        let metadata = fs::metadata(path).await?;
 
                         Ok(metadata.file_type().is_char_device())
                     })?,
@@ -106,7 +103,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         let str = str.as_bytes();
                         let path = path::Path::new(OsStr::from_bytes(&str));
-                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+                        let metadata = fs::metadata(path).await?;
 
                         Ok(metadata.file_type().is_socket())
                     })?,
@@ -116,7 +113,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         let str = str.as_bytes();
                         let path = path::Path::new(OsStr::from_bytes(&str));
-                        let metadata = fs::metadata(path).await.map_err(mlua::Error::runtime)?;
+                        let metadata = fs::metadata(path).await?;
 
                         Ok(metadata.file_type().is_fifo())
                     })?,
