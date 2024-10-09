@@ -9,8 +9,13 @@ use crate::lua::io::{
 pub(super) struct LuaFile(io::Closable<BufStream<File>>);
 
 impl LuaFile {
-    pub fn new(f: File) -> Self {
-        Self(io::Closable::new(BufStream::new(f)))
+    pub fn new(f: File, buf_size: Option<usize>) -> Self {
+        let buf_stream = match buf_size {
+            Some(n) => BufStream::with_capacity(n, n, f),
+            None => BufStream::new(f),
+        };
+
+        Self(io::Closable::new(buf_stream))
     }
 }
 

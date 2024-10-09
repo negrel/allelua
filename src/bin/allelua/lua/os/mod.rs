@@ -2,7 +2,6 @@ use std::{
     env,
     ffi::{OsStr, OsString},
     os::unix::ffi::OsStrExt,
-    path::Path,
     process::exit,
 };
 
@@ -19,7 +18,7 @@ use child::*;
 use env_vars::*;
 use file::*;
 
-use super::{error::LuaError, io};
+use crate::lua_string_as_path;
 
 pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
@@ -31,39 +30,46 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
             file_constructors.set(
                 "open",
                 lua.create_async_function(
-                    |_lua, (path, mode): (mlua::String, mlua::String)| async move {
-                        let path = path.as_bytes();
-                        let path = Path::new(OsStr::from_bytes(&path));
+                    |_lua, (path, opt_table): (mlua::String, Option<mlua::Table>)| async move {
+                        lua_string_as_path!(path = path);
                         let mut options = OpenOptions::new();
-                        let mode = mode.as_bytes();
-                        if mode.contains(&b'c') {
-                            options.create(true);
-                        }
-                        if mode.contains(&b'C') {
-                            options.create_new(true);
-                        }
-                        if mode.contains(&b'r') {
-                            options.read(true);
-                        }
-                        if mode.contains(&b'w') {
-                            options.write(true);
-                        }
-                        if mode.contains(&b'a') {
-                            options.write(true).append(true);
+                        let mut buffer_size = None;
+
+                        if let Some(opt_table) = opt_table {
+                            if let Some(true) = opt_table.get::<Option<bool>>("create")? {
+                                options.create(true);
+                            }
+
+                            if let Some(true) = opt_table.get::<Option<bool>>("create_new")? {
+                                options.create_new(true);
+                            }
+
+                            if let Some(true) = opt_table.get::<Option<bool>>("read")? {
+                                options.read(true);
+                            }
+
+                            if let Some(true) = opt_table.get::<Option<bool>>("write")? {
+                                options.write(true);
+                            }
+
+                            if let Some(true) = opt_table.get::<Option<bool>>("append")? {
+                                options.append(true);
+                            }
+
+                            buffer_size = opt_table.get::<Option<usize>>("buffer_size")?;
                         }
 
                         let file = options.open(path).await?;
-                        Ok(LuaFile::new(file))
+
+                        Ok(LuaFile::new(file, buffer_size))
                     },
                 )?,
             )?;
             file_constructors.set(
                 "read",
                 lua.create_async_function(|lua, path: mlua::String| async move {
-                    let path = path.as_bytes();
-                    let path = Path::new(OsStr::from_bytes(&path));
+                    lua_string_as_path!(path = path);
                     let content = fs::read(path).await?;
-
                     lua.create_string(content)
                 })?,
             )?;
@@ -89,6 +95,88 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
                 "current_dir",
                 lua.create_function(|lua, ()| {
                     lua.create_string(env::current_dir()?.as_os_str().as_bytes())
+                })?,
+            )?;
+
+            os.set(
+                "hard_link",
+                lua.create_async_function(
+                    |_lua, (src_str, dst_str): (mlua::String, mlua::String)| async move {
+                        lua_string_as_path!(src = src_str);
+                        lua_string_as_path!(dst = dst_str);
+                        fs::hard_link(src, dst).await?;
+                        Ok(())
+                    },
+                )?,
+            )?;
+
+            #[cfg(unix)]
+            os.set(
+                "symlink",
+                lua.create_async_function(
+                    |_lua, (src_str, dst_str): (mlua::String, mlua::String)| async move {
+                        lua_string_as_path!(src = src_str);
+                        lua_string_as_path!(dst = dst_str);
+                        fs::symlink(src, dst).await?;
+                        Ok(())
+                    },
+                )?,
+            )?;
+
+            os.set(
+                "rename",
+                lua.create_async_function(
+                    |_lua, (src_str, dst_str): (mlua::String, mlua::String)| async move {
+                        lua_string_as_path!(src = src_str);
+                        lua_string_as_path!(dst = dst_str);
+                        fs::rename(src, dst).await?;
+                        Ok(())
+                    },
+                )?,
+            )?;
+
+            os.set(
+                "create_dir",
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    lua_string_as_path!(path = str);
+                    fs::create_dir(path).await?;
+                    Ok(())
+                })?,
+            )?;
+
+            os.set(
+                "create_dir_all",
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    lua_string_as_path!(path = str);
+                    fs::create_dir_all(path).await?;
+                    Ok(())
+                })?,
+            )?;
+
+            os.set(
+                "remove_dir",
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    lua_string_as_path!(path = str);
+                    fs::remove_dir(path).await?;
+                    Ok(())
+                })?,
+            )?;
+
+            os.set(
+                "remove_dir_all",
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    lua_string_as_path!(path = str);
+                    fs::remove_dir_all(path).await?;
+                    Ok(())
+                })?,
+            )?;
+
+            os.set(
+                "remove_file",
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    lua_string_as_path!(path = str);
+                    fs::remove_file(path).await?;
+                    Ok(())
                 })?,
             )?;
 
