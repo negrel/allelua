@@ -1,20 +1,30 @@
-use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path, process::exit};
+use std::{
+    env,
+    ffi::{OsStr, OsString},
+    os::unix::ffi::OsStrExt,
+    path::Path,
+    process::exit,
+};
 
 use mlua::Lua;
 use tokio::fs::{self, OpenOptions};
 
 // mod child;
+mod args;
+mod env_vars;
 mod file;
 
 // use child::*;
+use args::*;
+use env_vars::*;
 use file::*;
 
 use super::{error::LuaError, io};
 
-pub fn load_os(lua: Lua) -> mlua::Result<mlua::Table> {
+pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "os",
-        lua.create_function(|lua, ()| {
+        lua.create_function(move |lua, ()| {
             let os = lua.create_table()?;
 
             let file_constructors = lua.create_table()?;
@@ -76,6 +86,29 @@ pub fn load_os(lua: Lua) -> mlua::Result<mlua::Table> {
                     Ok(())
                 })?,
             )?;
+
+            os.set(
+                "temp_dir",
+                lua.create_function(|lua, ()| {
+                    lua.create_string(env::temp_dir().as_os_str().as_bytes())
+                })?,
+            )?;
+
+            os.set(
+                "current_dir",
+                lua.create_function(|lua, ()| {
+                    lua.create_string(env::current_dir()?.as_os_str().as_bytes())
+                })?,
+            )?;
+
+            // Process environment.
+            os.set("env_vars", EnvVars::default())?;
+            os.set("args", Args::new(lua, args.clone())?)?;
+
+            // Constants.
+            os.set("family", lua.create_string(std::env::consts::FAMILY)?)?;
+            os.set("arch", lua.create_string(std::env::consts::ARCH)?)?;
+            os.set("os_name", lua.create_string(std::env::consts::OS)?)?;
 
             // os.set("exec", lua.create_function(exec)?)?;
 
