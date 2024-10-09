@@ -31,6 +31,12 @@ pub fn add_io_write_methods<
         Ok(bytes.len())
     });
 
+    methods.add_async_method("write_string", |_, writer, str: mlua::String| async move {
+        let mut writer = writer.as_ref().get().await?;
+        writer.write_all(&str.as_bytes()).await?;
+        Ok(())
+    });
+
     methods.add_async_method("flush", |_, writer, ()| async move {
         let mut writer = writer.as_ref().get().await?;
         writer.flush().await?;
