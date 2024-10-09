@@ -13,7 +13,7 @@ use tokio::{
 
 use crate::lua::{
     error::LuaError,
-    io::{self, add_io_buf_reader_methods, add_io_closer_methods, add_io_write_closer_methods},
+    io::{self, add_io_close_methods, add_io_read_methods, add_io_write_close_methods, Closable},
 };
 
 pub struct LuaChild {
@@ -68,7 +68,8 @@ impl UserData for LuaChild {
                 match child.child.stdin {
                     Some(_) => {
                         let stdin = child.child.stdin.take().unwrap();
-                        child.stdin = LuaChildStdin(Some(BufWriter::new(stdin))).into_lua(lua)?;
+                        child.stdin =
+                            LuaChildStdin(Closable::new(BufWriter::new(stdin))).into_lua(lua)?;
                         Ok(child.stdin.to_owned())
                     }
                     None => Ok(mlua::Value::Nil),
@@ -84,7 +85,7 @@ impl UserData for LuaChild {
                     Some(_) => {
                         let stdout = child.child.stdout.take().unwrap();
                         child.stdout =
-                            LuaChildStdout(Some(BufReader::new(stdout))).into_lua(lua)?;
+                            LuaChildStdout(Closable::new(BufReader::new(stdout))).into_lua(lua)?;
                         Ok(child.stdout.to_owned())
                     }
                     None => Ok(mlua::Value::Nil),
@@ -100,7 +101,7 @@ impl UserData for LuaChild {
                     Some(_) => {
                         let stderr = child.child.stderr.take().unwrap();
                         child.stderr =
-                            LuaChildStderr(Some(BufReader::new(stderr))).into_lua(lua)?;
+                            LuaChildStderr(Closable::new(BufReader::new(stderr))).into_lua(lua)?;
                         Ok(child.stderr.to_owned())
                     }
                     None => Ok(mlua::Value::Nil),
@@ -219,10 +220,16 @@ pub fn exec(_lua: &Lua, (program, opts): (mlua::String, mlua::Table)) -> mlua::R
 }
 
 #[derive(Debug)]
-pub struct LuaChildStdin(Option<BufWriter<ChildStdin>>);
+pub struct LuaChildStdin(Closable<BufWriter<ChildStdin>>);
 
-impl AsMut<Option<BufWriter<ChildStdin>>> for LuaChildStdin {
-    fn as_mut(&mut self) -> &mut Option<BufWriter<ChildStdin>> {
+impl AsRef<Closable<BufWriter<ChildStdin>>> for LuaChildStdin {
+    fn as_ref(&self) -> &Closable<BufWriter<ChildStdin>> {
+        &self.0
+    }
+}
+
+impl AsMut<Closable<BufWriter<ChildStdin>>> for LuaChildStdin {
+    fn as_mut(&mut self) -> &mut Closable<BufWriter<ChildStdin>> {
         &mut self.0
     }
 }
@@ -233,15 +240,21 @@ impl UserData for LuaChildStdin {
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        add_io_write_closer_methods(methods);
+        add_io_write_close_methods(methods);
     }
 }
 
 #[derive(Debug)]
-pub struct LuaChildStdout(Option<BufReader<ChildStdout>>);
+pub struct LuaChildStdout(Closable<BufReader<ChildStdout>>);
 
-impl AsMut<Option<BufReader<ChildStdout>>> for LuaChildStdout {
-    fn as_mut(&mut self) -> &mut Option<BufReader<ChildStdout>> {
+impl AsRef<Closable<BufReader<ChildStdout>>> for LuaChildStdout {
+    fn as_ref(&self) -> &Closable<BufReader<ChildStdout>> {
+        &self.0
+    }
+}
+
+impl AsMut<Closable<BufReader<ChildStdout>>> for LuaChildStdout {
+    fn as_mut(&mut self) -> &mut Closable<BufReader<ChildStdout>> {
         &mut self.0
     }
 }
@@ -252,16 +265,22 @@ impl UserData for LuaChildStdout {
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        add_io_closer_methods(methods);
-        add_io_buf_reader_methods(methods);
+        add_io_close_methods(methods);
+        add_io_read_methods(methods);
     }
 }
 
 #[derive(Debug)]
-pub struct LuaChildStderr(Option<BufReader<ChildStderr>>);
+pub struct LuaChildStderr(Closable<BufReader<ChildStderr>>);
 
-impl AsMut<Option<BufReader<ChildStderr>>> for LuaChildStderr {
-    fn as_mut(&mut self) -> &mut Option<BufReader<ChildStderr>> {
+impl AsRef<Closable<BufReader<ChildStderr>>> for LuaChildStderr {
+    fn as_ref(&self) -> &Closable<BufReader<ChildStderr>> {
+        &self.0
+    }
+}
+
+impl AsMut<Closable<BufReader<ChildStderr>>> for LuaChildStderr {
+    fn as_mut(&mut self) -> &mut Closable<BufReader<ChildStderr>> {
         &mut self.0
     }
 }
@@ -272,8 +291,8 @@ impl UserData for LuaChildStderr {
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        add_io_closer_methods(methods);
-        add_io_buf_reader_methods(methods);
+        add_io_close_methods(methods);
+        add_io_read_methods(methods);
     }
 }
 

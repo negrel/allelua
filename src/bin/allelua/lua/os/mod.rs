@@ -9,13 +9,13 @@ use std::{
 use mlua::Lua;
 use tokio::fs::{self, OpenOptions};
 
-// mod child;
 mod args;
+mod child;
 mod env_vars;
 mod file;
 
-// use child::*;
 use args::*;
+use child::*;
 use env_vars::*;
 use file::*;
 
@@ -110,7 +110,8 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
             os.set("arch", lua.create_string(std::env::consts::ARCH)?)?;
             os.set("os_name", lua.create_string(std::env::consts::OS)?)?;
 
-            // os.set("exec", lua.create_function(exec)?)?;
+            // Exec a child process.
+            os.set("exec", lua.create_function(exec)?)?;
 
             Ok(os)
         })?,
