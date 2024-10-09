@@ -5,6 +5,22 @@ return function(main_path, path_canonicalize, caller_source)
 
 	local M = package
 
+	-- package.meta table.
+	do
+		M.meta = {}
+		setmetatable(M.meta, {
+			__index = function(_, k)
+				if k == "path" then
+					return caller_source(0)
+				elseif k == "main" then
+					return main_path
+				end
+
+				return nil
+			end,
+		})
+	end
+
 	-- Remove coroutine.
 	package.loaded.coroutine = nil
 

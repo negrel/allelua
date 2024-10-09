@@ -62,6 +62,10 @@ impl Runtime {
 
         let vm = unsafe { Lua::unsafe_new_with(stdlib, LuaOptions::new()) };
 
+        if fpath.is_relative() {
+            panic!("convert path to absolute before creating runtime");
+        }
+
         prepare_runtime(vm.clone(), fpath, run_args, safety);
 
         Runtime(vm)

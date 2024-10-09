@@ -1,6 +1,9 @@
 use anyhow::{bail, Context};
 use mlua::chunk;
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{self, PathBuf},
+};
 use tokio::task;
 use walkdir::WalkDir;
 
@@ -32,7 +35,7 @@ pub fn test(paths: Vec<PathBuf>) -> anyhow::Result<()> {
                 continue;
             }
 
-            let fpath = entry.into_path();
+            let fpath = path::absolute(entry.into_path())?;
             let runtime = Runtime::new(&fpath, vec![], RuntimeSafetyLevel::Unsafe);
 
             tokio::runtime::Builder::new_current_thread()
