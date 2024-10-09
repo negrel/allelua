@@ -1,3 +1,4 @@
+local io = require("io")
 local os = require("os")
 local string = require("string")
 local t = require("test")
