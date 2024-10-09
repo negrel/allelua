@@ -1,3 +1,4 @@
+use mlua::{UserDataRef, UserDataRefMut};
 use tokio::io::AsyncWriteExt;
 
 use super::{Closable, Close, LuaBuffer, LuaJitBuffer};
@@ -52,12 +53,15 @@ pub fn add_io_write_close_methods<
 ) {
     add_io_write_methods(methods);
 
-    // TODO: mutably borrow writer_closer only close op.
-    methods.add_async_method_mut("close", |_, mut writer_closer, ()| async move {
+    methods.add_async_function("close", |_, writer_closer: mlua::AnyUserData| async move {
         {
+            let writer_closer: UserDataRef<R> = writer_closer.borrow()?;
+
             let mut writer_closer = writer_closer.as_ref().get().await?;
             writer_closer.flush().await?;
         }
+
+        let mut writer_closer: UserDataRefMut<R> = writer_closer.borrow_mut()?;
         let closer = writer_closer.as_mut();
 
         closer.close().map_err(mlua::Error::external)?;
