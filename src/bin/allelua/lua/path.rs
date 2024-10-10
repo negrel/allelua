@@ -10,8 +10,8 @@ use tokio::fs;
 #[macro_export]
 macro_rules! lua_string_as_path {
     ($path:ident = $str:ident) => {
-        let str = $str.as_bytes();
-        let $path = ::std::path::Path::new(OsStr::from_bytes(&str));
+        let str = $str.to_str()?.to_owned();
+        let $path = ::std::path::Path::new(&str);
     };
 }
 
@@ -25,7 +25,6 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 "canonicalize",
                 lua.create_async_function(|lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
-                    let path = fs::canonicalize(path).await?;
                     lua.create_string(path.as_os_str().as_bytes())
                 })?,
             )?;
