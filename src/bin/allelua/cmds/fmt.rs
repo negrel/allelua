@@ -96,6 +96,7 @@ pub fn fmt(paths: Vec<PathBuf>, check: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::result_large_err)]
 pub fn format_str(str: &str) -> Result<String, stylua_lib::Error> {
     format_code(str, CONFIG, None, OutputVerification::None)
 }
