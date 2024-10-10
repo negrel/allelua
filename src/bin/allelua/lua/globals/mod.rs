@@ -124,6 +124,24 @@ async fn select(lua: Lua, table: mlua::Table) -> mlua::Result<()> {
     Ok(())
 }
 
+pub fn lua_type(lua: &Lua, value: &mlua::Value) -> mlua::Result<mlua::String> {
+    match value {
+        mlua::Value::Error(_) => lua.create_string("error"),
+        mlua::Value::Table(ref t) => {
+            let __type = t.get::<mlua::Value>("__type");
+            match __type {
+                Ok(mlua::Value::String(str)) => Ok(str),
+                _ => lua.create_string("table"),
+            }
+        }
+        mlua::Value::UserData(udata) => match udata.get::<mlua::String>("__type") {
+            Ok(v) => Ok(v),
+            _ => lua.create_string("userdata"),
+        },
+        _ => lua.create_string(value.type_name()),
+    }
+}
+
 pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     let globals = lua.globals();
     globals.set("go", lua.create_async_function(go)?)?;
@@ -134,37 +152,7 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
 
     globals.set(
         "type",
-        lua.create_function(move |lua, value: mlua::Value| match value {
-            mlua::Value::Nil
-            | mlua::Value::Boolean(_)
-            | mlua::Value::Integer(_)
-            | mlua::Value::Number(_)
-            | mlua::Value::String(_)
-            | mlua::Value::LightUserData(_)
-            | mlua::Value::Function(_)
-            | mlua::Value::Thread(_) => value.type_name().into_lua(lua),
-            mlua::Value::Error(_) => "error".into_lua(lua),
-            mlua::Value::Table(ref t) => {
-                let __type = t.get::<mlua::Value>("__type")?;
-                match __type {
-                    mlua::Value::Nil => value.type_name().into_lua(lua),
-                    mlua::Value::String(_) => Ok(__type),
-                    mlua::Value::Function(func) => func.call::<mlua::Value>(t),
-                    _ => Err(mlua::Error::FromLuaConversionError {
-                        from: value.type_name(),
-                        to: "function".to_owned(),
-                        message: None,
-                    }),
-                }
-            }
-            mlua::Value::UserData(udata) => {
-                match udata.get::<Option<mlua::String>>("__type").unwrap_or(None) {
-                    Some(v) => Ok(mlua::Value::String(v)),
-                    None => "userdata".into_lua(lua),
-                }
-            }
-            mlua::Value::Other(..) => value.type_name().into_lua(lua),
-        })?,
+        lua.create_function(|lua, value: mlua::Value| lua_type(lua, &value))?,
     )?;
 
     globals.set(
