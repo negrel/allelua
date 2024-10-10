@@ -1,0 +1,69 @@
+use mlua::{MetaMethod, UserData};
+use tokio::{
+    io::{AsyncWriteExt, BufWriter},
+    process::ChildStdin,
+};
+
+use crate::lua::{
+    io::{add_io_write_close_methods, Closable, MaybeBuffered},
+    LuaInterface,
+};
+
+#[derive(Debug)]
+pub struct LuaChildStdin<T: MaybeBuffered<ChildStdin>>(Closable<T>);
+
+impl LuaChildStdin<ChildStdin> {
+    pub fn new(stdin: ChildStdin) -> Self {
+        Self(Closable::new(stdin))
+    }
+}
+
+impl LuaChildStdin<BufWriter<ChildStdin>> {
+    pub fn new_buffered(stdin: ChildStdin, buf_size: Option<usize>) -> Self {
+        let buf_writer = match buf_size {
+            Some(n) => BufWriter::with_capacity(n, stdin),
+            None => BufWriter::new(stdin),
+        };
+
+        Self(Closable::new(buf_writer))
+    }
+}
+
+// LuaChildStdin<T> implements io.WriteCloser.
+impl<T: MaybeBuffered<ChildStdin> + AsyncWriteExt + Unpin + 'static> LuaInterface
+    for LuaChildStdin<T>
+{
+    fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        add_io_write_close_methods(methods);
+    }
+}
+
+impl<T: MaybeBuffered<ChildStdin>> AsRef<Closable<T>> for LuaChildStdin<T> {
+    fn as_ref(&self) -> &Closable<T> {
+        &self.0
+    }
+}
+
+impl<T: MaybeBuffered<ChildStdin>> AsMut<Closable<T>> for LuaChildStdin<T> {
+    fn as_mut(&mut self) -> &mut Closable<T> {
+        &mut self.0
+    }
+}
+
+impl<T: MaybeBuffered<ChildStdin> + 'static> UserData for LuaChildStdin<T>
+where
+    Self: LuaInterface,
+{
+    fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field("__type", "ChildStdin")
+    }
+
+    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        Self::add_interface_methods(methods);
+
+        methods.add_meta_method(MetaMethod::ToString, |_lua, stdin, ()| {
+            let address = stdin as *const _ as usize;
+            Ok(format!("ChildStdin 0x{address:x}"))
+        })
+    }
+}

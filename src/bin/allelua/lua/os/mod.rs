@@ -1,22 +1,19 @@
-use std::{
-    env,
-    ffi::{OsStr, OsString},
-    os::unix::ffi::OsStrExt,
-    process::exit,
-};
+use std::{env, ffi::OsString, os::unix::ffi::OsStrExt, process::exit};
 
 use mlua::Lua;
-use tokio::fs::{self, OpenOptions};
+use tokio::fs;
 
 mod args;
 mod child;
 mod env_vars;
 mod file;
+mod stdio;
 
 use args::*;
 use child::*;
 use env_vars::*;
 use file::*;
+use stdio::*;
 
 use crate::lua_string_as_path;
 
@@ -27,44 +24,7 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
             let os = lua.create_table()?;
 
             let file_constructors = lua.create_table()?;
-            file_constructors.set(
-                "open",
-                lua.create_async_function(
-                    |_lua, (path, opt_table): (mlua::String, Option<mlua::Table>)| async move {
-                        lua_string_as_path!(path = path);
-                        let mut options = OpenOptions::new();
-                        let mut buffer_size = None;
-
-                        if let Some(opt_table) = opt_table {
-                            if let Some(true) = opt_table.get::<Option<bool>>("create")? {
-                                options.create(true);
-                            }
-
-                            if let Some(true) = opt_table.get::<Option<bool>>("create_new")? {
-                                options.create_new(true);
-                            }
-
-                            if let Some(true) = opt_table.get::<Option<bool>>("read")? {
-                                options.read(true);
-                            }
-
-                            if let Some(true) = opt_table.get::<Option<bool>>("write")? {
-                                options.write(true);
-                            }
-
-                            if let Some(true) = opt_table.get::<Option<bool>>("append")? {
-                                options.append(true);
-                            }
-
-                            buffer_size = opt_table.get::<Option<usize>>("buffer_size")?;
-                        }
-
-                        let file = options.open(path).await?;
-
-                        Ok(LuaFile::new(file, buffer_size))
-                    },
-                )?,
-            )?;
+            file_constructors.set("open", lua.create_async_function(open_file)?)?;
             file_constructors.set(
                 "read",
                 lua.create_async_function(|lua, path: mlua::String| async move {
@@ -190,7 +150,10 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
             os.set("os_name", lua.create_string(std::env::consts::OS)?)?;
 
             // Exec a child process.
-            os.set("exec", lua.create_function(exec)?)?;
+            os.set(
+                "exec",
+                lua.create_async_function(|lua, args| async move { exec(&lua, args).await })?,
+            )?;
 
             Ok(os)
         })?,

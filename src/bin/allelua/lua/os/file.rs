@@ -1,3 +1,5 @@
+use std::process::Stdio;
+
 use mlua::{IntoLua, Lua, MetaMethod, UserData};
 use tokio::{
     fs::{File, OpenOptions},
@@ -15,12 +17,22 @@ use crate::{
     lua_string_as_path,
 };
 
+use super::{add_io_try_into_stdio_methods, TryIntoStdio};
+
 #[derive(Debug)]
 pub(super) struct LuaFile<T: MaybeBuffered<File>>(io::Closable<T>);
 
 impl LuaFile<File> {
     pub fn new(f: File) -> Self {
         Self(io::Closable::new(f))
+    }
+}
+
+impl<T: MaybeBuffered<File>> TryIntoStdio for LuaFile<T> {
+    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
+        let file: File = self.0.into_inner()?.into_inner();
+        let std_file = file.into_std().await;
+        Ok(std_file.into())
     }
 }
 
@@ -47,18 +59,19 @@ impl<T: MaybeBuffered<File>> AsMut<Closable<T>> for LuaFile<T> {
     }
 }
 
-// LuaFile<File> implements io.Reader, io.Seeker, io.Writer and io.Closer.
+// LuaFile<File> implements io.Reader, io.Seeker, io.Writer, io.Closer and os.TryIntoStdio.
 impl LuaInterface for LuaFile<File> {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_seek_methods(methods);
         add_io_write_methods(methods);
         add_io_close_methods(methods);
+        add_io_try_into_stdio_methods(methods);
     }
 }
 
-// LuaFile<File> implements io.Reader, io.BufReader, io.Seeker, io.Writer and
-// io.Closer.
+// LuaFile<File> implements io.Reader, io.BufReader, io.Seeker, io.Writer,
+// io.Closer and os.TryIntoStdio.
 impl LuaInterface for LuaFile<BufStream<File>> {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
@@ -66,6 +79,7 @@ impl LuaInterface for LuaFile<BufStream<File>> {
         add_io_seek_methods(methods);
         add_io_write_methods(methods);
         add_io_close_methods(methods);
+        add_io_try_into_stdio_methods(methods);
     }
 }
 
@@ -81,7 +95,9 @@ where
         Self::add_interface_methods(methods);
 
         methods.add_async_method("sync", |_lua, file, ()| async move {
-            let file = file.as_ref().get().await?;
+            let mut file = file.as_ref().get().await?;
+            let t: &mut T = &mut file;
+            let file = MaybeBuffered::<File>::get_mut(t);
 
             file.get_ref().sync_all().await?;
 
