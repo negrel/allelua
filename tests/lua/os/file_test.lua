@@ -59,3 +59,15 @@ t.test("seek to beginning of file to read written data", function()
 	-- Close file.
 	f:close()
 end)
+
+t.test("open file for unbuffered I/O", function()
+	local tmp_path = temp_path()
+	-- Buffer size of 0 means unbuffered I/O.
+	local f = os.File.open(tmp_path, { create_new = true, buffer_size = 0 })
+
+	assert(f.read_line == nil)
+	f:close()
+
+	f = os.File.open(tmp_path, { create_new = true, buffer_size = 1 })
+	assert(f.read_line ~= nil)
+end)

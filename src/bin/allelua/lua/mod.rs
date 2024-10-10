@@ -147,6 +147,13 @@ impl<'a> mlua::AsChunk<'a> for IncludeChunk {
     }
 }
 
+/// LuaInterface is a trait implemented by [mlua::UserData] types that implements
+/// different Lua interface depending on their type parameters (e.g. [LuaFile<File>] and
+/// [LuaFile<BufStream<File>>]).
+pub trait LuaInterface: Sized {
+    fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M);
+}
+
 #[macro_export]
 macro_rules! include_lua {
     ($path:tt) => {{
