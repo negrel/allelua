@@ -40,8 +40,11 @@ impl UserData for LuaAbortHandle {
     }
 }
 
-async fn go(_lua: Lua, func: mlua::Function) -> mlua::Result<LuaAbortHandle> {
-    let fut = func.call_async::<()>(());
+async fn go(
+    _lua: Lua,
+    (func, args): (mlua::Function, mlua::MultiValue),
+) -> mlua::Result<LuaAbortHandle> {
+    let fut = func.call_async::<()>(args);
     let goroutine_id = GOROUTINE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let handle = tokio::task::spawn_local(async move {
         if let Err(err) = fut.await {

@@ -41,3 +41,15 @@ t.test("abort goroutine", function()
 	time.sleep(10 * time.millisecond)
 	assert(not goroutine_complete, "goroutine abort failed")
 end)
+
+t.test("go with function and its args as parameters", function()
+	local value = nil
+	local func = function(arg)
+		value = arg
+	end
+
+	go(func, t)
+
+	assert(value ~= nil)
+	assert(value == t)
+end)
