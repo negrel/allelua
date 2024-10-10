@@ -32,6 +32,12 @@ impl From<LuaIoClosedError> for mlua::Error {
 #[derive(Debug)]
 pub struct Closable<T>(Option<Mutex<T>>);
 
+impl<T> Drop for Closable<T> {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
+}
+
 impl<T> Closable<T> {
     pub fn new(inner: T) -> Self {
         Self(Some(Mutex::new(inner)))
@@ -50,6 +56,13 @@ impl<T> Closable<T> {
 
     pub fn is_closed(&self) -> bool {
         self.0.is_none()
+    }
+
+    pub fn into_inner(mut self) -> Result<T, LuaIoClosedError> {
+        match self.0.take() {
+            Some(inner) => Ok(inner.into_inner()),
+            None => Err(LuaIoClosedError),
+        }
     }
 }
 
