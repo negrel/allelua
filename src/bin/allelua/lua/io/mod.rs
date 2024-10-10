@@ -6,11 +6,13 @@ use crate::include_lua;
 
 mod closer;
 mod error;
+mod maybe_buffered;
 mod reader;
 mod seeker;
 mod writer;
 
 pub use closer::*;
+pub use maybe_buffered::*;
 pub use reader::*;
 pub use seeker::*;
 pub use writer::*;
@@ -43,8 +45,8 @@ impl FromLua for LuaJitBuffer {
     fn from_lua(value: mlua::Value, lua: &Lua) -> mlua::Result<Self> {
         let type_name = value.type_name();
         let udata = AnyUserData::from_lua(value, lua)?;
-        // If it is a real LuaJIT buffer userdata, we shouldn't be able to
-        // retrieve it's metatable.
+        // If it is a LuaJIT buffer userdata, we shouldn't be able to
+        // retrieve it's metatable via mlua.
         match udata.metatable() {
             Err(mlua::Error::UserDataTypeMismatch) => Ok(Self {
                 udata,

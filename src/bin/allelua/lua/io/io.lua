@@ -4,10 +4,11 @@ return function(M)
 	M.copy = function(reader, writer, opts)
 		opts = opts or {}
 		opts.flush = opts.flush or false
+		opts.close = opts.close or false
 
 		local total = 0
 
-		if reader.write_to then
+		if rawtype(reader.write_to) == "function" then
 			while true do
 				local ok, err_or_write = pcall(reader.write_to, reader, writer)
 				if not ok then
@@ -40,6 +41,11 @@ return function(M)
 				if opts.flush then writer:flush() end
 				total = total + err_or_write
 			end
+		end
+
+		if opts.close then
+			reader:close()
+			writer:close()
 		end
 
 		return total

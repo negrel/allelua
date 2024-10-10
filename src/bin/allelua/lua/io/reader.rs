@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use super::{Closable, LuaBuffer, LuaJitBuffer};
 
 pub fn add_io_read_methods<
-    W: AsyncBufReadExt + Unpin,
+    W: AsyncReadExt + Unpin,
     R: AsRef<Closable<W>> + 'static,
     M: mlua::UserDataMethods<R>,
 >(
@@ -34,11 +34,22 @@ pub fn add_io_read_methods<
 
         lua.create_string(buf)
     });
+}
 
+pub fn add_io_buf_read_methods<
+    W: AsyncBufReadExt + Unpin,
+    R: AsRef<Closable<W>> + 'static,
+    M: mlua::UserDataMethods<R>,
+>(
+    methods: &mut M,
+) {
     methods.add_async_method("write_to", |_, reader, writer: AnyUserData| async move {
         let mut reader = reader.as_ref().get().await?;
 
         let buf = reader.fill_buf().await?;
+        if buf.is_empty() {
+            return Ok(0);
+        }
 
         // Safety: this is safe as buf won't be dropped until end of
         // function but mlua required static args.
