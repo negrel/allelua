@@ -91,7 +91,7 @@ pub fn add_io_buf_read_methods<
         let mut slice = &buf[..];
 
         // Remove LF (\n).
-        if buf.last().is_some() {
+        if let Some(b'\n') = buf.last() {
             slice = &slice[..slice.len() - 1];
         }
 
