@@ -6,7 +6,7 @@ pub trait TryIntoStdio {
     async fn try_into_stdio(self) -> mlua::Result<std::process::Stdio>;
 }
 
-pub fn add_io_try_into_stdio_methods<R: TryIntoStdio + 'static, M: mlua::UserDataMethods<R>>(
+pub fn add_os_try_into_stdio_methods<R: TryIntoStdio + 'static, M: mlua::UserDataMethods<R>>(
     methods: &mut M,
 ) {
     methods.add_async_function("try_into_stdio", |_lua, into: AnyUserData| async move {

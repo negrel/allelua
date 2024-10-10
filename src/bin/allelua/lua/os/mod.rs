@@ -7,12 +7,14 @@ mod args;
 mod child;
 mod env_vars;
 mod file;
+mod pipe;
 mod stdio;
 
 use args::*;
 use child::*;
 use env_vars::*;
 use file::*;
+use pipe::*;
 use stdio::*;
 
 use crate::lua_string_as_path;
@@ -154,6 +156,9 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
                 "exec",
                 lua.create_async_function(|lua, args| async move { exec(&lua, args).await })?,
             )?;
+
+            // Create a pipe.
+            os.set("pipe", lua.create_async_function(pipe)?)?;
 
             Ok(os)
         })?,

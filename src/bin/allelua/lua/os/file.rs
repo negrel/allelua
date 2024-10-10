@@ -9,15 +9,15 @@ use tokio::{
 use crate::{
     lua::{
         io::{
-            self, add_io_buf_read_methods, add_io_close_methods, add_io_read_methods,
-            add_io_seek_methods, add_io_write_methods, Closable, MaybeBuffered,
+            self, add_io_buf_read_methods, add_io_read_methods, add_io_seek_methods,
+            add_io_write_close_methods, Closable, MaybeBuffered,
         },
         LuaInterface,
     },
     lua_string_as_path,
 };
 
-use super::{add_io_try_into_stdio_methods, TryIntoStdio};
+use super::{add_os_try_into_stdio_methods, TryIntoStdio};
 
 #[derive(Debug)]
 pub(super) struct LuaFile<T: MaybeBuffered<File>>(io::Closable<T>);
@@ -59,27 +59,26 @@ impl<T: MaybeBuffered<File>> AsMut<Closable<T>> for LuaFile<T> {
     }
 }
 
-// LuaFile<File> implements io.Reader, io.Seeker, io.Writer, io.Closer and os.TryIntoStdio.
+// LuaFile<File> implements io.Reader, io.Seeker, io.WriteCloser and
+// os.TryIntoStdio.
 impl LuaInterface for LuaFile<File> {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_seek_methods(methods);
-        add_io_write_methods(methods);
-        add_io_close_methods(methods);
-        add_io_try_into_stdio_methods(methods);
+        add_io_write_close_methods(methods);
+        add_os_try_into_stdio_methods(methods);
     }
 }
 
-// LuaFile<File> implements io.Reader, io.BufReader, io.Seeker, io.Writer,
-// io.Closer and os.TryIntoStdio.
+// LuaFile<File> implements io.Reader, io.BufReader, io.Seeker, io.WriteClose
+// and os.TryIntoStdio.
 impl LuaInterface for LuaFile<BufStream<File>> {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_buf_read_methods(methods);
         add_io_seek_methods(methods);
-        add_io_write_methods(methods);
-        add_io_close_methods(methods);
-        add_io_try_into_stdio_methods(methods);
+        add_io_write_close_methods(methods);
+        add_os_try_into_stdio_methods(methods);
     }
 }
 
