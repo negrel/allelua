@@ -2,7 +2,87 @@
     <img height="250" src="./.github/images/allelua.png">
 </h1>
 
-# 🙏 `allelua` - Lua distribution blessed by the gods of programming
+# 🙏 `allelua` - LuaJIT distribution blessed programming gods
+
+`allelua` is a Lua runtime with secure defaults and a great developer experience.
+It's built on [`mlua`](https://github.com/mlua-rs/mlua),
+[Rust](https://www.rust-lang.org/) and [Tokio](https://tokio.rs).
+
+## Features
+
+Here's what makes `allelua` a unique alternative to language like Python and
+runtimes like Deno / NodeJS:
+
+* Fast and resources efficient: LuaJIT is extremely fast and lightweight.
+* Simple:
+    * Lua is a lot simpler than other scripting language.
+    * Stable, based on Lua 5.1 with a few 5.2 compatibility
+* Easy concurrency:
+    * No async/await
+    * Write concurrent code like single threaded code
+* Secure by default (**planned**)
+* Batteries included:
+    * Linter
+    * Formatter
+    * LSP
+    * Package manager
+    * Task runner (**planned**)
+    * Test runner
+    * Benchmarking tool
+    * Documentation generator (**wip**)
+* FFI support
+
+## Examples
+
+Here are a few examples:
+
+### Goroutine
+
+A goroutine is a lightweight thread managed by the `allelua` runtime.
+
+```lua
+go(f, x, y, z)
+-- or
+go(function()
+    f(x, y, z)
+end)
+```
+
+starts a new goroutine running
+
+```lua
+f(x, y, z)
+```
+
+Here is an example proving that goroutines runs concurrently:
+
+```lua
+local time = require("time")
+
+local now = time.Instant:now()
+for i = 1, 3 do
+	go(function()
+		time.sleep(i * time.second)
+		print("goroutine", i, "done in", now:elapsed())
+	end)
+end
+```
+
+prints
+
+```lua
+goroutine 1 done 1.001s
+goroutine 2 done 1.001s
+goroutine 3 done 1.001s
+```
+
+If goroutines were run one after another, they would print:
+
+```lua
+goroutine 1 done 1.001s
+goroutine 2 done 2.001s
+goroutine 3 done 3.001s
+```
 
 ## Contributing
 
