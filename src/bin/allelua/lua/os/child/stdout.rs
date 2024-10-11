@@ -1,3 +1,5 @@
+use std::process::Stdio;
+
 use mlua::{MetaMethod, UserData};
 use tokio::{io::BufReader, process::ChildStdout};
 
@@ -5,6 +7,7 @@ use crate::lua::{
     io::{
         add_io_buf_read_methods, add_io_close_methods, add_io_read_methods, Closable, MaybeBuffered,
     },
+    os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
 
@@ -28,11 +31,19 @@ impl LuaChildStdout<BufReader<ChildStdout>> {
     }
 }
 
+impl<T: MaybeBuffered<ChildStdout>> TryIntoStdio for LuaChildStdout<T> {
+    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
+        let stdout: ChildStdout = self.0.into_inner()?.into_inner();
+        Ok(stdout.try_into()?)
+    }
+}
+
 // LuaChildStdout<ChildStdout> implements io.Reader and io.Closer.
 impl LuaInterface for LuaChildStdout<ChildStdout> {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_close_methods(methods);
+        add_os_try_into_stdio_methods(methods);
     }
 }
 

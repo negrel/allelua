@@ -1,3 +1,5 @@
+use std::process::Stdio;
+
 use mlua::{MetaMethod, UserData};
 use tokio::{
     io::{AsyncWriteExt, BufWriter},
@@ -6,6 +8,7 @@ use tokio::{
 
 use crate::lua::{
     io::{add_io_write_close_methods, Closable, MaybeBuffered},
+    os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
 
@@ -29,12 +32,20 @@ impl LuaChildStdin<BufWriter<ChildStdin>> {
     }
 }
 
-// LuaChildStdin<T> implements io.WriteCloser.
+impl<T: MaybeBuffered<ChildStdin>> TryIntoStdio for LuaChildStdin<T> {
+    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
+        let stdin: ChildStdin = self.0.into_inner()?.into_inner();
+        Ok(stdin.try_into()?)
+    }
+}
+
+// LuaChildStdin<T> implements io.WriteCloser and os.TryIntoStdio.
 impl<T: MaybeBuffered<ChildStdin> + AsyncWriteExt + Unpin + 'static> LuaInterface
     for LuaChildStdin<T>
 {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_write_close_methods(methods);
+        add_os_try_into_stdio_methods(methods);
     }
 }
 

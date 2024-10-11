@@ -28,14 +28,6 @@ impl LuaFile<File> {
     }
 }
 
-impl<T: MaybeBuffered<File>> TryIntoStdio for LuaFile<T> {
-    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let file: File = self.0.into_inner()?.into_inner();
-        let std_file = file.into_std().await;
-        Ok(std_file.into())
-    }
-}
-
 impl LuaFile<BufStream<File>> {
     pub fn new_buffered(f: File, buf_size: Option<usize>) -> Self {
         let buf_stream = match buf_size {
@@ -44,6 +36,14 @@ impl LuaFile<BufStream<File>> {
         };
 
         Self(io::Closable::new(buf_stream))
+    }
+}
+
+impl<T: MaybeBuffered<File>> TryIntoStdio for LuaFile<T> {
+    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
+        let file: File = self.0.into_inner()?.into_inner();
+        let std_file = file.into_std().await;
+        Ok(std_file.into())
     }
 }
 

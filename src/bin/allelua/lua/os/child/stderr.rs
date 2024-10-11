@@ -1,3 +1,5 @@
+use std::process::Stdio;
+
 use mlua::{MetaMethod, UserData};
 use tokio::{io::BufReader, process::ChildStderr};
 
@@ -5,6 +7,7 @@ use crate::lua::{
     io::{
         add_io_buf_read_methods, add_io_close_methods, add_io_read_methods, Closable, MaybeBuffered,
     },
+    os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
 
@@ -28,20 +31,30 @@ impl LuaChildStderr<BufReader<ChildStderr>> {
     }
 }
 
-// LuaChildStderr<ChildStderr> implements io.Reader and io.Closer.
+impl<T: MaybeBuffered<ChildStderr>> TryIntoStdio for LuaChildStderr<T> {
+    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
+        let stderr: ChildStderr = self.0.into_inner()?.into_inner();
+        Ok(stderr.try_into()?)
+    }
+}
+
+// LuaChildStderr<ChildStderr> implements io.Reader, io.Closer and os.TryIntoStdio.
 impl LuaInterface for LuaChildStderr<ChildStderr> {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_close_methods(methods);
+        add_os_try_into_stdio_methods(methods);
     }
 }
 
-// LuaChildStderr<ChildStderr> implements io.Reader, io.BufReader and io.Closer.
+// LuaChildStderr<ChildStderr> implements io.Reader, io.BufReader, io.Closer
+// and os.TryIntoStdio.
 impl LuaInterface for LuaChildStderr<BufReader<ChildStderr>> {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_buf_read_methods(methods);
         add_io_close_methods(methods);
+        add_os_try_into_stdio_methods(methods);
     }
 }
 

@@ -5,7 +5,8 @@ use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
 
 use self::{
     globals::register_globals, io::load_io, os::load_os, package::load_package, path::load_path,
-    string::load_string, sync::load_sync, table::load_table, test::load_test, time::load_time,
+    sh::load_sh, string::load_string, sync::load_sync, table::load_table, test::load_test,
+    time::load_time,
 };
 
 mod error;
@@ -14,6 +15,7 @@ mod io;
 mod os;
 mod package;
 mod path;
+mod sh;
 mod string;
 mod sync;
 mod table;
@@ -98,6 +100,7 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
     handle_result(load_sync(lua.clone()));
     handle_result(load_table(lua.clone()));
     handle_result(load_io(&lua));
+    handle_result(load_sh(&lua));
     handle_result(load_time(lua.clone()));
     handle_result(register_globals(lua.clone()));
 
