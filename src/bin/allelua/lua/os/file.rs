@@ -143,6 +143,10 @@ pub async fn open_file(
             options.append(true);
         }
 
+        if let Some(true) = opt_table.get::<Option<bool>>("truncate")? {
+            options.truncate(true);
+        }
+
         buffer_size = opt_table.get::<Option<usize>>("buffer_size")?;
     }
 
