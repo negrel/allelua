@@ -61,7 +61,7 @@ local function tostring_impl()
 			table.push(kv, " = ")
 
 			if rawtype(v) == "string" then
-				table.push(kv, '"', v, '"')
+				table.push(kv, string.format("%q", v))
 			else
 				table.push(kv, tostring(v, inner_opts))
 			end

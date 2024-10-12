@@ -82,7 +82,7 @@ function M.Type:constant(value)
 	local v_type = rawtype(value)
 
 	-- quote constant if type is string.
-	if v_type == "string" then name = '"' .. name .. '"' end
+	if v_type == "string" then name = string.format("%q", name) end
 
 	local parent = M.Env:get_type_by_name(v_type)
 	local type = parent:subtype(name)
