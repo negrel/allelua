@@ -25,7 +25,13 @@
             pname = "allelua";
             version = "0.1.0";
             src = ./.;
-            cargoLock = { lockFile = ./Cargo.lock; };
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+              outputHashes = {
+                "mlua-0.10.0-beta.2" =
+                  "sha256-KecI1oiwtMOAuClUmXBoyrb+Ap1JQ/pPJjEvxOjXj9I=";
+              };
+            };
             nativeBuildInputs = with pkgs; [ pkg-config ];
             buildInputs = [ self.packages.${system}.luajit ];
             LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
