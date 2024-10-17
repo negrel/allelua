@@ -1,8 +1,30 @@
 return function()
+	local string = require("string")
 	local table = require("table")
 	local os = require("os")
 
 	local M = {}
+
+	M.Error = { __type = "CommandError" }
+
+	function M.Error:new(cmd, proc, status)
+		local err = { cmd = cmd, proc = proc, status = status }
+		setmetatable(err, self)
+		self.__index = self
+		return err
+	end
+
+	function M.Error:__tostring()
+		local str = "process "
+			.. string.format("%q", tostring(self.cmd))
+			.. " failed"
+		if self.status.code then
+			str = str .. " and exited with status code " .. tostring(self.status.code)
+		end
+		str = str .. "."
+
+		return str
+	end
 
 	setmetatable(M, {
 		__index = function(t, k)
@@ -134,9 +156,27 @@ return function()
 	end
 
 	function Command:output()
+		local out = nil
+
 		local proc = self:exec()
-		if proc.stdout then return proc.stdout:read_to_end() end
-		return ""
+		if proc.stdout then out = proc.stdout:read_to_end() end
+
+		local status = proc:wait()
+		if status.success then return out end
+
+		error(M.Error:new(self, proc, status))
+	end
+
+	function Command:error()
+		local err = nil
+
+		local proc = self:exec()
+		if proc.stderr then err = proc.stderr:read_to_end() end
+
+		local status = proc:wait()
+		if not status.success then return err end
+
+		return nil
 	end
 
 	M.command = function(name)
