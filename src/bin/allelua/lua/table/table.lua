@@ -93,18 +93,28 @@ return function(is_empty)
 		return true
 	end
 
+	M.collect = function(iterator, state, initial_value)
+		local result = {}
+		while true do
+			local item = table.pack(iterator(state, initial_value))
+			table.push(result, item)
+		end
+
+		return result
+	end
+
 	M.collect_map = function(map_fn)
 		return function(iterator, state, initial_value)
 			local result = {}
-			for k, v in iterator, state, initial_value do
-				table.insert(result, map_fn(k, v))
+			while true do
+				local item = table.pack(iterator(state, initial_value))
+				table.push(result, map_fn(item))
 			end
 
 			return result
 		end
 	end
 
-	M.collect = M.collect_map(M.pack)
 	M.collect_entries = M.collect_map(function(k, v)
 		return { k, v }
 	end)
