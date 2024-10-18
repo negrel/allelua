@@ -91,3 +91,11 @@ t.test("process pipes with buffer size of 0 are not buffered", function()
 	local status = proc:wait()
 	assert(status.success)
 end)
+
+t.test("process returns non zero exit code", function()
+	local proc = os.exec("ls", { args = { "/dir/that/doesn't/exist" } })
+	local status = proc:wait()
+
+	assert(not status.success, "process should fail but didn't")
+	assert(status.code == 2, "process should exit with status code 2")
+end)
