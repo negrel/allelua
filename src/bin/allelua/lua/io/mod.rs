@@ -65,10 +65,7 @@ impl FromLua for LuaJitBuffer {
 
 impl LuaJitBuffer {
     fn as_bytes(&self) -> mlua::Result<&mut [u8]> {
-        let (ptr, len) = self
-            .udata
-            .get::<mlua::Function>("ref")?
-            .call::<(mlua::Value, usize)>(mlua::Value::UserData(self.udata.to_owned()))?;
+        let (ptr, len) = self.udata.call_method::<(mlua::Value, usize)>("ref", ())?;
 
         if len == 0 || ptr.is_null() {
             Ok(&mut [])
@@ -85,8 +82,7 @@ impl LuaJitBuffer {
     fn reserve_bytes(&self, n: usize) -> mlua::Result<&mut [u8]> {
         let (ptr, len) = self
             .udata
-            .get::<mlua::Function>("reserve")?
-            .call::<(mlua::Value, usize)>((mlua::Value::UserData(self.udata.to_owned()), n))?;
+            .call_method::<(mlua::Value, usize)>("reserve", n)?;
 
         if len == 0 || ptr.is_null() {
             Ok(&mut [])
@@ -105,9 +101,7 @@ impl LuaJitBuffer {
             return Ok(());
         }
 
-        self.udata
-            .get::<mlua::Function>("skip")?
-            .call::<()>((self.udata.to_owned(), n))
+        self.udata.call_method("skip", n)
     }
 
     fn commit(&self, n: usize) -> mlua::Result<()> {
@@ -115,9 +109,7 @@ impl LuaJitBuffer {
             return Ok(());
         }
 
-        self.udata
-            .get::<mlua::Function>("commit")?
-            .call::<()>((self.udata.to_owned(), n))
+        self.udata.call_method("commit", n)
     }
 }
 
