@@ -23,6 +23,8 @@ pub fn load_io(lua: &Lua) -> mlua::Result<mlua::Table> {
         lua.create_function(|lua, ()| {
             let io = lua.create_table()?;
 
+            io.set("ClosedError", mlua::Error::from(LuaIoClosedError))?;
+
             lua.load(include_lua!("./io.lua"))
                 .eval::<mlua::Function>()?
                 .call::<()>(io.to_owned())?;
