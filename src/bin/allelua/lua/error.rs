@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use mlua::{IntoLua, Lua, UserData};
 
@@ -16,6 +16,14 @@ pub trait AlleluaError: std::error::Error + Send + Sync + 'static {
 #[derive(Debug, Error, Clone)]
 #[error(transparent)]
 pub struct LuaError(Arc<dyn AlleluaError>);
+
+impl Deref for LuaError {
+    type Target = Arc<dyn AlleluaError>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl<T: AlleluaError> From<T> for LuaError {
     fn from(value: T) -> Self {
