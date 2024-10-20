@@ -93,9 +93,7 @@ fn lua_string_as_stdio(str: mlua::String) -> mlua::Result<Stdio> {
 
 async fn lua_object_as_stdio<T: ObjectLike + IntoLua>(obj: T) -> mlua::Result<Stdio> {
     let stdio = obj
-        .get::<mlua::Function>("try_into_stdio")
-        .with_context(|_| "object doesn't implements try_into_stdio")?
-        .call_async::<LuaStdio>(obj)
+        .call_async_method::<LuaStdio>("try_into_stdio", ())
         .await?;
     Ok(stdio.into())
 }

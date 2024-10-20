@@ -2,6 +2,7 @@ return function()
 	local string = require("string")
 	local table = require("table")
 	local os = require("os")
+	local io = require("io")
 
 	local M = {}
 
@@ -102,10 +103,14 @@ return function()
 		-- Process is already running.
 		if self._proc then return self._proc end
 
-		-- stdin defaults to inherit and is piped when another command is piped
-		-- into this command.
-		local stdin = self._stdin or "inherit"
-		if type(self._stdin) == "Command" then stdin = "piped" end
+		local stdin = "inherit"
+		if type(self._stdin) == "Command" then
+			stdin = "piped"
+		elseif rawtype(self._stdin) == "string" then
+			stdin = self._stdin
+		else
+			stdin = "piped"
+		end
 
 		local stdout = self._stdout or "piped"
 		if type(self._stdout) == "Command" then
@@ -114,7 +119,17 @@ return function()
 
 		local stderr = self._stderr or "piped"
 		if type(self._stderr) == "Command" then
-			stderr = self._stderr._proc.stdin
+			-- stderr and stdout are redirected to the same stream.
+			-- Rust stdlib Command doesn't support this so we use a piped stderr
+			-- and we manually copy stderr to process stdin.
+			if self._stderr._proc.stdin == stdout then
+				self._stdout = stdout
+				self._stderr = stdout
+				stdout = "piped"
+				stderr = "piped"
+			else
+				stderr = self._stderr._proc.stdin
+			end
 		end
 
 		self._proc = os.exec(
@@ -123,7 +138,33 @@ return function()
 		)
 
 		-- Execute input process.
-		if type(self._stdin) == "Command" then self._stdin:exec() end
+		if type(self._stdin) == "Command" and self._proc.stdin then
+			self._stdin:exec()
+		elseif
+			self._stdin
+			and type(self._stdin) ~= "Command"
+			and stdin == "piped"
+		then
+			go(io.copy, self._stdin, self._proc.stdin, { close = true })
+		end
+
+		-- copy stdout to configured writer.
+		if
+			self._stdout
+			and type(self._stdout) ~= "Command"
+			and stdout == "piped"
+		then
+			go(io.copy, self._proc.stdout, self._stdout, { close = true })
+		end
+
+		-- copy stderr to configured writer.
+		if
+			self._stderr
+			and type(self._stderr) ~= "Command"
+			and stderr == "piped"
+		then
+			go(io.copy, self._proc.stderr, self._stderr, { close = true })
+		end
 
 		return self._proc
 	end
@@ -155,14 +196,25 @@ return function()
 		return cmd:_pipe_tail()
 	end
 
-	function Command:output()
+	function Command:pipe_all(cmd)
+		cmd = cmd:_pipe_head()
+		cmd._stdin = self
+		self._stdout = cmd
+		self._stderr = cmd
+		return cmd:_pipe_tail()
+	end
+
+	function Command:output(opts)
+		opts = opts or {}
+		opts.ignore_error = opts.ignore_error or false
+
 		local out = nil
 
 		local proc = self:exec()
 		if proc.stdout then out = proc.stdout:read_to_end() end
 
 		local status = proc:wait()
-		if status.success then return out end
+		if status.success or opts.ignore_error then return out end
 
 		error(M.Error:new(self, proc, status))
 	end
