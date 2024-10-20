@@ -46,8 +46,8 @@ return function(M)
 		end
 
 		if opts.close then
-			reader:close()
-			writer:close()
+			if rawtype(reader.close) == "function" then reader:close() end
+			if rawtype(writer.close) == "function" then writer:close() end
 		end
 
 		return total
