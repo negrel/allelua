@@ -8,13 +8,21 @@ return function(M)
 		opts.flush = opts.flush or false
 		opts.close = opts.close or false
 
+		if not reader then error("reader is nil") end
+		if not writer then error("writer is nil") end
+
 		local total = 0
 
 		if rawtype(reader.write_to) == "function" then
 			while true do
 				local ok, err_or_write = pcall(reader.write_to, reader, writer)
 				if not ok then
-					if err_or_write.kind == "Closed" and total ~= 0 then break end
+					if
+						type(err_or_write) == "IoError"
+						and err_or_write.kind == "Closed"
+					then
+						break
+					end
 					error(err_or_write)
 				end
 
@@ -28,7 +36,12 @@ return function(M)
 				-- Read into buffer.
 				local ok, err_or_read = pcall(reader.read, reader, buf, 4096)
 				if not ok then
-					if err_or_read.kind == "BrokenPipe" then break end
+					if
+						type(err_or_read) == "IoError"
+						and err_or_read.kind == "Closed"
+					then
+						break
+					end
 					error(err_or_read)
 				end
 				if err_or_read == 0 then break end
@@ -36,7 +49,12 @@ return function(M)
 				-- Write from buffer.
 				local ok, err_or_write = pcall(writer.write_all, writer, buf)
 				if not ok then
-					if err_or_write.kind == "Closed" and total ~= 0 then break end
+					if
+						type(err_or_read) == "IoError"
+						and err_or_read.kind == "Closed"
+					then
+						break
+					end
 					error(err_or_write)
 				end
 
@@ -46,8 +64,12 @@ return function(M)
 		end
 
 		if opts.close then
-			if rawtype(reader.close) == "function" then reader:close() end
-			if rawtype(writer.close) == "function" then writer:close() end
+			if rawtype(reader.close) == "function" then
+				pcall(reader.close, reader)
+			end
+			if rawtype(writer.close) == "function" then
+				pcall(writer.close, writer)
+			end
 		end
 
 		return total
