@@ -14,22 +14,18 @@ return function(M)
 		local total = 0
 
 		if rawtype(reader.write_to) == "function" then
-			while true do
-				local ok, err_or_write = pcall(reader.write_to, reader, writer)
-				if not ok then
-					if
-						type(err_or_write) == "IoError"
-						and err_or_write.kind == "Closed"
-					then
-						break
-					end
-					error(err_or_write)
+			local ok, err_or_write = pcall(reader.write_to, reader, writer)
+			if not ok then
+				if
+					type(err_or_write) == "IoError" and err_or_write.kind == "Closed"
+				then
+					break
 				end
-
-				if opts.flush then writer:flush() end
-				if err_or_write == 0 then break end
-				total = total + err_or_write
+				error(err_or_write)
 			end
+
+			if opts.flush then writer:flush() end
+			total = err_or_write
 		else
 			local buf = buffer.new()
 			while true do
