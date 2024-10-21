@@ -1,23 +1,55 @@
 use std::io::SeekFrom;
 
-use mlua::{FromLua, MetaMethod, UserData};
+use mlua::{FromLua, IntoLua, MetaMethod, UserData};
 use tokio::io::AsyncSeekExt;
 
 use super::Closable;
 
 #[derive(Debug, Clone, Copy, FromLua)]
-struct LuaSeekFrom(SeekFrom);
+pub(super) struct LuaSeekFrom(SeekFrom);
+
+impl LuaSeekFrom {
+    pub(super) fn start(n: u64) -> Self {
+        LuaSeekFrom(SeekFrom::Start(n))
+    }
+
+    pub(super) fn current(n: i64) -> Self {
+        LuaSeekFrom(SeekFrom::Current(n))
+    }
+
+    pub(super) fn end(n: i64) -> Self {
+        LuaSeekFrom(SeekFrom::End(n))
+    }
+}
 
 impl UserData for LuaSeekFrom {
-    fn add_fields<F: mlua::UserDataFields<Self>>(_fields: &mut F) {}
+    fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("mode", |_, seek| match seek.0 {
+            SeekFrom::Start(_) => Ok("start"),
+            SeekFrom::End(_) => Ok("end"),
+            SeekFrom::Current(_) => Ok("current"),
+        });
+
+        fields.add_field_method_get("offset", |lua, seek| match seek.0 {
+            SeekFrom::Start(offset) => offset.into_lua(lua),
+            SeekFrom::End(offset) => offset.into_lua(lua),
+            SeekFrom::Current(offset) => offset.into_lua(lua),
+        })
+    }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
-            let address = f as *const _ as usize;
-            let str = match f.0 {
-                SeekFrom::Start(offset) => format!("SeekFrom(start={offset}) 0x{address:x}"),
-                SeekFrom::End(offset) => format!("SeekFrom(end={offset}) 0x{address:x}"),
-                SeekFrom::Current(offset) => format!("SeekFrom(current={offset}) 0x{address:x}"),
+        methods.add_meta_method(MetaMethod::ToString, |_, seek, ()| {
+            let address = seek as *const _ as usize;
+            let str = match seek.0 {
+                SeekFrom::Start(offset) => {
+                    format!("SeekFrom(mode=start, offset={offset}) 0x{address:x}")
+                }
+                SeekFrom::End(offset) => {
+                    format!("SeekFrom(mode=end, offset={offset}) 0x{address:x}")
+                }
+                SeekFrom::Current(offset) => {
+                    format!("SeekFrom(mode=current, offset={offset}) 0x{address:x}")
+                }
             };
             Ok(str)
         });

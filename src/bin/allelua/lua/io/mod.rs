@@ -25,6 +25,21 @@ pub fn load_io(lua: &Lua) -> mlua::Result<mlua::Table> {
 
             io.set("ClosedError", mlua::Error::from(LuaIoClosedError))?;
 
+            let seek_from_constructors = lua.create_table()?;
+            seek_from_constructors.set(
+                "start",
+                lua.create_function(|_, n: u64| Ok(LuaSeekFrom::start(n)))?,
+            )?;
+            seek_from_constructors.set(
+                "current",
+                lua.create_function(|_, n: i64| Ok(LuaSeekFrom::current(n)))?,
+            )?;
+            seek_from_constructors.set(
+                "end",
+                lua.create_function(|_, n: i64| Ok(LuaSeekFrom::end(n)))?,
+            )?;
+            io.set("SeekFrom", seek_from_constructors)?;
+
             lua.load(include_lua!("./io.lua"))
                 .eval::<mlua::Function>()?
                 .call::<()>(io.to_owned())?;

@@ -1,7 +1,7 @@
 return function(M)
 	local math = require("math")
 	local sync = require("sync")
-	local buffer = require("string").buffer
+	local buffer = require("string.buffer")
 
 	M.copy = function(reader, writer, opts)
 		opts = opts or {}
@@ -86,6 +86,11 @@ return function(M)
 				error(err)
 			end
 		end
+	end
+
+	local seek_from_beginning = M.SeekFrom.start(0)
+	function M.rewind(self)
+		self:seek(seek_from_beginning)
 	end
 
 	M.PipeReader = { __type = "PipeReader" }
