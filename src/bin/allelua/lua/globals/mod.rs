@@ -147,6 +147,14 @@ pub fn lua_type(lua: &Lua, value: &mlua::Value) -> mlua::Result<mlua::String> {
 
 pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     let globals = lua.globals();
+
+    globals.set(
+        "traceback",
+        globals
+            .get::<mlua::Table>("debug")?
+            .get::<mlua::Function>("traceback")?,
+    )?;
+
     globals.set("go", lua.create_async_function(go)?)?;
     globals.set("select", lua.create_async_function(select)?)?;
 

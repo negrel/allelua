@@ -56,10 +56,11 @@ impl Runtime {
             | StdLib::TABLE
             | StdLib::PACKAGE
             | StdLib::BIT
-            | StdLib::STRING;
+            | StdLib::STRING
+            | StdLib::DEBUG;
 
         if safety == RuntimeSafetyLevel::Unsafe {
-            stdlib = stdlib | StdLib::FFI | StdLib::JIT | StdLib::DEBUG
+            stdlib = stdlib | StdLib::FFI | StdLib::JIT;
         }
 
         let vm = unsafe { Lua::unsafe_new_with(stdlib, LuaOptions::new()) };
@@ -96,10 +97,10 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
     handle_result(load_path(lua.clone()));
     handle_result(load_os(&lua, run_args));
     handle_result(load_error(lua.clone()));
-    handle_result(load_string(lua.clone()));
     handle_result(load_sync(lua.clone()));
-    handle_result(load_table(lua.clone()));
     handle_result(load_io(&lua));
+    handle_result(load_string(lua.clone()));
+    handle_result(load_table(lua.clone()));
     handle_result(load_sh(&lua));
     handle_result(load_time(lua.clone()));
     handle_result(register_globals(lua.clone()));
@@ -115,6 +116,10 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
         .load(chunk! {
             local package = require("package")
             local table = require("table")
+
+            // Hide debug module.
+            _G.debug = nil
+            package.loaded.debug = nil
 
             // Freeze modules.
             table.map(package.loaded, function(_k, v)

@@ -1,9 +1,4 @@
-use std::{
-    ffi::OsStr,
-    fs,
-    os::unix::ffi::OsStrExt,
-    path::{self, Path},
-};
+use std::{os::unix::ffi::OsStrExt, path::Path};
 
 use mlua::Lua;
 
@@ -17,14 +12,6 @@ pub fn load_package(lua: Lua, fpath: &Path) -> mlua::Result<()> {
     let patched_coroutine = lua.create_table()?;
     patched_coroutine.set("yield", coroutine.get::<mlua::Function>("yield")?)?;
     lua.globals().set("coroutine", patched_coroutine)?;
-
-    // Sync version of "path.canonicalize".
-    let path_canonicalize = lua.create_function(|lua, str: mlua::String| {
-        let str = str.as_bytes();
-        let path = path::Path::new(OsStr::from_bytes(&str));
-        let path = fs::canonicalize(path)?;
-        lua.create_string(path.as_os_str().as_bytes())
-    })?;
 
     // Returns source path of the caller.
     let caller_source =
@@ -43,5 +30,5 @@ pub fn load_package(lua: Lua, fpath: &Path) -> mlua::Result<()> {
 
     lua.load(include_lua!("./package.lua"))
         .eval::<mlua::Function>()?
-        .call((fpath, path_canonicalize, caller_source))
+        .call((fpath, caller_source))
 }

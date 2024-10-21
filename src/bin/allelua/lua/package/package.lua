@@ -1,4 +1,4 @@
-return function(main_path, path_canonicalize, caller_source)
+return function(main_path, caller_source)
 	local package = require("package")
 	local os = require("os")
 	local path = require("path")
@@ -37,11 +37,10 @@ return function(main_path, path_canonicalize, caller_source)
 			fpath = path.join(path.parent(caller_source(2)), fpath)
 		end
 
-		local ok, err = pcall(function()
-			fpath = path_canonicalize(fpath)
-		end)
+		local ok, fpath = pcall(path.canonicalize, fpath)
 		if not ok then
-			if err.kind == "NotFound" then
+			local err = fpath
+			if type(err) == "IoError" and err.kind == "NotFound" then
 				error("failed to find " .. modname)
 			else
 				error(err)

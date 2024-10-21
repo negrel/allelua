@@ -155,7 +155,7 @@ local function clone_impl()
 		return value_clone
 	end
 
-	clone_any = function(v, opts)
+	local clone_any = function(v, opts)
 		local v_mt = rawgetmetatable(v)
 		if is_table_like(v_mt) then
 			-- clone metamethod is defined
