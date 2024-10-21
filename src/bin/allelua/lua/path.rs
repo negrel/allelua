@@ -25,6 +25,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 "canonicalize",
                 lua.create_async_function(|lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
+                    let path = fs::canonicalize(path).await?;
                     lua.create_string(path.as_os_str().as_bytes())
                 })?,
             )?;
