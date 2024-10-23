@@ -167,6 +167,11 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
     )?;
 
     globals.set(
+        "__debug",
+        lua.create_function(|_lua, value: mlua::Value| Ok(format!("{value:?}")))?,
+    )?;
+
+    globals.set(
         "print",
         lua.create_async_function(move |lua, values: mlua::MultiValue| async move {
             let tostring = lua.globals().get::<mlua::Function>("tostring").unwrap();
@@ -204,10 +209,10 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
         })?,
     )?;
 
-    let clone_not_impl_err = LuaError::from(LuaCloneError::NotImplemented);
+    let clone_err = LuaError::from(LuaCloneError);
     lua.load(include_lua!("./globals.lua"))
         .eval::<mlua::Function>()?
-        .call::<()>((globals.clone(), clone_not_impl_err))?;
+        .call::<()>((globals.clone(), clone_err))?;
 
     Ok(())
 }
@@ -248,10 +253,8 @@ impl UserData for LuaUserDataMetadataTable {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum LuaCloneError {
-    #[error("__clone metamethod is not implemented")]
-    NotImplemented,
-}
+#[error("__clone metamethod is not implemented")]
+struct LuaCloneError;
 
 impl AlleluaError for LuaCloneError {
     fn type_name(&self) -> &'static str {
@@ -259,8 +262,6 @@ impl AlleluaError for LuaCloneError {
     }
 
     fn kind(&self) -> &'static str {
-        match self {
-            LuaCloneError::NotImplemented => "NotImplemented",
-        }
+        "NotImplemented"
     }
 }
