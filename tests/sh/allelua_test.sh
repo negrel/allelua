@@ -18,6 +18,12 @@ setup() {
 	grep "FAILED | 0 passed | 1 failed |" <<< "$output"
 }
 
+@test "allelua test infinite_test.lua" {
+	run -1 timeout 3 $ALLELUA test "$DIR"/data/infinite_test.lua
+	echo "$output"
+	grep "FAILED | 0 passed | 1 failed |" <<< "$output"
+}
+
 @test "allelua test success_test.lua" {
 	run -0 $ALLELUA test "$DIR"/data/success_test.lua
 	grep "test that succeed ... ok" <<< "$output"
