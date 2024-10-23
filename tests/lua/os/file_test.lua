@@ -63,11 +63,15 @@ end)
 t.test("open file for unbuffered I/O", function()
 	local tmp_path = temp_path()
 	-- Buffer size of 0 means unbuffered I/O.
-	local f = os.File.open(tmp_path, { create_new = true, buffer_size = 0 })
+	local f = os.File.open(
+		tmp_path,
+		{ create_new = true, read = true, write = true, buffer_size = 0 }
+	)
 
 	assert(f.read_line == nil)
 	f:close()
 
-	f = os.File.open(tmp_path, { create_new = true, buffer_size = 1 })
+	f = os.File.open(tmp_path, { read = true, write = true })
 	assert(f.read_line ~= nil)
+	f:close()
 end)

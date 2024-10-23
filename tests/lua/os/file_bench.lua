@@ -1,3 +1,4 @@
+local buffer = require("string.buffer")
 local os = require("os")
 local package = require("package")
 local path = require("path")
@@ -13,15 +14,27 @@ t.bench("read file line by line", function(b)
 			local line = f:read_line()
 			if not line then break end
 		end
+		f:close()
 	end
 end)
 
-t.bench("read file line by line unbufferd", function(b)
+t.bench("read file to end using io.Reader:read_to_end()", function(b)
 	for _i = 1, b.n do
-		local f = os.File.open(file_txt, { read = true, buffer_size = 0 })
-		while true do
-			local line = f:read_line()
-			if not line then break end
-		end
+		local f = os.File.open(file_txt, { read = true })
+		f:read_to_end()
+		f:close()
 	end
 end)
+
+t.bench(
+	"read file to end using io.Reader:read() and a LuaJIT buffer",
+	function(b)
+		for _i = 1, b.n do
+			local f = os.File.open(file_txt, { read = true })
+			local len = f:metadata().len
+			local buf = buffer.new(len)
+			f:read(buf, len)
+			f:close()
+		end
+	end
+)

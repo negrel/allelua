@@ -40,7 +40,6 @@ t.test("pass file as stdin of cat", function()
 
 	-- Exec cat with f as stdin.
 	local proc = os.exec("cat", { stdin = f, stdout = "piped" })
-	print("proc started...")
 
 	-- Read stdout.
 	local content = proc.stdout:read_to_end()
@@ -93,7 +92,10 @@ t.test("process pipes with buffer size of 0 are not buffered", function()
 end)
 
 t.test("process returns non zero exit code", function()
-	local proc = os.exec("ls", { args = { "/dir/that/doesn't/exist" } })
+	local proc = os.exec(
+		"ls",
+		{ args = { "/dir/that/doesn't/exist" }, stdout = "null", stderr = "null" }
+	)
 	local status = proc:wait()
 
 	assert(not status.success, "process should fail but didn't")
