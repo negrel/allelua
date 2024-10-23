@@ -60,7 +60,7 @@ t.test("read returns error on closed pipe", function()
 	go(writer.close, writer)
 
 	local ok, err = pcall(reader.read, reader, string.buffer.new())
-	assert(not ok and err.kind == "Closed")
+	assert(not ok and err:is(io.errors.closed))
 end)
 
 t.test("write returns error on closed pipe", function()
@@ -70,7 +70,7 @@ t.test("write returns error on closed pipe", function()
 	local buf = string.buffer.new()
 	buf:put("foo")
 	local ok, err = pcall(writer.write, writer, buf)
-	assert(not ok and err.kind == "Closed")
+	assert(not ok and err:is(io.errors.closed))
 end)
 
 t.test("reader:read_to_end() reads until pipe is closed", function()
