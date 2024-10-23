@@ -5,7 +5,7 @@ return function(M)
 	--- on the returned channel.
 	--- @param dur time.Duration
 	--- @returns sync.ChannelReceiver
-	M.after = function(dur)
+	M.after = function(go, dur)
 		local tx, rx = channel()
 		return rx, go(function()
 			M.sleep(dur)

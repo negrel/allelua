@@ -88,27 +88,33 @@ function M.__execute_test(file, name, test, opts)
 	-- selene: allow(unscoped_variables)
 	print = test_print(file, name) -- replace std print
 
-	local tx, rx = sync.channel()
-	local abort_test = go(function()
-		local results = { pcall(test) }
-		tx:send(results)
-		tx:close()
+	local success, error_msg
+	coroutine.nursery(function(go)
+		local tx, rx = sync.channel()
+
+		-- Start test.
+		local abort_test = go(function()
+			local results = { pcall(test) }
+			tx:send(results)
+			tx:close()
+		end)
+
+		-- Wait for timeout or end of test.
+		local timeout, abort_timeout = time.after(go, opts.timeout)
+		select {
+			[timeout] = function()
+				abort_test()
+				success = false
+				error_msg = "test timed out"
+			end,
+			[rx] = function(result)
+				abort_timeout()
+				success = result[1]
+				error_msg = result[2]
+			end,
+		}
 	end)
 
-	local success, error_msg
-	local timeout, abort_timeout = time.after(opts.timeout)
-	select {
-		[timeout] = function()
-			abort_test()
-			success = false
-			error_msg = "test timed out"
-		end,
-		[rx] = function(result)
-			abort_timeout()
-			success = result[1]
-			error_msg = result[2]
-		end,
-	}
 	print = real_print -- restore std print
 
 	local test_duration = start_instant:elapsed()
