@@ -180,16 +180,11 @@ local run_n = function(n, bench)
 	local b = { n = n }
 
 	-- Execute bench.
-	local success, error_msg = pcall(bench, b)
-	if not success then
-		print("\t", name, "...", "FAILED")
-		if error_msg then print(debug.traceback(error_msg)) end
-		print()
-	end
+	bench(b)
 
 	local after_mem = collectgarbage("count") * 1024
 
-	return success, after_mem - initial_mem
+	return after_mem - initial_mem
 end
 
 function M.__execute_bench(_file, name, bench, opts)
@@ -201,8 +196,9 @@ function M.__execute_bench(_file, name, bench, opts)
 	while dur < opts.bench_time do
 		local now = time.Instant.now()
 
-		local success, mem = run_n(op, bench)
+		local success, mem = pcall(run_n, op, bench)
 		if not success then
+			local error_msg = mem
 			print("\t", name, "...", "FAILED")
 			if error_msg then print(debug.traceback(error_msg)) end
 			print()
