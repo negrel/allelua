@@ -24,6 +24,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
         "path",
         lua.create_function(|lua, ()| {
             let table = lua.create_table()?;
+            lua.globals().set("path", table.clone())?;
 
             table.set(
                 "canonicalize",

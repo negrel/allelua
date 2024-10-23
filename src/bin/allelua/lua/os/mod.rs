@@ -24,6 +24,7 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
         "os",
         lua.create_function(move |lua, ()| {
             let os = lua.create_table()?;
+            lua.globals().set("os", os.clone())?;
 
             let file_constructors = lua.create_table()?;
             file_constructors.set("open", lua.create_async_function(open_file)?)?;

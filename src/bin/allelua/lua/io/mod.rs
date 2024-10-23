@@ -23,6 +23,7 @@ pub fn load_io(lua: &Lua) -> mlua::Result<mlua::Table> {
         "io",
         lua.create_function(|lua, ()| {
             let io = lua.create_table()?;
+            lua.globals().set("io", io.clone())?;
 
             let errors = lua.create_table()?;
             errors.set(

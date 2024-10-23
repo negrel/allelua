@@ -183,6 +183,7 @@ pub fn load_time(lua: Lua) -> mlua::Result<mlua::Table> {
         "time",
         lua.create_function(|lua, ()| {
             let time = lua.create_table()?;
+            lua.globals().set("time", time.clone())?;
 
             time.set("nanosecond", LuaDuration(time::Duration::from_nanos(1)))?;
             time.set("microsecond", LuaDuration(time::Duration::from_micros(1)))?;
