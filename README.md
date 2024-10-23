@@ -19,7 +19,7 @@ runtimes like Deno / NodeJS:
     * Stable, based on Lua 5.1 with a few 5.2 compatibility features
 * Easy concurrency:
     * No async/await
-    * Write concurrent code like single threaded code (using goroutines)
+    * Write concurrent code like single threaded code using structured concurrency
 * Secure by default (**planned**)
 * Batteries included:
     * Linter
@@ -40,15 +40,20 @@ standalone use.
 
 Here are a few examples:
 
-### Goroutine
+### Structured concurrency
 
-A goroutine is a lightweight thread managed by the `allelua` runtime.
+`allelua` supports structured concurrency built on top of Tokio. If you're
+unfamiliar with structured concurrency and why unstructured concurrency isn't
+supported read this article:
+[Notes on structured concurrency, or: Go statement considered harmful](https://vorpus.org/blog/notes-on-structured-concurrency-or-go-statement-considered-harmful/)
 
 ```lua
-go(f, x, y, z)
--- or
-go(function()
-    f(x, y, z)
+coroutine.nursery(function(go)
+    go(f, x, y, z)
+    -- or
+    go(function()
+        f(x, y, z)
+    end)
 end)
 ```
 
@@ -58,18 +63,24 @@ starts a new goroutine running
 f(x, y, z)
 ```
 
+A goroutine is a lightweight thread managed by the `allelua` runtime. But unlike,
+Go's goroutine, they can only be spawned in `coroutine.nursery()` function. Also
+when `coroutine.nursery()` returns, all goroutines have finished to execute.
+
 Here is an example proving that goroutines runs concurrently:
 
 ```lua
 local time = require("time")
 
-local now = time.Instant:now()
-for i = 1, 3 do
-	go(function()
-		time.sleep(i * time.second)
-		print("goroutine", i, "done in", now:elapsed())
-	end)
-end
+coroutine.nursery(function(go)
+    local now = time.Instant:now()
+    for i = 1, 3 do
+        go(function()
+            time.sleep(1 * time.second)
+            print("goroutine", i, "done in", now:elapsed())
+        end)
+    end
+end)
 ```
 
 prints
