@@ -12,6 +12,7 @@ use crate::{
             self, add_io_buf_read_methods, add_io_read_methods, add_io_seek_methods,
             add_io_write_close_methods, Closable, MaybeBuffered,
         },
+        path::LuaMetadata,
         LuaInterface,
     },
     lua_string_as_path,
@@ -92,6 +93,16 @@ where
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         Self::add_interface_methods(methods);
+
+        methods.add_async_method("metadata", |_lua, file, ()| async move {
+            let mut file = file.as_ref().get().await?;
+            let t: &mut T = &mut file;
+            let file = MaybeBuffered::<File>::get_mut(t);
+
+            let metadata = file.get_ref().metadata().await?;
+
+            Ok(LuaMetadata(metadata))
+        });
 
         methods.add_async_method("sync", |_lua, file, ()| async move {
             let mut file = file.as_ref().get().await?;

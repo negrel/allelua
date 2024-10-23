@@ -1,11 +1,12 @@
 use std::{
     ffi::OsStr,
     fs::Metadata,
+    ops::Deref,
     os::unix::{ffi::OsStrExt, fs::FileTypeExt},
     path::{self, Path},
 };
 
-use mlua::{FromLua, Lua};
+use mlua::{FromLua, Lua, MetaMethod, UserData};
 use tokio::fs;
 
 use crate::lua::io;
@@ -39,6 +40,16 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                     lua_string_as_path!(path = str);
                     fs::try_exists(path).await.map_err(io::LuaError::from)?;
                     Ok(())
+                })?,
+            )?;
+
+            table.set(
+                "metadata",
+                lua.create_async_function(|_lua, str: mlua::String| async move {
+                    lua_string_as_path!(path = str);
+                    let metadata = metadata(path).await?;
+
+                    Ok(LuaMetadata(metadata))
                 })?,
             )?;
 
@@ -235,4 +246,70 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
 
 async fn metadata(path: &Path) -> Result<Metadata, io::LuaError> {
     fs::metadata(path).await.map_err(io::LuaError::from)
+}
+
+#[derive(Debug)]
+pub struct LuaMetadata(pub Metadata);
+
+impl Deref for LuaMetadata {
+    type Target = Metadata;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl UserData for LuaMetadata {
+    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("len", |_, metadata| Ok(metadata.len()));
+        fields.add_field_method_get("is_file", |_, metadata| Ok(metadata.is_file()));
+        fields.add_field_method_get("is_dir", |_, metadata| Ok(metadata.is_dir()));
+        fields.add_field_method_get("is_symlink", |_, metadata| Ok(metadata.is_symlink()));
+
+        if cfg!(unix) {
+            fields.add_field_method_get("is_block_device", |_, metadata| {
+                Ok(metadata.file_type().is_block_device())
+            });
+            fields.add_field_method_get("is_char_device", |_, metadata| {
+                Ok(metadata.file_type().is_char_device())
+            });
+            fields.add_field_method_get("is_socket", |_, metadata| {
+                Ok(metadata.file_type().is_socket())
+            });
+            fields
+                .add_field_method_get("is_fifo", |_, metadata| Ok(metadata.file_type().is_fifo()));
+        }
+
+        fields.add_field_method_get("file_type", |_, metadata| {
+            let ft = metadata.file_type();
+            if ft.is_file() {
+                Ok("file")
+            } else if ft.is_dir() {
+                Ok("dir")
+            } else if cfg!(unix) {
+                if ft.is_symlink() {
+                    Ok("symlink")
+                } else if ft.is_block_device() {
+                    Ok("block_device")
+                } else if ft.is_char_device() {
+                    Ok("char_device")
+                } else if ft.is_socket() {
+                    Ok("socket")
+                } else if ft.is_fifo() {
+                    Ok("fifo")
+                } else {
+                    Ok("unknown")
+                }
+            } else {
+                Ok("unknown")
+            }
+        });
+    }
+
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_meta_method(MetaMethod::ToString, |_, metadata, ()| {
+            let address = metadata as *const _ as usize;
+            Ok(format!("Metadata 0x{address:x}"))
+        });
+    }
 }
