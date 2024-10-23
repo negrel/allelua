@@ -793,10 +793,11 @@ dependencies = [
 
 [[package]]
 name = "mlua"
-version = "0.10.0-beta.2"
-source = "git+https://github.com/mlua-rs/mlua?rev=a3ca95fc8ff982c1b0fbe853d9003900ea55c188#a3ca95fc8ff982c1b0fbe853d9003900ea55c188"
+version = "0.10.0-rc.1"
+source = "git+https://github.com/mlua-rs/mlua?rev=8d8d521721eaaf8a15792ef517889dd69bb6889e#8d8d521721eaaf8a15792ef517889dd69bb6889e"
 dependencies = [
  "bstr",
+ "either",
  "futures-util",
  "mlua-sys",
  "mlua_derive",
@@ -807,8 +808,8 @@ dependencies = [
 
 [[package]]
 name = "mlua-sys"
-version = "0.6.3"
-source = "git+https://github.com/mlua-rs/mlua?rev=a3ca95fc8ff982c1b0fbe853d9003900ea55c188#a3ca95fc8ff982c1b0fbe853d9003900ea55c188"
+version = "0.6.4"
+source = "git+https://github.com/mlua-rs/mlua?rev=8d8d521721eaaf8a15792ef517889dd69bb6889e#8d8d521721eaaf8a15792ef517889dd69bb6889e"
 dependencies = [
  "cc",
  "cfg-if",
@@ -817,8 +818,8 @@ dependencies = [
 
 [[package]]
 name = "mlua_derive"
-version = "0.10.0-beta.1"
-source = "git+https://github.com/mlua-rs/mlua?rev=a3ca95fc8ff982c1b0fbe853d9003900ea55c188#a3ca95fc8ff982c1b0fbe853d9003900ea55c188"
+version = "0.10.0-rc.1"
+source = "git+https://github.com/mlua-rs/mlua?rev=8d8d521721eaaf8a15792ef517889dd69bb6889e#8d8d521721eaaf8a15792ef517889dd69bb6889e"
 dependencies = [
  "itertools",
  "once_cell",

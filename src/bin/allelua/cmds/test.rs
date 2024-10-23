@@ -1,5 +1,5 @@
-use anyhow::{bail, Context};
-use mlua::chunk;
+use anyhow::bail;
+use mlua::{chunk, ErrorContext};
 use std::{
     env,
     path::{self, PathBuf},
@@ -47,7 +47,7 @@ pub fn test(paths: Vec<PathBuf>) -> anyhow::Result<()> {
                     let local = task::LocalSet::new();
                     let test_suite_ok = local
                         .run_until(async {
-                            runtime.exec::<()>(fpath.clone()).await.with_context(|| {
+                            runtime.exec::<()>(fpath.clone()).await.with_context(|_| {
                                 format!("failed to load lua test file {fpath:?}")
                             })?;
 
@@ -57,7 +57,7 @@ pub fn test(paths: Vec<PathBuf>) -> anyhow::Result<()> {
                                     return test.__execute_test_suite()
                                 })
                                 .await
-                                .with_context(|| {
+                                .with_context(|_| {
                                     format!("failed to execute test suite of lua file {fpath:?}",)
                                 })
                         })
