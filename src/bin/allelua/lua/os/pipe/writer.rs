@@ -76,7 +76,7 @@ where
     Self: LuaInterface,
 {
     fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "PipeWriter");
+        fields.add_field("__type", "os.PipeWriter");
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {

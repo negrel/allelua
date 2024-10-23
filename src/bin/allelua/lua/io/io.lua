@@ -133,8 +133,8 @@ return function(M)
 		self:seek(seek_from_beginning)
 	end
 
-	M.PipeReader = { __type = "PipeReader" }
-	M.PipeWriter = { __type = "PipeWriter" }
+	M.PipeReader = { __type = "io.PipeReader" }
+	M.PipeWriter = { __type = "io.PipeWriter" }
 
 	function M.pipe()
 		local wrTx, wrRx = sync.channel()

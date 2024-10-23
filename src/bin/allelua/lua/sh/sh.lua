@@ -6,7 +6,7 @@ return function()
 
 	local M = {}
 
-	M.Error = { __type = "CommandError" }
+	M.Error = { __type = "sh.CommandError" }
 
 	function M.Error:new(cmd, proc, status)
 		local err = { cmd = cmd, proc = proc, status = status }
@@ -34,7 +34,7 @@ return function()
 		end,
 	})
 
-	local Command = { __type = "Command" }
+	local Command = { __type = "sh.Command" }
 
 	function Command:__index(k)
 		-- Looking for property.

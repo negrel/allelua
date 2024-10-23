@@ -80,7 +80,7 @@ return function(Regex, extra)
 
 	-- Buffer is a wrapper around string.buffer that implements io.Reader,
 	-- io.Writer, io.ReaderFrom and io.WriterTo.
-	M.Buffer = { __type = "Buffer" }
+	M.Buffer = { __type = "string.Buffer" }
 	M.Buffer.__index = M.Buffer
 
 	function M.Buffer.new(...)
