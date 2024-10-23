@@ -4,7 +4,6 @@ use std::{
 };
 
 use mlua::ErrorContext;
-use tokio::task;
 
 use crate::lua::{Runtime, RuntimeSafetyLevel};
 
@@ -18,14 +17,10 @@ pub fn run(fpath: PathBuf, run_args: Vec<OsString>) -> anyhow::Result<()> {
             let runtime = Runtime::new(&fpath, run_args, RuntimeSafetyLevel::Safe);
 
             // Execute code.
-            let local = task::LocalSet::new();
-            local
-                .run_until(runtime.exec(fpath.clone()))
+            runtime
+                .exec(fpath.clone())
                 .await
                 .with_context(|_| format!("failed to run lua file {:?}", fpath))?;
-
-            // Wait for background tasks.
-            local.await;
 
             Ok(())
         })

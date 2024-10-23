@@ -2,6 +2,7 @@ local t = require("test")
 
 t.test("std module are available in _G", function()
 	local stdmodules = {
+		"coroutine",
 		"error",
 		"io",
 		"os",

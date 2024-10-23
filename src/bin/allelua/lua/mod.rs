@@ -4,11 +4,12 @@ use error::load_error;
 use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
 
 use self::{
-    globals::register_globals, io::load_io, os::load_os, package::load_package, path::load_path,
-    sh::load_sh, string::load_string, sync::load_sync, table::load_table, test::load_test,
-    time::load_time,
+    coroutine::load_coroutine, globals::register_globals, io::load_io, os::load_os,
+    package::load_package, path::load_path, sh::load_sh, string::load_string, sync::load_sync,
+    table::load_table, test::load_test, time::load_time,
 };
 
+mod coroutine;
 mod error;
 mod globals;
 mod io;
@@ -100,6 +101,7 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
     handle_result(load_sync(lua.clone()));
     handle_result(load_io(&lua));
     handle_result(load_string(lua.clone()));
+    handle_result(load_coroutine(lua.clone()));
     handle_result(load_table(lua.clone()));
     handle_result(load_sh(&lua));
     handle_result(load_time(lua.clone()));

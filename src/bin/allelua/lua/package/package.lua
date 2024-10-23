@@ -21,9 +21,6 @@ return function(main_path, path_canonicalize, caller_source)
 		})
 	end
 
-	-- Remove coroutine.
-	package.loaded.coroutine = nil
-
 	-- Remove path and cpath in favor of homemade searchers.
 	package.path = ""
 	package.cpath = ""

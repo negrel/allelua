@@ -1,15 +1,11 @@
 use std::{
     future::{poll_fn, Future},
     pin::Pin,
-    sync::atomic::AtomicUsize,
     task::Poll,
 };
 
-use mlua::{
-    AnyUserData, FromLua, IntoLua, Lua, MetaMethod, ObjectLike, UserData, UserDataMetatable,
-};
+use mlua::{AnyUserData, FromLua, IntoLua, Lua, ObjectLike, UserData, UserDataMetatable};
 use nanorand::Rng;
-use tokio::task::AbortHandle;
 
 use crate::include_lua;
 
@@ -17,43 +13,6 @@ use super::{
     error::{AlleluaError, LuaError},
     sync::{BufferedQueue, ChannelReceiver, LuaChannelReceiver, UnbufferedQueue},
 };
-
-static GOROUTINE_ID: AtomicUsize = AtomicUsize::new(1);
-
-#[derive(Debug)]
-pub struct LuaAbortHandle(AbortHandle, usize);
-
-impl UserData for LuaAbortHandle {
-    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("id", |_lua, abort| Ok(abort.1))
-    }
-
-    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(MetaMethod::ToString, |lua, abort, ()| {
-            lua.create_string(format!("AbortHandle(id={})", abort.1))
-        });
-
-        methods.add_meta_method(MetaMethod::Call, |_lua, abort, ()| {
-            abort.0.abort();
-            Ok(())
-        })
-    }
-}
-
-async fn go(
-    _lua: Lua,
-    (func, args): (mlua::Function, mlua::MultiValue),
-) -> mlua::Result<LuaAbortHandle> {
-    let fut = func.call_async::<()>(args);
-    let goroutine_id = GOROUTINE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let handle = tokio::task::spawn_local(async move {
-        if let Err(err) = fut.await {
-            eprintln!("goroutine {goroutine_id}: {err}");
-        }
-    });
-
-    Ok(LuaAbortHandle(handle.abort_handle(), goroutine_id))
-}
 
 async fn select(lua: Lua, table: mlua::Table) -> mlua::Result<()> {
     let default_callback = table.get::<Option<mlua::Function>>("default")?;
@@ -155,7 +114,6 @@ pub fn register_globals(lua: Lua) -> mlua::Result<()> {
             .get::<mlua::Function>("traceback")?,
     )?;
 
-    globals.set("go", lua.create_async_function(go)?)?;
     globals.set("select", lua.create_async_function(select)?)?;
 
     let rawtype = globals.get::<mlua::Function>("type")?;

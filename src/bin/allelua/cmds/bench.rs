@@ -4,7 +4,6 @@ use std::{
     env,
     path::{self, PathBuf},
 };
-use tokio::task;
 use walkdir::WalkDir;
 
 use crate::lua::{Runtime, RuntimeSafetyLevel};
@@ -54,29 +53,25 @@ pub fn bench(paths: Vec<PathBuf>) -> anyhow::Result<()> {
                 .expect("Failed building the tokio Runtime")
                 .block_on(async {
                     // Execute code.
-                    let local = task::LocalSet::new();
-                    let bench_suite_ok = local
-                        .run_until(async {
-                            runtime.exec::<()>(fpath.clone()).await.with_context(|| {
-                                format!("failed to load lua bench file {fpath:?}")
-                            })?;
+                    let bench_suite_ok = async {
+                        runtime
+                            .exec::<()>(fpath.clone())
+                            .await
+                            .with_context(|| format!("failed to load lua bench file {fpath:?}"))?;
 
-                            runtime
-                                .exec::<bool>(chunk! {
-                                    local test = require("test")
-                                    return test.__execute_bench_suite()
-                                })
-                                .await
-                                .with_context(|| {
-                                    format!("failed to execute bench suite of lua file {fpath:?}",)
-                                })
-                        })
-                        .await?;
+                        runtime
+                            .exec::<bool>(chunk! {
+                                local test = require("test")
+                                return test.__execute_bench_suite()
+                            })
+                            .await
+                            .with_context(|| {
+                                format!("failed to execute bench suite of lua file {fpath:?}",)
+                            })
+                    }
+                    .await?;
 
                     all_bench_suite_ok &= bench_suite_ok;
-
-                    // Wait for background tasks.
-                    local.await;
 
                     Ok::<_, anyhow::Error>(())
                 })?;

@@ -4,7 +4,6 @@ use std::{
     env,
     path::{self, PathBuf},
 };
-use tokio::task;
 use walkdir::WalkDir;
 
 use crate::lua::{Runtime, RuntimeSafetyLevel};
@@ -44,29 +43,25 @@ pub fn test(paths: Vec<PathBuf>) -> anyhow::Result<()> {
                 .expect("Failed building the tokio Runtime")
                 .block_on(async {
                     // Execute code.
-                    let local = task::LocalSet::new();
-                    let test_suite_ok = local
-                        .run_until(async {
-                            runtime.exec::<()>(fpath.clone()).await.with_context(|_| {
-                                format!("failed to load lua test file {fpath:?}")
-                            })?;
+                    let test_suite_ok = async {
+                        runtime
+                            .exec::<()>(fpath.clone())
+                            .await
+                            .with_context(|_| format!("failed to load lua test file {fpath:?}"))?;
 
-                            runtime
-                                .exec::<bool>(chunk! {
-                                    local test = require("test")
-                                    return test.__execute_test_suite()
-                                })
-                                .await
-                                .with_context(|_| {
-                                    format!("failed to execute test suite of lua file {fpath:?}",)
-                                })
-                        })
-                        .await?;
+                        runtime
+                            .exec::<bool>(chunk! {
+                                local test = require("test")
+                                return test.__execute_test_suite()
+                            })
+                            .await
+                            .with_context(|_| {
+                                format!("failed to execute test suite of lua file {fpath:?}",)
+                            })
+                    }
+                    .await?;
 
                     all_test_suite_ok &= test_suite_ok;
-
-                    // Wait for background tasks.
-                    local.await;
 
                     Ok::<_, anyhow::Error>(())
                 })?;
