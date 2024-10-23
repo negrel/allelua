@@ -1,12 +1,12 @@
-use std::{io, ops::Deref, sync::Arc};
+use std::{io, ops::Deref};
 
 use mlua::{FromLua, UserData};
 use thiserror::Error;
 
-use crate::lua::error::AlleluaError;
+use crate::lua::error::{self, AlleluaError};
 
 #[derive(Debug, Error)]
-#[error(transparent)]
+#[error("io.Error(kind={} message={:?})", self.kind(), self.0.to_string())]
 pub struct LuaError(#[from] pub io::Error);
 
 impl Deref for LuaError {
@@ -19,13 +19,13 @@ impl Deref for LuaError {
 
 impl From<LuaError> for mlua::Error {
     fn from(val: LuaError) -> Self {
-        mlua::Error::external(Box::new(Arc::new(val)))
+        error::LuaError::from(val).into()
     }
 }
 
 impl AlleluaError for LuaError {
     fn type_name(&self) -> &'static str {
-        "IoError"
+        "io.Error"
     }
 
     fn kind(&self) -> &'static str {
@@ -57,7 +57,7 @@ impl AlleluaError for LuaError {
 
 impl UserData for LuaError {
     fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "IoError")
+        fields.add_field("__type", "io.Error")
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {

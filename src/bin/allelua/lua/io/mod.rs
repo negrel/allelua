@@ -1,6 +1,6 @@
 use std::slice;
 
-use mlua::{AnyUserData, FromLua, Lua, ObjectLike, UserData};
+use mlua::{AnyUserData, FromLua, IntoLua, Lua, ObjectLike, UserData};
 
 use crate::include_lua;
 
@@ -12,6 +12,7 @@ mod seeker;
 mod writer;
 
 pub use closer::*;
+pub use error::*;
 pub use maybe_buffered::*;
 pub use reader::*;
 pub use seeker::*;
@@ -23,7 +24,12 @@ pub fn load_io(lua: &Lua) -> mlua::Result<mlua::Table> {
         lua.create_function(|lua, ()| {
             let io = lua.create_table()?;
 
-            io.set("ClosedError", mlua::Error::from(LuaIoClosedError))?;
+            let errors = lua.create_table()?;
+            errors.set(
+                "closed",
+                super::error::LuaError::from(LuaIoClosedError).into_lua(lua)?,
+            )?;
+            io.set("errors", errors)?;
 
             let seek_from_constructors = lua.create_table()?;
             seek_from_constructors.set(

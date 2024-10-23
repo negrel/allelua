@@ -13,7 +13,7 @@ pub struct LuaIoClosedError;
 
 impl AlleluaError for LuaIoClosedError {
     fn type_name(&self) -> &'static str {
-        "IoError"
+        "io.Error"
     }
 
     fn kind(&self) -> &'static str {
