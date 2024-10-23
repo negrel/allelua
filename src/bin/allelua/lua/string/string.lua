@@ -1,5 +1,7 @@
 return function(Regex, extra)
 	local buffer = require("string.buffer")
+	local io = require("io")
+	local math = require("math")
 	local string = require("string")
 	local M = string
 
@@ -75,6 +77,86 @@ return function(Regex, extra)
 	for k, v in pairs(extra) do
 		M[k] = v
 	end
+
+	-- Buffer is a wrapper around string.buffer that implements io.Reader,
+	-- io.Writer, io.ReaderFrom and io.WriterTo.
+	M.Buffer = { __type = "Buffer" }
+	M.Buffer.__index = M.Buffer
+
+	function M.Buffer.new(...)
+		local buf = { inner = buffer.new(...) }
+		setmetatable(buf, M.Buffer)
+		return buf
+	end
+
+	function M.Buffer:reset()
+		self.inner:reset()
+	end
+
+	function M.Buffer:free()
+		self.inner:free()
+	end
+
+	function M.Buffer:read(buf)
+		local _, available = buf:reserve(0)
+		local ptr, len = self.inner:ref()
+		local read = math.min(available, len)
+		buf:putcdata(ptr, read)
+		self.inner:skip(read)
+		return read
+	end
+	function M.Buffer:read_to_end()
+		return self.inner:get()
+	end
+
+	function M.Buffer:write_to(writer)
+		io.write_all(writer, self.inner)
+		self:skip(#self)
+	end
+
+	function M.Buffer:write(buf)
+		self.inner:put(buf)
+		return #buf
+	end
+	M.Buffer.write_string = io.write_string
+	M.Buffer.write_all = io.write_all
+
+	function M.Buffer:read_from(reader)
+		local chunk_size = math.max(self:available(), 4096)
+
+		while true do
+			self.inner:reserve(chunk_size)
+			local ok, read = pcall(reader.read, reader, self.inner)
+			if not ok then
+				local err = read
+				if err:is(io.errors.closed) then break end
+				error(err)
+			end
+			if read == 0 then break end
+		end
+	end
+
+	function M.Buffer:available()
+		local _, len = self.inner:reserve(0)
+		return len
+	end
+
+	function M.Buffer:reserve(n)
+		self.inner:reserve(n)
+	end
+
+	function M.Buffer:skip(n)
+		self.inner:skip(n)
+	end
+
+	function M.Buffer:__len()
+		return #self.inner
+	end
+
+	function M.Buffer:tostring()
+		return self.inner:tostring()
+	end
+	M.Buffer.__tostring = M.Buffer.tostring
 
 	return {
 		__index = M,
