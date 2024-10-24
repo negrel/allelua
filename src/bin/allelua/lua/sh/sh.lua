@@ -27,13 +27,6 @@ return function()
 		return str
 	end
 
-	setmetatable(M, {
-		__index = function(t, k)
-			if rawget(t, k) then return rawget(t, k) end
-			return M.command(k)
-		end,
-	})
-
 	local Command = { __type = "sh.Command" }
 
 	function Command:__index(k)
@@ -44,12 +37,12 @@ return function()
 		if k:has_prefix("_") then return nil end
 
 		-- This command is piped into another command.
-		local cmd = Command:_new(k)
+		local cmd = Command:_new(k, self._sh)
 		return self:pipe(cmd)
 	end
 
-	function Command:_new(name)
-		local cmd = { _name = name, _args = {} }
+	function Command:_new(name, sh)
+		local cmd = { _name = name, _args = {}, _sh = sh }
 		setmetatable(cmd, self)
 		return cmd
 	end
@@ -57,9 +50,8 @@ return function()
 	function Command:__call(...)
 		local args = { ... }
 
-		-- args[1] (cmd1) is a Command passed as args on cmd1():cmd2(...)
-		-- I'm not sure if this is a Lua bug nevertheless this line fixes it.
-		if type(args[1]) == "Command" then table.shift(args) end
+		-- removes args[1] if it is a Command. This happen when you do cmd1(...):cmd2(...)
+		if type(args[1]) == "sh.Command" then table.shift(args) end
 
 		self:_prepare_args(args)
 
@@ -94,7 +86,8 @@ return function()
 	end
 
 	function Command:__tostring()
-		local cmd = self._name .. " " .. table.concat(self._args, " ")
+		local quoted_args = table.map_values(self._args, string.quote)
+		local cmd = self._name .. " " .. table.concat(quoted_args, " ")
 		if self._stdin then return tostring(self._stdin) .. " | " .. cmd end
 		return cmd
 	end
@@ -104,7 +97,7 @@ return function()
 		if self._proc then return self._proc end
 
 		local stdin = "inherit"
-		if type(self._stdin) == "Command" then
+		if type(self._stdin) == "sh.Command" then
 			stdin = "piped"
 		elseif rawtype(self._stdin) == "string" then
 			stdin = self._stdin
@@ -113,12 +106,12 @@ return function()
 		end
 
 		local stdout = self._stdout or "piped"
-		if type(self._stdout) == "Command" then
+		if type(self._stdout) == "sh.Command" then
 			stdout = self._stdout._proc.stdin
 		end
 
 		local stderr = self._stderr or "piped"
-		if type(self._stderr) == "Command" then
+		if type(self._stderr) == "sh.Command" then
 			-- stderr and stdout are redirected to the same stream.
 			-- Rust stdlib Command doesn't support this so we use a piped stderr
 			-- and we manually copy stderr to process stdin.
@@ -138,32 +131,32 @@ return function()
 		)
 
 		-- Execute input process.
-		if type(self._stdin) == "Command" and self._proc.stdin then
+		if type(self._stdin) == "sh.Command" and self._proc.stdin then
 			self._stdin:exec()
 		elseif
 			self._stdin
-			and type(self._stdin) ~= "Command"
+			and type(self._stdin) ~= "sh.Command"
 			and stdin == "piped"
 		then
-			go(io.copy, self._stdin, self._proc.stdin, { close = true })
+			self._sh.go(io.copy, self._stdin, self._proc.stdin, { close = true })
 		end
 
 		-- copy stdout to configured writer.
 		if
 			self._stdout
-			and type(self._stdout) ~= "Command"
+			and type(self._stdout) ~= "sh.Command"
 			and stdout == "piped"
 		then
-			go(io.copy, self._proc.stdout, self._stdout, { close = true })
+			self._sh.go(io.copy, self._proc.stdout, self._stdout, { close = true })
 		end
 
 		-- copy stderr to configured writer.
 		if
 			self._stderr
-			and type(self._stderr) ~= "Command"
+			and type(self._stderr) ~= "sh.Command"
 			and stderr == "piped"
 		then
-			go(io.copy, self._proc.stderr, self._stderr, { close = true })
+			self._sh.go(io.copy, self._proc.stderr, self._stderr, { close = true })
 		end
 
 		return self._proc
@@ -231,8 +224,16 @@ return function()
 		return nil
 	end
 
-	M.command = function(name)
-		return Command:_new(name)
+	function M.new(go)
+		assert(rawtype(go) == "function", "go isn't a function")
+		local sh = { go = go }
+		setmetatable(sh, {
+			__index = function(t, k)
+				if M[k] then return M[k] end
+				return Command:_new(k, sh)
+			end,
+		})
+		return sh
 	end
 
 	return M

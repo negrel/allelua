@@ -106,18 +106,21 @@ own standard library with handy modules such as `sh` that provides a DSL for
 shell scripting:
 
 ```shell
-local sh = require("sh")
+local os = require("os")
 
--- Pipe ls stdout into tr.
--- ls -l | tr [a-z] [A-Z]
-local output = sh.ls("-l"):tr("[a-z]", "[A-Z]"):output()
-print(output)
+coroutine.nursery(function(go)
+    local sh = require("sh").new(go)
 
--- Pass io.Reader as stdin.
--- You can also redirect stdout and stderr to io.Writer.
-local f = os.File.open("/path/to/file", { read = true })
-local output = tr({ stdin = f }, "[a-z]", "[A-Z]"):output()
-print(output)
+    -- Pipe ls stdout into tr.
+    -- ls -l | tr [a-z] [A-Z]
+    local output = sh.ls("-l"):tr("[a-z]", "[A-Z]"):output()
+
+    -- Pass io.Reader as stdin.
+    -- You can also redirect stdout and stderr to io.Writer.
+    local f = os.File.open("/path/to/file", { read = true })
+    output = tr({ stdin = f }, "[a-z]", "[A-Z]"):output()
+    print(output)
+end)
 ```
 
 ## Contributing

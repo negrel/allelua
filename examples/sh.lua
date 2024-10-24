@@ -1,7 +1,10 @@
-local package = require("package")
 local os = require("os")
-local sh = require("sh")
+local package = require("package")
 
-local f = os.File.open(package.meta.path, { read = true })
+coroutine.nursery(function(go)
+	local sh = require("sh").new(go)
 
-print(sh.tr("[a-z]", "[A-Z]"):tr("[A-Z]", "[a-z]"):output())
+	local f = os.File.open(package.meta.path, { read = true })
+
+	print(sh.tr({ stdin = f }, "[a-z]", "[A-Z]"):tr('"', "'"):output())
+end)
