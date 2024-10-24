@@ -74,6 +74,10 @@ return function(Regex, extra)
 		return regex_or_escaped_regex(pattern):is_match(str)
 	end
 
+	M.quote = function(str)
+		return ("%q"):format(str)
+	end
+
 	for k, v in pairs(extra) do
 		M[k] = v
 	end

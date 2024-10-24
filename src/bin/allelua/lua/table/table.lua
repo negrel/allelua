@@ -54,6 +54,19 @@ return function(is_empty)
 		return result
 	end
 
+	M.map_keys = function(t, map_fn)
+		return M.map(t, function(k, v)
+			k = map_fn(k)
+			return k, v
+		end)
+	end
+	M.map_values = function(t, map_fn)
+		return M.map(t, function(k, v)
+			v = map_fn(v)
+			return k, v
+		end)
+	end
+
 	M.deep_eq = function(a, b, seen)
 		if a == b then return true end
 
