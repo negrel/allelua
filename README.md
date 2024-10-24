@@ -15,8 +15,9 @@ runtimes like Deno / NodeJS:
 
 * Fast and resources efficient: LuaJIT is extremely fast and lightweight.
 * Simple:
-    * Lua is a lot simpler than other scripting language.
-    * Stable, based on Lua 5.1 with a few 5.2 compatibility features
+    * Lua is a lot simpler than other scripting language
+    * Stable, based on Lua 5.1 with a few 5.2 compatibility features, core language
+    won't change or will remains 100% compatible
 * Easy concurrency:
     * No async/await
     * Write concurrent code like single threaded code using structured concurrency
@@ -30,6 +31,7 @@ runtimes like Deno / NodeJS:
     * Test runner
     * Benchmarking tool
     * Documentation generator (**wip**)
+    * Type checker (**wip**)
 * FFI support (**planned**)
 
 Our goal is to transform Lua, originally designed as an embeddable scripting
