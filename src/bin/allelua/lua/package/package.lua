@@ -2,6 +2,7 @@ return function(main_path, path_canonicalize, caller_source)
 	local package = require("package")
 	local os = require("os")
 	local path = require("path")
+	local string = require("string")
 
 	local M = package
 

@@ -26,10 +26,9 @@ pub fn load_package(lua: Lua, fpath: &Path) -> mlua::Result<()> {
         lua.create_function(|lua, lvl: usize| match lua.inspect_stack(lvl + 1) {
             Some(debug) => match debug.source() {
                 mlua::DebugSource {
-                    short_src: Some(short_src),
-                    ..
+                    source: Some(src), ..
                 } => Ok(mlua::Value::String(
-                    lua.create_string(short_src.as_bytes())?,
+                    lua.create_string(src.trim_start_matches('@').as_bytes())?,
                 )),
                 _ => Ok(mlua::Value::Nil),
             },
