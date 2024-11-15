@@ -123,6 +123,10 @@ impl TypeChecker {
         }
     }
 
+    fn lookup_type_string(&self, id: TypeId) -> Result<String, TypeCheckError> {
+        self.lookup_type(id).map(|t| t.to_string())
+    }
+
     /// Transform given type to it's formatted string representation.
     pub fn fmt(&self, t: &Type) -> String {
         self.environment().replace_type_ids(t.to_string())
@@ -305,7 +309,7 @@ impl TypeChecker {
 
                     if let Err(reason) = self.can_assign(source_f_type, f_type) {
                         reasons.push(TypeCheckError::IncompatibleFieldType {
-                            field_name: f_name.to_owned(),
+                            field_name: self.lookup_type_string(*f_name)?,
                             source: Box::new(reason),
                         })
                     }
@@ -314,7 +318,7 @@ impl TypeChecker {
                     // Field is required but missing in source.
                     if self.can_assign(&Type::NIL, f_type).is_err() {
                         reasons.push(TypeCheckError::RequiredFieldMissing {
-                            field_name: f_name.to_owned(),
+                            field_name: self.lookup_type_string(*f_name)?,
                             field_type: f_type,
                         })
                     }
@@ -343,7 +347,7 @@ impl TypeChecker {
     fn normalize_union<'a>(&'a mut self, u: &'a UnionType) -> &'a Type {
         let mut type_ids = Vec::new();
 
-        type_ids = Self::normalize_union_types(&self.env, &u.types, type_ids);
+        type_ids = self.normalize_union_types(&u.types, type_ids);
         match type_ids.len() {
             0 => &Type::Never,
             1 => self.env.lookup(type_ids[0]).unwrap(),
@@ -354,11 +358,7 @@ impl TypeChecker {
         }
     }
 
-    fn normalize_union_types(
-        env: &TypeEnvironment,
-        ids: &Vec<TypeId>,
-        mut result: Vec<TypeId>,
-    ) -> Vec<TypeId> {
+    fn normalize_union_types(&self, ids: &Vec<TypeId>, mut result: Vec<TypeId>) -> Vec<TypeId> {
         // Any as priority over unknown so we check it first.
         if ids.contains(&TypeId::ANY) {
             return vec![TypeId::ANY];
@@ -370,7 +370,7 @@ impl TypeChecker {
                 continue;
             }
 
-            let t = env.lookup(*type_id).unwrap();
+            let t = self.env.lookup(*type_id).unwrap();
             match t {
                 Type::Never => continue,
                 Type::Literal { kind, .. } => {
@@ -385,7 +385,7 @@ impl TypeChecker {
                     kind: primitive_kind,
                     ..
                 } => {
-                    Self::filter_types(env, &mut result, |t| {
+                    Self::filter_types(&self.env, &mut result, |t| {
                         if let Type::Literal { kind, .. } = t {
                             if kind == primitive_kind {
                                 return false;
@@ -395,11 +395,10 @@ impl TypeChecker {
                     });
                 }
                 Type::Function(_function) => {
-                    // TODO: replace functions that can be assigned to _function.
-                    // This require type checker and thus `self`.
+                    // Nothing to do.
                 }
                 Type::Union(union) => {
-                    result = Self::normalize_union_types(env, &union.types, result);
+                    result = self.normalize_union_types(&union.types, result);
                     continue;
                 }
                 Type::Iface(_) => {}
@@ -602,7 +601,7 @@ impl Type {
 
     pub fn string(value: String) -> Self {
         Self::Literal {
-            value,
+            value: format!("{value:?}"),
             kind: PrimitiveKind::String,
         }
     }
@@ -728,11 +727,11 @@ impl fmt::Display for UnionType {
 /// Every type that contains those fields is assignable to an interface.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IfaceType {
-    fields: HashMap<String, TypeId>,
+    fields: HashMap<TypeId, TypeId>,
 }
 
 impl IfaceType {
-    pub fn new(fields: impl IntoIterator<Item = (String, TypeId)>) -> Self {
+    pub fn new(fields: impl IntoIterator<Item = (TypeId, TypeId)>) -> Self {
         Self {
             fields: HashMap::from_iter(fields),
         }
@@ -744,7 +743,7 @@ impl fmt::Display for IfaceType {
         let fields = self
             .fields
             .iter()
-            .map(|(k, v)| format!(" {k}: {v:?};"))
+            .map(|(k, v)| format!(" {k:?}: {v:?};"))
             .collect::<Vec<_>>()
             .join("");
 
@@ -767,6 +766,12 @@ fn space_indent_by(str: &str, n: usize) -> String {
 
 mod tests {
     use super::*;
+
+    macro_rules! type_id_of {
+        ($checker:ident, $t:expr) => {
+            $checker.environment_mut().register($t)
+        };
+    }
 
     #[test]
     fn any_is_assignable_to_any() {
@@ -1225,13 +1230,28 @@ mod tests {
 
     #[test]
     fn iface_is_assignable_to_itself() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let iface_type = IfaceType::new(vec![
-            ("foo".to_owned(), TypeId::NUMBER),
-            ("bar".to_owned(), TypeId::STRING),
-            ("baz".to_owned(), TypeId::BOOLEAN),
-            ("qux".to_owned(), TypeId::NIL),
-            ("quz".to_owned(), TypeId::ANY),
+            (
+                type_id_of!(checker, Type::string("foo".to_owned())),
+                TypeId::NUMBER,
+            ),
+            (
+                type_id_of!(checker, Type::string("bar".to_owned())),
+                TypeId::STRING,
+            ),
+            (
+                type_id_of!(checker, Type::string("baz".to_owned())),
+                TypeId::BOOLEAN,
+            ),
+            (
+                type_id_of!(checker, Type::string("qux".to_owned())),
+                TypeId::NIL,
+            ),
+            (
+                type_id_of!(checker, Type::string("quz".to_owned())),
+                TypeId::ANY,
+            ),
         ])
         .into();
 
@@ -1240,14 +1260,29 @@ mod tests {
 
     #[test]
     fn iface_is_assignable_to_empty_iface() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let empty_iface_type = IfaceType::new(vec![]).into();
         let iface_type = IfaceType::new(vec![
-            ("foo".to_owned(), TypeId::NUMBER),
-            ("bar".to_owned(), TypeId::STRING),
-            ("baz".to_owned(), TypeId::BOOLEAN),
-            ("qux".to_owned(), TypeId::NIL),
-            ("quz".to_owned(), TypeId::ANY),
+            (
+                type_id_of!(checker, Type::string("foo".to_owned())),
+                TypeId::NUMBER,
+            ),
+            (
+                type_id_of!(checker, Type::string("bar".to_owned())),
+                TypeId::STRING,
+            ),
+            (
+                type_id_of!(checker, Type::string("baz".to_owned())),
+                TypeId::BOOLEAN,
+            ),
+            (
+                type_id_of!(checker, Type::string("qux".to_owned())),
+                TypeId::NIL,
+            ),
+            (
+                type_id_of!(checker, Type::string("quz".to_owned())),
+                TypeId::ANY,
+            ),
         ])
         .into();
 
@@ -1262,16 +1297,24 @@ mod tests {
         let number_or_nil = UnionType::new(vec![TypeId::NUMBER, TypeId::NIL]).into();
         let number_or_nil_id = checker.environment_mut().register(number_or_nil);
 
-        let iface_type = IfaceType::new(vec![("foo".to_owned(), number_or_nil_id)]).into();
+        let iface_type = IfaceType::new(vec![(
+            type_id_of!(checker, Type::string("foo".to_owned())),
+            number_or_nil_id,
+        )])
+        .into();
 
         assert!(checker.can_assign(&empty_iface_type, &iface_type).is_ok())
     }
 
     #[test]
     fn empty_iface_is_not_assignable_to_iface_with_field_number() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let empty_iface_type = IfaceType::new(vec![]).into();
-        let iface_type = IfaceType::new(vec![("foo".to_owned(), TypeId::NUMBER)]).into();
+        let iface_type = IfaceType::new(vec![(
+            type_id_of!(checker, Type::string("foo".to_owned())),
+            TypeId::NUMBER,
+        )])
+        .into();
 
         assert_eq!(
             checker.can_assign(&empty_iface_type, &iface_type),
@@ -1279,7 +1322,7 @@ mod tests {
                 source_type: &empty_iface_type,
                 target_type: &iface_type,
                 reasons: vec![TypeCheckError::RequiredFieldMissing {
-                    field_name: "foo".to_owned(),
+                    field_name: r#""foo""#.to_owned(),
                     field_type: &Type::NUMBER,
                 }]
             }))
