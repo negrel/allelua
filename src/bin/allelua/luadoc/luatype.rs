@@ -175,6 +175,28 @@ impl TypeChecker {
                     return Ok(());
                 }
             }
+            // Source is assignable if it is assignable to one of union's types.
+            (source, Type::Union(target_union)) => {
+                for target_type_id in &target_union.types {
+                    let target = self.lookup_type(*target_type_id)?;
+
+                    match self.can_assign(source, target) {
+                        Ok(_) => return Ok(()),
+                        Err(err) => reasons.push(err),
+                    }
+                }
+            }
+            // Union is assignable if all type of source is assignable to target.
+            (Type::Union(source_union), target) => {
+                for source_type_id in &source_union.types {
+                    let source = self.lookup_type(*source_type_id)?;
+
+                    match self.can_assign(source, target) {
+                        Ok(_) => return Ok(()),
+                        Err(err) => reasons.push(err),
+                    }
+                }
+            }
             (Type::Never, _)
             | (_, Type::Never)
             | (Type::Any, _)
@@ -254,6 +276,101 @@ impl TypeChecker {
         }
 
         Ok(())
+    }
+
+    /// Normalize the given type, adds it to then environment and returns a
+    /// reference to it.
+    pub fn normalize<'a>(&'a mut self, t: &'a Type) -> &'a Type {
+        match t {
+            Type::Never
+            | Type::Any
+            | Type::Unknown
+            | Type::Literal { .. }
+            | Type::Primitive { .. }
+            | Type::Function(_) => t,
+            Type::Union(u) => self.normalize_union(u),
+        }
+    }
+
+    fn normalize_union<'a>(&'a mut self, u: &'a UnionType) -> &'a Type {
+        let mut type_ids = Vec::new();
+
+        type_ids = Self::normalize_union_types(&self.env, &u.types, type_ids);
+        match type_ids.len() {
+            0 => &Type::Never,
+            1 => self.env.lookup(type_ids[0]).unwrap(),
+            _ => {
+                let id = self.env.register(UnionType::new(type_ids).into());
+                self.env.lookup(id).unwrap()
+            }
+        }
+    }
+
+    fn normalize_union_types(
+        env: &TypeEnvironment,
+        ids: &Vec<TypeId>,
+        mut result: Vec<TypeId>,
+    ) -> Vec<TypeId> {
+        // Any as priority over unknown so we check it first.
+        if ids.contains(&TypeId::ANY) {
+            return vec![TypeId::ANY];
+        }
+
+        'type_ids_loop: for type_id in ids {
+            // Filter duplicate.
+            if result.contains(type_id) {
+                continue;
+            }
+
+            let t = env.lookup(*type_id).unwrap();
+            match t {
+                Type::Never => continue,
+                Type::Literal { kind, .. } => {
+                    // Skip literal if primitive already present.
+                    for id in &result {
+                        if *id == (*kind).into() {
+                            continue 'type_ids_loop;
+                        }
+                    }
+                }
+                Type::Primitive {
+                    kind: primitive_kind,
+                    ..
+                } => {
+                    let mut i = 0;
+                    while i < result.len() {
+                        let id = result[i];
+                        let t = env.lookup(id).unwrap();
+
+                        // Replace literals of same kind with primitive type.
+                        if let Type::Literal { kind, .. } = t {
+                            if kind == primitive_kind {
+                                result.remove(i);
+                            } else {
+                                i += 1;
+                            }
+                            continue;
+                        }
+
+                        i += 1;
+                    }
+                }
+                Type::Function(_function) => {
+                    // TODO: replace functions that can be assigned to _function.
+                    // This require type checker and thus `self`.
+                }
+                Type::Union(union) => {
+                    result = Self::normalize_union_types(env, &union.types, result);
+                    continue;
+                }
+                Type::Any => unreachable!(),
+                Type::Unknown => return vec![TypeId::UNKNOWN],
+            }
+
+            result.push(*type_id);
+        }
+
+        result
     }
 }
 
@@ -372,6 +489,7 @@ pub enum Type {
         metatable: TypeId,
     },
     Function(FunctionType),
+    Union(UnionType),
     Any,
     Unknown,
 }
@@ -385,6 +503,7 @@ impl fmt::Display for Type {
             Self::Literal { value, .. } => value,
             Self::Primitive { kind, .. } => &kind.to_string(),
             Type::Function(function) => return fmt::Display::fmt(function, f),
+            Type::Union(union) => return fmt::Display::fmt(union, f),
         };
 
         write!(f, "{str}")
@@ -412,7 +531,7 @@ impl Type {
 }
 
 /// PrimitiveKind enumerates all Lua primitive types.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PrimitiveKind {
     Nil,
     Boolean,
@@ -474,6 +593,40 @@ impl fmt::Display for FunctionType {
             .join(", ");
 
         write!(f, "({params}) -> ({results})")
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct UnionType {
+    types: Vec<TypeId>,
+}
+
+impl UnionType {
+    pub fn new(types: Vec<TypeId>) -> Self {
+        Self { types }
+    }
+}
+
+impl From<UnionType> for Type {
+    fn from(value: UnionType) -> Self {
+        Self::Union(value)
+    }
+}
+
+impl fmt::Display for UnionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.types.is_empty() {
+            return write!(f, "<empty union>");
+        }
+
+        let str = self
+            .types
+            .iter()
+            .map(|id| format!("{id:?}"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+
+        write!(f, "{str}")
     }
 }
 
@@ -818,5 +971,152 @@ mod tests {
                 }]
             }))
         )
+    }
+
+    #[test]
+    fn union_of_literal_is_assignable_to_itself() {
+        let checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::STRING]).into();
+
+        assert!(checker.can_assign(&union_type, &union_type).is_ok());
+    }
+
+    #[test]
+    fn union_of_string_nil_is_not_assignable_to_number() {
+        let checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::STRING, TypeId::NIL]).into();
+
+        assert_eq!(
+            checker.can_assign(&union_type, &Type::NUMBER),
+            Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                source_type: &union_type,
+                target_type: &Type::NUMBER,
+                reasons: vec![
+                    TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                        source_type: &Type::STRING,
+                        target_type: &Type::NUMBER,
+                        reasons: vec![],
+                    }),
+                    TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                        source_type: &Type::NIL,
+                        target_type: &Type::NUMBER,
+                        reasons: vec![],
+                    }),
+                ]
+            }))
+        );
+    }
+
+    #[test]
+    fn normalize_union_of_number_number_returns_number() {
+        let mut checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]);
+        assert_eq!(checker.normalize(&union_type.into()), &Type::NUMBER);
+    }
+
+    #[test]
+    fn normalize_union_of_number_never_returns_number() {
+        let mut checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::NEVER]);
+        assert_eq!(checker.normalize(&union_type.into()), &Type::NUMBER);
+    }
+
+    #[test]
+    fn normalize_union_of_number_any_returns_any() {
+        let mut checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]);
+        assert_eq!(checker.normalize(&union_type.into()), &Type::Any);
+    }
+
+    #[test]
+    fn normalize_union_of_number_unknown_returns_unknown() {
+        let mut checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::UNKNOWN]);
+        assert_eq!(checker.normalize(&union_type.into()), &Type::Unknown);
+    }
+
+    #[test]
+    fn normalize_union_of_any_unknown_returns_any() {
+        let mut checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::ANY, TypeId::UNKNOWN]);
+        assert_eq!(checker.normalize(&union_type.into()), &Type::Any);
+    }
+
+    #[test]
+    fn normalize_union_of_unknown_any_returns_any() {
+        let mut checker = TypeChecker::new();
+        let union_type = UnionType::new(vec![TypeId::UNKNOWN, TypeId::ANY]);
+        assert_eq!(checker.normalize(&union_type.into()), &Type::Any);
+    }
+
+    #[test]
+    fn normalize_union_of_number_number_literal_returns_number() {
+        let mut checker = TypeChecker::new();
+        let env = checker.environment_mut();
+
+        let lit = Type::Literal {
+            value: "1".to_string(),
+            kind: PrimitiveKind::Number,
+        };
+        let lit_id = env.register(lit.clone());
+        let union_type = UnionType::new(vec![TypeId::NUMBER, lit_id]).into();
+
+        assert_eq!(checker.normalize(&union_type), &Type::NUMBER);
+    }
+
+    #[test]
+    fn normalize_union_of_number_literal_number_returns_number() {
+        let mut checker = TypeChecker::new();
+        let env = checker.environment_mut();
+
+        let lit = Type::Literal {
+            value: "1".to_string(),
+            kind: PrimitiveKind::Number,
+        };
+        let lit_id = env.register(lit.clone());
+        let union_type = UnionType::new(vec![lit_id, TypeId::NUMBER]).into();
+
+        assert_eq!(checker.normalize(&union_type), &Type::NUMBER);
+    }
+
+    #[test]
+    fn normalize_union_of_number_union_of_number_number_returns_number() {
+        let mut checker = TypeChecker::new();
+        let env = checker.environment_mut();
+
+        let union_type1: Type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]).into();
+        let union_type1_id = env.register(union_type1.clone());
+        let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
+
+        assert_eq!(checker.normalize(&union_type2), &Type::NUMBER);
+    }
+
+    #[test]
+    fn normalize_union_of_number_union_of_nil_string_returns_union_of_number_nil_string() {
+        let mut checker = TypeChecker::new();
+        let env = checker.environment_mut();
+
+        let union_type1: Type = UnionType::new(vec![TypeId::STRING, TypeId::NIL]).into();
+        let union_type1_id = env.register(union_type1.clone());
+        let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
+
+        let union_type3 = UnionType::new(vec![TypeId::NUMBER, TypeId::STRING, TypeId::NIL]).into();
+        assert_eq!(checker.normalize(&union_type2), &union_type3);
+    }
+
+    #[test]
+    fn normalize_empty_union_returns_never() {
+        let mut checker = TypeChecker::new();
+
+        let union_type1: Type = UnionType::new(vec![]).into();
+        assert_eq!(checker.normalize(&union_type1), &Type::Never);
+    }
+
+    #[test]
+    fn normalize_union_with_1_type_returns_it() {
+        let mut checker = TypeChecker::new();
+
+        let union_type1: Type = UnionType::new(vec![TypeId::NIL]).into();
+        assert_eq!(checker.normalize(&union_type1), &Type::NIL);
     }
 }
