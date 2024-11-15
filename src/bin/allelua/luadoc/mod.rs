@@ -1,3 +1,2 @@
-// mod luatype;
-//
-// pub use luatype::*;
+mod luatype;
+pub use luatype::*;
