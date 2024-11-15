@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug};
+use std::{collections::HashMap, fmt};
 
 use similar::DiffableStr;
 
@@ -165,6 +165,7 @@ impl TypeChecker {
                     return Ok(());
                 }
             }
+            // Primitive of same kind are assignable to each other.
             (Type::Primitive { kind: src_kind, .. }, Type::Primitive { kind, .. }) => {
                 if src_kind == kind {
                     return Ok(());
@@ -186,7 +187,8 @@ impl TypeChecker {
                     }
                 }
             }
-            // Union is assignable if all type of source is assignable to target.
+            // Union is assignable if all type of source is assignable to
+            // target.
             (Type::Union(source_union), target) => {
                 for source_type_id in &source_union.types {
                     let source = self.lookup_type(*source_type_id)?;
@@ -195,6 +197,11 @@ impl TypeChecker {
                         Ok(_) => return Ok(()),
                         Err(err) => reasons.push(err),
                     }
+                }
+            }
+            (Type::Iface(source), Type::Iface(target)) => {
+                if self.can_assign_iface(source, target, &mut reasons)? {
+                    return Ok(());
                 }
             }
             (Type::Never, _)
@@ -278,6 +285,46 @@ impl TypeChecker {
         Ok(())
     }
 
+    fn can_assign_iface<'a>(
+        &'a self,
+        source: &'a IfaceType,
+        target: &'a IfaceType,
+        reasons: &mut Vec<TypeCheckError<'a>>,
+    ) -> Result<bool, TypeCheckError<'a>> {
+        let initial_reasons_len = reasons.len();
+
+        // Source is assignable if all fields of target are assignable from
+        // source to target. If field is missing in source, nil must be
+        // assignable in target.
+        for (f_name, f_type_id) in target.fields.iter() {
+            let f_type = self.lookup_type(*f_type_id)?;
+
+            match source.fields.get(f_name) {
+                Some(source_f_type_id) => {
+                    let source_f_type = self.lookup_type(*source_f_type_id)?;
+
+                    if let Err(reason) = self.can_assign(source_f_type, f_type) {
+                        reasons.push(TypeCheckError::IncompatibleFieldType {
+                            field_name: f_name.to_owned(),
+                            source: Box::new(reason),
+                        })
+                    }
+                }
+                None => {
+                    // Field is required but missing in source.
+                    if self.can_assign(&Type::NIL, f_type).is_err() {
+                        reasons.push(TypeCheckError::RequiredFieldMissing {
+                            field_name: f_name.to_owned(),
+                            field_type: f_type,
+                        })
+                    }
+                }
+            }
+        }
+
+        Ok(initial_reasons_len == reasons.len())
+    }
+
     /// Normalize the given type, adds it to then environment and returns a
     /// reference to it.
     pub fn normalize<'a>(&'a mut self, t: &'a Type) -> &'a Type {
@@ -287,7 +334,8 @@ impl TypeChecker {
             | Type::Unknown
             | Type::Literal { .. }
             | Type::Primitive { .. }
-            | Type::Function(_) => t,
+            | Type::Function(_)
+            | Type::Iface(_) => t,
             Type::Union(u) => self.normalize_union(u),
         }
     }
@@ -337,23 +385,14 @@ impl TypeChecker {
                     kind: primitive_kind,
                     ..
                 } => {
-                    let mut i = 0;
-                    while i < result.len() {
-                        let id = result[i];
-                        let t = env.lookup(id).unwrap();
-
-                        // Replace literals of same kind with primitive type.
+                    Self::filter_types(env, &mut result, |t| {
                         if let Type::Literal { kind, .. } = t {
                             if kind == primitive_kind {
-                                result.remove(i);
-                            } else {
-                                i += 1;
+                                return false;
                             }
-                            continue;
                         }
-
-                        i += 1;
-                    }
+                        true
+                    });
                 }
                 Type::Function(_function) => {
                     // TODO: replace functions that can be assigned to _function.
@@ -363,6 +402,7 @@ impl TypeChecker {
                     result = Self::normalize_union_types(env, &union.types, result);
                     continue;
                 }
+                Type::Iface(_) => {}
                 Type::Any => unreachable!(),
                 Type::Unknown => return vec![TypeId::UNKNOWN],
             }
@@ -371,6 +411,25 @@ impl TypeChecker {
         }
 
         result
+    }
+
+    fn filter_types(
+        env: &TypeEnvironment,
+        vec: &mut Vec<TypeId>,
+        predicate: impl Fn(&Type) -> bool,
+    ) {
+        let mut i = 0;
+        while i < vec.len() {
+            let id = vec[i];
+            let t = env.lookup(id).unwrap();
+
+            if !predicate(t) {
+                vec.remove(i);
+                continue;
+            }
+
+            i += 1;
+        }
     }
 }
 
@@ -396,6 +455,14 @@ pub enum TypeCheckError<'a> {
         nth: usize,
         source: Box<TypeCheckError<'a>>,
     },
+    IncompatibleFieldType {
+        field_name: String,
+        source: Box<TypeCheckError<'a>>,
+    },
+    RequiredFieldMissing {
+        field_name: String,
+        field_type: &'a Type,
+    },
 }
 
 impl<'a> std::error::Error for TypeCheckError<'a> {}
@@ -409,6 +476,8 @@ impl<'a> fmt::Display for TypeCheckError<'a> {
             TypeCheckError::SourceSignatureTooFewResults { expected, got } => write!(f, "Source signature provides too few results. Expected {expected} or more, but got {got}."),
             TypeCheckError::IncompatibleParameterType { nth, source } => write!(f, "Type of parameters {nth} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
             TypeCheckError::IncompatibleReturnType { nth, source } => write!(f, "Type of return values {nth} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
+            TypeCheckError::IncompatibleFieldType { field_name, source } => write!(f, "Type of fields {field_name:?} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
+            TypeCheckError::RequiredFieldMissing { field_name, field_type } => write!(f,r#"Mandatory field {field_name:?} of type "{field_type}" is missing"#)
         }
     }
 }
@@ -448,7 +517,7 @@ impl<'a> fmt::Display for IncompatibleTypeError<'a> {
 }
 
 /// TypeId define a unique type identifier in a [Context].
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub struct TypeId(usize);
 
 impl TypeId {
@@ -490,6 +559,7 @@ pub enum Type {
     },
     Function(FunctionType),
     Union(UnionType),
+    Iface(IfaceType),
     Any,
     Unknown,
 }
@@ -504,6 +574,7 @@ impl fmt::Display for Type {
             Self::Primitive { kind, .. } => &kind.to_string(),
             Type::Function(function) => return fmt::Display::fmt(function, f),
             Type::Union(union) => return fmt::Display::fmt(union, f),
+            Type::Iface(s) => return fmt::Display::fmt(s, f),
         };
 
         write!(f, "{str}")
@@ -528,6 +599,27 @@ impl Type {
         kind: PrimitiveKind::String,
         metatable: TypeId::NIL,
     };
+
+    pub fn string(value: String) -> Self {
+        Self::Literal {
+            value,
+            kind: PrimitiveKind::String,
+        }
+    }
+
+    pub fn number(value: f64) -> Self {
+        Self::Literal {
+            value: value.to_string(),
+            kind: PrimitiveKind::Number,
+        }
+    }
+
+    pub fn boolean(value: bool) -> Self {
+        Self::Literal {
+            value: value.to_string(),
+            kind: PrimitiveKind::Boolean,
+        }
+    }
 }
 
 /// PrimitiveKind enumerates all Lua primitive types.
@@ -602,8 +694,10 @@ pub struct UnionType {
 }
 
 impl UnionType {
-    pub fn new(types: Vec<TypeId>) -> Self {
-        Self { types }
+    pub fn new(types: impl IntoIterator<Item = TypeId>) -> Self {
+        Self {
+            types: Vec::from_iter(types),
+        }
     }
 }
 
@@ -630,6 +724,40 @@ impl fmt::Display for UnionType {
     }
 }
 
+/// IfaceType define a Lua table with keys and values of specified types.
+/// Every type that contains those fields is assignable to an interface.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IfaceType {
+    fields: HashMap<String, TypeId>,
+}
+
+impl IfaceType {
+    pub fn new(fields: impl IntoIterator<Item = (String, TypeId)>) -> Self {
+        Self {
+            fields: HashMap::from_iter(fields),
+        }
+    }
+}
+
+impl fmt::Display for IfaceType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fields = self
+            .fields
+            .iter()
+            .map(|(k, v)| format!(" {k}: {v:?};"))
+            .collect::<Vec<_>>()
+            .join("");
+
+        write!(f, "{{{fields} }}")
+    }
+}
+
+impl From<IfaceType> for Type {
+    fn from(value: IfaceType) -> Self {
+        Self::Iface(value)
+    }
+}
+
 fn space_indent_by(str: &str, n: usize) -> String {
     str.split('\n')
         .map(|line| " ".repeat(n) + line)
@@ -637,7 +765,6 @@ fn space_indent_by(str: &str, n: usize) -> String {
         .join("\n")
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -705,10 +832,7 @@ mod tests {
     #[test]
     fn literal_is_assignable_to_itself() {
         let checker = TypeChecker::new();
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
 
         assert!(checker.can_assign(&lit, &lit).is_ok())
     }
@@ -716,10 +840,7 @@ mod tests {
     #[test]
     fn literal_is_assignable_to_primitive_of_same_kind() {
         let checker = TypeChecker::new();
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
 
         assert!(checker.can_assign(&lit, &Type::NUMBER).is_ok())
     }
@@ -760,10 +881,7 @@ mod tests {
     #[test]
     fn function_with_number_param_is_assignable_to_function_with_literal_number_param() {
         let mut checker = TypeChecker::new();
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
         let lit_id = checker.environment_mut().register(lit);
 
         let function1 = FunctionType {
@@ -783,10 +901,7 @@ mod tests {
     #[test]
     fn function_with_literal_number_param_is_not_assignable_to_function_with_number_param() {
         let mut checker = TypeChecker::new();
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
         let lit_id = checker.environment_mut().register(lit.clone());
 
         let function1: Type = FunctionType {
@@ -820,10 +935,7 @@ mod tests {
     #[test]
     fn function_with_literal_number_return_is_assignable_to_function_with_number_return() {
         let mut checker = TypeChecker::new();
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
         let lit_id = checker.environment_mut().register(lit.clone());
 
         let function1: Type = FunctionType {
@@ -843,10 +955,7 @@ mod tests {
     #[test]
     fn function_with_number_return_is_not_assignable_to_function_with_literal_number_return() {
         let mut checker = TypeChecker::new();
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
         let lit_id = checker.environment_mut().register(lit.clone());
 
         let function1: Type = FunctionType {
@@ -1054,10 +1163,7 @@ mod tests {
         let mut checker = TypeChecker::new();
         let env = checker.environment_mut();
 
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
         let lit_id = env.register(lit.clone());
         let union_type = UnionType::new(vec![TypeId::NUMBER, lit_id]).into();
 
@@ -1069,10 +1175,7 @@ mod tests {
         let mut checker = TypeChecker::new();
         let env = checker.environment_mut();
 
-        let lit = Type::Literal {
-            value: "1".to_string(),
-            kind: PrimitiveKind::Number,
-        };
+        let lit = Type::number(1.0);
         let lit_id = env.register(lit.clone());
         let union_type = UnionType::new(vec![lit_id, TypeId::NUMBER]).into();
 
@@ -1118,5 +1221,68 @@ mod tests {
 
         let union_type1: Type = UnionType::new(vec![TypeId::NIL]).into();
         assert_eq!(checker.normalize(&union_type1), &Type::NIL);
+    }
+
+    #[test]
+    fn iface_is_assignable_to_itself() {
+        let checker = TypeChecker::new();
+        let iface_type = IfaceType::new(vec![
+            ("foo".to_owned(), TypeId::NUMBER),
+            ("bar".to_owned(), TypeId::STRING),
+            ("baz".to_owned(), TypeId::BOOLEAN),
+            ("qux".to_owned(), TypeId::NIL),
+            ("quz".to_owned(), TypeId::ANY),
+        ])
+        .into();
+
+        assert!(checker.can_assign(&iface_type, &iface_type).is_ok())
+    }
+
+    #[test]
+    fn iface_is_assignable_to_empty_iface() {
+        let checker = TypeChecker::new();
+        let empty_iface_type = IfaceType::new(vec![]).into();
+        let iface_type = IfaceType::new(vec![
+            ("foo".to_owned(), TypeId::NUMBER),
+            ("bar".to_owned(), TypeId::STRING),
+            ("baz".to_owned(), TypeId::BOOLEAN),
+            ("qux".to_owned(), TypeId::NIL),
+            ("quz".to_owned(), TypeId::ANY),
+        ])
+        .into();
+
+        assert!(checker.can_assign(&iface_type, &empty_iface_type).is_ok())
+    }
+
+    #[test]
+    fn empty_iface_is_assignable_to_iface_with_field_union_of_number_nil() {
+        let mut checker = TypeChecker::new();
+        let empty_iface_type = IfaceType::new(vec![]).into();
+
+        let number_or_nil = UnionType::new(vec![TypeId::NUMBER, TypeId::NIL]).into();
+        let number_or_nil_id = checker.environment_mut().register(number_or_nil);
+
+        let iface_type = IfaceType::new(vec![("foo".to_owned(), number_or_nil_id)]).into();
+
+        assert!(checker.can_assign(&empty_iface_type, &iface_type).is_ok())
+    }
+
+    #[test]
+    fn empty_iface_is_not_assignable_to_iface_with_field_number() {
+        let checker = TypeChecker::new();
+        let empty_iface_type = IfaceType::new(vec![]).into();
+        let iface_type = IfaceType::new(vec![("foo".to_owned(), TypeId::NUMBER)]).into();
+
+        assert_eq!(
+            checker.can_assign(&empty_iface_type, &iface_type),
+            Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                source_type: &empty_iface_type,
+                target_type: &iface_type,
+                reasons: vec![TypeCheckError::RequiredFieldMissing {
+                    field_name: "foo".to_owned(),
+                    field_type: &Type::NUMBER,
+                }]
+            }))
+        )
     }
 }
