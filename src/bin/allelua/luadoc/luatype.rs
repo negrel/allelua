@@ -346,25 +346,63 @@ impl TypeChecker {
             | Type::Literal { .. }
             | Type::Primitive { .. } => None,
             Type::Function(f) => Some(self.normalize_function(f)),
-            Type::Iface(_) => None,
+            Type::Iface(i) => Some(self.normalize_iface(i)),
             Type::Union(u) => Some(self.normalize_union(u)),
         }
     }
 
-    pub fn normalize_function(&mut self, function: &FunctionType) -> TypeId {
+    fn normalize_iface(&mut self, iface: &IfaceType) -> TypeId {
+        let mut normalized = iface.clone();
+
+        normalized.fields = normalized
+            .fields
+            .into_iter()
+            .map(|(field_name_id, field_type_id)| {
+                let normalized_field_name = {
+                    let field_name = self
+                        .lookup_type(field_name_id)
+                        .map(|p| p.to_owned())
+                        .unwrap();
+                    self.normalize(&field_name).unwrap_or(field_name_id)
+                };
+
+                let normalized_field_type = {
+                    let field_type = self
+                        .lookup_type(field_type_id)
+                        .map(|p| p.to_owned())
+                        .unwrap();
+                    self.normalize(&field_type).unwrap_or(field_type_id)
+                };
+
+                (normalized_field_name, normalized_field_type)
+            })
+            .collect();
+
+        self.env.register(Type::Iface(normalized))
+    }
+
+    fn normalize_function(&mut self, function: &FunctionType) -> TypeId {
         let mut normalized = function.clone();
 
         // Normalize parameters.
-        for (i, id) in function.params.iter().enumerate() {
-            let param = self.lookup_type(*id).map(|p| p.to_owned()).unwrap();
-            normalized.params[i] = self.normalize(&param).unwrap_or(*id)
-        }
+        normalized.params = normalized
+            .params
+            .into_iter()
+            .map(|id| {
+                let param = self.lookup_type(id).map(|p| p.to_owned()).unwrap();
+                self.normalize(&param).unwrap_or(id)
+            })
+            .collect();
 
         // Normalize results.
-        for (i, id) in function.results.iter().enumerate() {
-            let result = self.lookup_type(*id).map(|p| p.to_owned()).unwrap();
-            normalized.results[i] = self.normalize(&result).unwrap_or(*id)
-        }
+        normalized.results = normalized
+            .results
+            .into_iter()
+            .map(|id| {
+                let result = self.lookup_type(id).map(|p| p.to_owned()).unwrap();
+                self.normalize(&result).unwrap_or(id)
+            })
+            .collect();
 
         self.env.register(Type::Function(normalized))
     }
@@ -1144,6 +1182,107 @@ mod tests {
     }
 
     #[test]
+    fn iface_is_assignable_to_itself() {
+        let mut checker = TypeChecker::new();
+        let iface_type = IfaceType::new(vec![
+            (
+                type_id_of!(checker, Type::string("foo".to_owned())),
+                TypeId::NUMBER,
+            ),
+            (
+                type_id_of!(checker, Type::string("bar".to_owned())),
+                TypeId::STRING,
+            ),
+            (
+                type_id_of!(checker, Type::string("baz".to_owned())),
+                TypeId::BOOLEAN,
+            ),
+            (
+                type_id_of!(checker, Type::string("qux".to_owned())),
+                TypeId::NIL,
+            ),
+            (
+                type_id_of!(checker, Type::string("quz".to_owned())),
+                TypeId::ANY,
+            ),
+        ])
+        .into();
+
+        assert!(checker.can_assign(&iface_type, &iface_type).is_ok())
+    }
+
+    #[test]
+    fn iface_is_assignable_to_empty_iface() {
+        let mut checker = TypeChecker::new();
+        let empty_iface_type = IfaceType::new(vec![]).into();
+        let iface_type = IfaceType::new(vec![
+            (
+                type_id_of!(checker, Type::string("foo".to_owned())),
+                TypeId::NUMBER,
+            ),
+            (
+                type_id_of!(checker, Type::string("bar".to_owned())),
+                TypeId::STRING,
+            ),
+            (
+                type_id_of!(checker, Type::string("baz".to_owned())),
+                TypeId::BOOLEAN,
+            ),
+            (
+                type_id_of!(checker, Type::string("qux".to_owned())),
+                TypeId::NIL,
+            ),
+            (
+                type_id_of!(checker, Type::string("quz".to_owned())),
+                TypeId::ANY,
+            ),
+        ])
+        .into();
+
+        assert!(checker.can_assign(&iface_type, &empty_iface_type).is_ok())
+    }
+
+    #[test]
+    fn empty_iface_is_assignable_to_iface_with_field_union_of_number_nil() {
+        let mut checker = TypeChecker::new();
+        let empty_iface_type = IfaceType::new(vec![]).into();
+
+        let number_or_nil = UnionType::new(vec![TypeId::NUMBER, TypeId::NIL]).into();
+        let number_or_nil_id = checker.environment_mut().register(number_or_nil);
+
+        let iface_type = IfaceType::new(vec![(
+            type_id_of!(checker, Type::string("foo".to_owned())),
+            number_or_nil_id,
+        )])
+        .into();
+
+        assert!(checker.can_assign(&empty_iface_type, &iface_type).is_ok())
+    }
+
+    #[test]
+    fn empty_iface_is_not_assignable_to_iface_with_field_number() {
+        let mut checker = TypeChecker::new();
+        let empty_iface_type = IfaceType::new(vec![]).into();
+        let iface_type = IfaceType::new(vec![(
+            type_id_of!(checker, Type::string("foo".to_owned())),
+            TypeId::NUMBER,
+        )])
+        .into();
+
+        assert_eq!(
+            checker.can_assign(&empty_iface_type, &iface_type),
+            Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                source_type: &empty_iface_type,
+                target_type: &iface_type,
+                reasons: vec![TypeCheckError::RequiredFieldMissing {
+                    field_name: r#""foo""#.to_owned(),
+                    field_type: &Type::NUMBER,
+                }]
+            }))
+        )
+    }
+
+    #[test]
     fn normalize_union_of_number_number_returns_number() {
         let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]);
@@ -1315,103 +1454,32 @@ mod tests {
     }
 
     #[test]
-    fn iface_is_assignable_to_itself() {
+    fn normalize_iface_with_field_union_of_number_any() {
         let mut checker = TypeChecker::new();
-        let iface_type = IfaceType::new(vec![
-            (
-                type_id_of!(checker, Type::string("foo".to_owned())),
-                TypeId::NUMBER,
-            ),
-            (
-                type_id_of!(checker, Type::string("bar".to_owned())),
-                TypeId::STRING,
-            ),
-            (
-                type_id_of!(checker, Type::string("baz".to_owned())),
-                TypeId::BOOLEAN,
-            ),
-            (
-                type_id_of!(checker, Type::string("qux".to_owned())),
-                TypeId::NIL,
-            ),
-            (
-                type_id_of!(checker, Type::string("quz".to_owned())),
-                TypeId::ANY,
-            ),
-        ])
-        .into();
+        let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
+        let number_any_id = checker.environment_mut().register(number_any);
+        let lit_foo_type_id = type_id_of!(checker, Type::string("foo".to_owned()));
+        let iface: Type = IfaceType::new(vec![(lit_foo_type_id, number_any_id)]).into();
 
-        assert!(checker.can_assign(&iface_type, &iface_type).is_ok())
+        let normalized_iface: Type = IfaceType::new(vec![(lit_foo_type_id, TypeId::ANY)]).into();
+
+        assert_eq!(checker.normalize_then_lookup(&iface), &normalized_iface);
     }
 
     #[test]
-    fn iface_is_assignable_to_empty_iface() {
+    fn normalize_iface_with_field_name_union_of_literal_foo_string_or_string() {
         let mut checker = TypeChecker::new();
-        let empty_iface_type = IfaceType::new(vec![]).into();
-        let iface_type = IfaceType::new(vec![
-            (
-                type_id_of!(checker, Type::string("foo".to_owned())),
-                TypeId::NUMBER,
-            ),
-            (
-                type_id_of!(checker, Type::string("bar".to_owned())),
-                TypeId::STRING,
-            ),
-            (
-                type_id_of!(checker, Type::string("baz".to_owned())),
-                TypeId::BOOLEAN,
-            ),
-            (
-                type_id_of!(checker, Type::string("qux".to_owned())),
-                TypeId::NIL,
-            ),
-            (
-                type_id_of!(checker, Type::string("quz".to_owned())),
-                TypeId::ANY,
-            ),
-        ])
-        .into();
+        let lit_foo_type_id = type_id_of!(checker, Type::string("foo".to_owned()));
+        let literal_foo_string_string =
+            UnionType::new(vec![lit_foo_type_id, TypeId::STRING]).into();
+        let literal_foo_string_string_id = checker
+            .environment_mut()
+            .register(literal_foo_string_string);
+        let iface: Type =
+            IfaceType::new(vec![(literal_foo_string_string_id, TypeId::NUMBER)]).into();
 
-        assert!(checker.can_assign(&iface_type, &empty_iface_type).is_ok())
-    }
+        let normalized_iface: Type = IfaceType::new(vec![(TypeId::STRING, TypeId::NUMBER)]).into();
 
-    #[test]
-    fn empty_iface_is_assignable_to_iface_with_field_union_of_number_nil() {
-        let mut checker = TypeChecker::new();
-        let empty_iface_type = IfaceType::new(vec![]).into();
-
-        let number_or_nil = UnionType::new(vec![TypeId::NUMBER, TypeId::NIL]).into();
-        let number_or_nil_id = checker.environment_mut().register(number_or_nil);
-
-        let iface_type = IfaceType::new(vec![(
-            type_id_of!(checker, Type::string("foo".to_owned())),
-            number_or_nil_id,
-        )])
-        .into();
-
-        assert!(checker.can_assign(&empty_iface_type, &iface_type).is_ok())
-    }
-
-    #[test]
-    fn empty_iface_is_not_assignable_to_iface_with_field_number() {
-        let mut checker = TypeChecker::new();
-        let empty_iface_type = IfaceType::new(vec![]).into();
-        let iface_type = IfaceType::new(vec![(
-            type_id_of!(checker, Type::string("foo".to_owned())),
-            TypeId::NUMBER,
-        )])
-        .into();
-
-        assert_eq!(
-            checker.can_assign(&empty_iface_type, &iface_type),
-            Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &empty_iface_type,
-                target_type: &iface_type,
-                reasons: vec![TypeCheckError::RequiredFieldMissing {
-                    field_name: r#""foo""#.to_owned(),
-                    field_type: &Type::NUMBER,
-                }]
-            }))
-        )
+        assert_eq!(checker.normalize_then_lookup(&iface), &normalized_iface);
     }
 }
