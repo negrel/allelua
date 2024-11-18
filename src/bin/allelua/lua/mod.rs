@@ -95,16 +95,16 @@ fn handle_result<T, E: Display>(result: Result<T, E>) {
 
 fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: RuntimeSafetyLevel) {
     // Load libraries.
-    handle_result(load_path(lua.clone()));
+    handle_result(load_path(&lua));
     handle_result(load_os(&lua, run_args));
-    handle_result(load_error(lua.clone()));
-    handle_result(load_sync(lua.clone()));
+    handle_result(load_error(&lua));
+    handle_result(load_sync(&lua));
     handle_result(load_io(&lua));
-    handle_result(load_string(lua.clone()));
-    handle_result(load_coroutine(lua.clone()));
-    handle_result(load_table(lua.clone()));
+    handle_result(load_string(&lua));
+    handle_result(load_coroutine(&lua));
+    handle_result(load_table(&lua));
     handle_result(load_sh(&lua));
-    handle_result(load_time(lua.clone()));
+    handle_result(load_time(&lua));
     handle_result(register_globals(lua.clone()));
 
     if safety == RuntimeSafetyLevel::Unsafe {

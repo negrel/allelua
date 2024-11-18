@@ -19,14 +19,14 @@ macro_rules! lua_string_as_path {
     };
 }
 
-pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
+pub fn load_path(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "path",
         lua.create_function(|lua, ()| {
-            let table = lua.create_table()?;
-            lua.globals().set("path", table.clone())?;
+            let path = lua.create_table()?;
+            lua.globals().set("path", path.clone())?;
 
-            table.set(
+            path.set(
                 "canonicalize",
                 lua.create_async_function(|lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
@@ -35,7 +35,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "exists",
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
@@ -44,7 +44,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "metadata",
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
@@ -54,7 +54,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "is_file",
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
@@ -64,7 +64,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "is_dir",
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
@@ -74,7 +74,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "is_symlink",
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
@@ -86,7 +86,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "len",
                 lua.create_async_function(|_lua, str: mlua::String| async move {
                     lua_string_as_path!(path = str);
@@ -99,7 +99,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
             )?;
 
             if cfg!(unix) {
-                table.set(
+                path.set(
                     "is_block_device",
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         lua_string_as_path!(path = str);
@@ -108,7 +108,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                         Ok(metadata.file_type().is_block_device())
                     })?,
                 )?;
-                table.set(
+                path.set(
                     "is_char_device",
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         lua_string_as_path!(path = str);
@@ -117,7 +117,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                         Ok(metadata.file_type().is_char_device())
                     })?,
                 )?;
-                table.set(
+                path.set(
                     "is_socket",
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         lua_string_as_path!(path = str);
@@ -126,7 +126,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                         Ok(metadata.file_type().is_socket())
                     })?,
                 )?;
-                table.set(
+                path.set(
                     "is_fifo",
                     lua.create_async_function(|_lua, str: mlua::String| async move {
                         lua_string_as_path!(path = str);
@@ -137,7 +137,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 )?;
             }
 
-            table.set(
+            path.set(
                 "is_absolute",
                 lua.create_function(|_lua, str: mlua::String| {
                     lua_string_as_path!(path = str);
@@ -145,7 +145,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "is_relative",
                 lua.create_function(|_lua, str: mlua::String| {
                     lua_string_as_path!(path = str);
@@ -153,7 +153,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "file_name",
                 lua.create_function(|lua, str: mlua::String| {
                     lua_string_as_path!(path = str);
@@ -164,7 +164,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "file_stem",
                 lua.create_function(|lua, str: mlua::String| {
                     lua_string_as_path!(path = str);
@@ -175,7 +175,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "extension",
                 lua.create_function(|lua, str: mlua::String| {
                     lua_string_as_path!(path = str);
@@ -186,7 +186,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "parent",
                 lua.create_function(|lua, str: mlua::String| {
                     lua_string_as_path!(path = str);
@@ -197,7 +197,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "join",
                 lua.create_function(|lua, (base, join): (mlua::String, mlua::MultiValue)| {
                     lua_string_as_path!(base = base);
@@ -217,7 +217,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "with_file_name",
                 lua.create_function(|lua, (path, fname): (mlua::String, mlua::String)| {
                     lua_string_as_path!(path = path);
@@ -226,7 +226,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            table.set(
+            path.set(
                 "with_extension",
                 lua.create_function(|lua, (path, extension): (mlua::String, mlua::String)| {
                     lua_string_as_path!(path = path);
@@ -240,7 +240,7 @@ pub fn load_path(lua: Lua) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
 
-            Ok(table)
+            Ok(path)
         })?,
     )
 }

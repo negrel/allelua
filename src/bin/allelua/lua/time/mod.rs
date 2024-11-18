@@ -9,7 +9,7 @@ mod instant;
 use duration::*;
 use instant::*;
 
-pub fn load_time(lua: Lua) -> mlua::Result<mlua::Table> {
+pub fn load_time(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "time",
         lua.create_function(|lua, ()| {

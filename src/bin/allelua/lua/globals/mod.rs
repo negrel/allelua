@@ -104,7 +104,7 @@ pub fn lua_type(lua: &Lua, value: &mlua::Value) -> mlua::Result<mlua::String> {
     }
 }
 
-pub fn register_globals(lua: Lua) -> mlua::Result<()> {
+pub fn register_globals(lua: &Lua) -> mlua::Result<()> {
     let globals = lua.globals();
 
     globals.set(

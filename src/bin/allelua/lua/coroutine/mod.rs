@@ -3,7 +3,7 @@ use tokio::task::{self, AbortHandle};
 
 use crate::include_lua;
 
-pub fn load_coroutine(lua: Lua) -> mlua::Result<()> {
+pub fn load_coroutine(lua: &Lua) -> mlua::Result<()> {
     let go = lua.create_async_function(go)?;
     let run_until = lua.create_async_function(|_lua, func: mlua::Function| async move {
         let local = task::LocalSet::new();

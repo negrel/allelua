@@ -127,7 +127,7 @@ fn to_lua_error(err: &mlua::Error) -> Option<LuaError> {
     }
 }
 
-pub fn load_error(lua: Lua) -> mlua::Result<mlua::Table> {
+pub fn load_error(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "error",
         lua.create_function(|lua, ()| {

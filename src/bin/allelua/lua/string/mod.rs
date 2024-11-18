@@ -4,7 +4,7 @@ use mlua::{chunk, Either, FromLua, IntoLua, Lua, MetaMethod, UserData};
 
 use crate::include_lua;
 
-pub fn load_string(lua: Lua) -> mlua::Result<()> {
+pub fn load_string(lua: &Lua) -> mlua::Result<()> {
     let string_extra = lua.create_table()?;
     let slice = lua
         .load(chunk! {

@@ -6,7 +6,7 @@ pub use channel::*;
 mod waitgroup;
 use waitgroup::*;
 
-pub fn load_sync(lua: Lua) -> mlua::Result<mlua::Table> {
+pub fn load_sync(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "sync",
         lua.create_function(|lua, ()| {
