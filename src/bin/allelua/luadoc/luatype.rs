@@ -1,4 +1,8 @@
-use std::{borrow::Cow, collections::HashMap, fmt};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+    hash::Hash,
+};
 
 use similar::DiffableStr;
 
@@ -6,14 +10,17 @@ use similar::DiffableStr;
 pub struct TypeEnvironment {
     parent: Option<Box<TypeEnvironment>>,
     types: Vec<Type>,
+    reverse_lookup: HashMap<Type, TypeId>,
     offset: usize,
 }
 
 impl TypeEnvironment {
+    /// Creates a new root type environment.
     pub fn new() -> Self {
         let mut env = Self {
             parent: None,
             types: Vec::new(),
+            reverse_lookup: HashMap::new(),
             offset: 0,
         };
 
@@ -29,11 +36,13 @@ impl TypeEnvironment {
         env
     }
 
+    /// Creates a new [TypeEnvironment] with [self] as parent environment.
     pub fn child_env(self) -> TypeEnvironment {
         let offset = self.types.len();
         TypeEnvironment {
             parent: Some(Box::new(self)),
             types: Vec::new(),
+            reverse_lookup: HashMap::new(),
             offset,
         }
     }
@@ -51,6 +60,7 @@ impl TypeEnvironment {
         }
     }
 
+    /// Returns type associated to given id within the environment.
     pub fn lookup(&self, id: TypeId) -> Option<&Type> {
         if id.0 < self.offset {
             if let Some(parent) = &self.parent {
@@ -65,10 +75,28 @@ impl TypeEnvironment {
         }
     }
 
+    /// Returns type id associated to given type within the environment.
+    pub fn reverse_lookup(&self, t: &Type) -> Option<TypeId> {
+        if let Some(id) = self.reverse_lookup.get(&t) {
+            Some(*id)
+        } else if let Some(parent) = &self.parent {
+            parent.reverse_lookup(t)
+        } else {
+            None
+        }
+    }
+
+    /// Registers given type in the environment. If type is already registered,
+    /// associated type id is returned.
     pub fn register(&mut self, t: Type) -> TypeId {
-        // TODO: return existing type id when already registered.
-        self.types.push(t);
-        TypeId(self.types.len() - 1)
+        if let Some(id) = self.reverse_lookup(&t) {
+            return id;
+        }
+
+        self.types.push(t.clone());
+        let id = TypeId(self.offset + self.types.len() - 1);
+        self.reverse_lookup.insert(t, id);
+        id
     }
 
     /// Replace TypeId(n) in a string with actual types. This is needed as
@@ -114,13 +142,18 @@ impl TypeChecker {
         &mut self.env
     }
 
-    /// Search type with given [TypeId] in the current environment and returns it.
+    /// Search [Type] with given [TypeId] in the current environment and returns it.
     /// A [TypeCheckError::InvalidTypeId] is returned if associated type is not found.
     fn lookup_type(&self, id: TypeId) -> Result<&Type, TypeCheckError> {
         match self.env.lookup(id) {
             Some(t) => Ok(t),
             None => Err(TypeCheckError::InvalidTypeId(id)),
         }
+    }
+
+    /// Search [TypeId] of the given [Type] in the current environment and returns it.
+    fn lookup_type_id<'a>(&'a self, id: &'a Type) -> Option<TypeId> {
+        self.env.reverse_lookup(id)
     }
 
     fn lookup_type_string(&self, id: TypeId) -> Result<String, TypeCheckError> {
@@ -133,23 +166,36 @@ impl TypeChecker {
     }
 
     /// Checks whether source [Type] is assignable to target [Type].
-    pub fn can_assign<'a>(
-        &'a self,
-        source: &'a Type,
-        target: &'a Type,
-    ) -> Result<(), TypeCheckError<'a>> {
+    pub fn can_assign(
+        &mut self,
+        source_id: TypeId,
+        target_id: TypeId,
+    ) -> Result<(), TypeCheckError> {
+        if source_id == target_id {
+            return Ok(());
+        }
+
+        let source = self.lookup_type(source_id)?.to_owned();
+        let source = self.normalize_then_lookup(&source).to_owned();
+        let target = self.lookup_type(target_id)?.to_owned();
+        let target = self.normalize_then_lookup(&target).to_owned();
+
+        if source == target {
+            return Ok(());
+        }
+
         // Handles special case: never, any and unknown.
         {
             // Never is assignable to everything.
-            if *source == Type::Never {
+            if source == Type::Never {
                 return Ok(());
             }
             // Everything is assignable to any and unknown.
-            if *target == Type::Any || *target == Type::Unknown {
+            if target == Type::Any || target == Type::Unknown {
                 return Ok(());
             }
             // Any is assignable to everything except never.
-            if *source == Type::Any && *target != Type::Never {
+            if source == Type::Any && target != Type::Never {
                 return Ok(());
             }
         }
@@ -176,16 +222,14 @@ impl TypeChecker {
                 }
             }
             (Type::Function(source), Type::Function(target)) => {
-                if self.can_assign_functions(source, target, &mut reasons)? {
+                if self.can_assign_functions(&source, &target, &mut reasons)? {
                     return Ok(());
                 }
             }
             // Source is assignable if it is assignable to one of union's types.
-            (source, Type::Union(target_union)) => {
-                for target_type_id in &target_union.types {
-                    let target = self.lookup_type(*target_type_id)?;
-
-                    match self.can_assign(source, target) {
+            (_, Type::Union(target_union)) => {
+                for target_type_id in target_union.types {
+                    match self.can_assign(source_id, target_type_id) {
                         Ok(_) => return Ok(()),
                         Err(err) => reasons.push(err),
                     }
@@ -193,18 +237,16 @@ impl TypeChecker {
             }
             // Union is assignable if all type of source is assignable to
             // target.
-            (Type::Union(source_union), target) => {
+            (Type::Union(source_union), _) => {
                 for source_type_id in &source_union.types {
-                    let source = self.lookup_type(*source_type_id)?;
-
-                    match self.can_assign(source, target) {
+                    match self.can_assign(*source_type_id, target_id) {
                         Ok(_) => return Ok(()),
                         Err(err) => reasons.push(err),
                     }
                 }
             }
-            (Type::Iface(source), Type::Iface(target)) => {
-                if self.can_assign_iface(source, target, &mut reasons)? {
+            (source, Type::Iface(target)) => {
+                if self.can_assign_iface(&source, &target, &mut reasons)? {
                     return Ok(());
                 }
             }
@@ -218,18 +260,18 @@ impl TypeChecker {
         }
 
         Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-            source_type: source,
-            target_type: target,
+            source_type: source_id,
+            target_type: target_id,
             reasons,
         }))
     }
 
     fn can_assign_functions<'a>(
-        &'a self,
+        &'a mut self,
         source: &'a FunctionType,
         target: &'a FunctionType,
-        reasons: &mut Vec<TypeCheckError<'a>>,
-    ) -> Result<bool, TypeCheckError<'a>> {
+        reasons: &mut Vec<TypeCheckError>,
+    ) -> Result<bool, TypeCheckError> {
         let initial_reasons_len = reasons.len();
 
         // Check that target params are assignable to source params (contravariant).
@@ -254,10 +296,10 @@ impl TypeChecker {
     }
 
     fn can_assign_tuple<'a>(
-        &'a self,
+        &'a mut self,
         source: &'a [TypeId],
         target: &'a [TypeId],
-    ) -> Result<(), (usize, TypeCheckError<'a>)> {
+    ) -> Result<(), (usize, TypeCheckError)> {
         if source.len() < target.len() {
             // There is more entry in source than target.
             // We check that all source is assignable to target and for
@@ -266,10 +308,7 @@ impl TypeChecker {
             for (i, target_type_id) in target.iter().enumerate() {
                 let source_type_id = source.get(i).unwrap_or(&TypeId::NIL);
 
-                let source_type = self.lookup_type(*source_type_id).map_err(|e| (i, e))?;
-                let target_type = self.lookup_type(*target_type_id).map_err(|e| (i, e))?;
-
-                self.can_assign(source_type, target_type)
+                self.can_assign(*source_type_id, *target_type_id)
                     .map_err(|e| (i, e))?;
             }
         } else {
@@ -278,10 +317,7 @@ impl TypeChecker {
             for (i, target_type_id) in target.iter().enumerate() {
                 let source_type_id = source[i];
 
-                let source_type = self.lookup_type(source_type_id).map_err(|e| (i, e))?;
-                let target_type = self.lookup_type(*target_type_id).map_err(|e| (i, e))?;
-
-                self.can_assign(source_type, target_type)
+                self.can_assign(source_type_id, *target_type_id)
                     .map_err(|e| (i, e))?;
             }
         }
@@ -290,24 +326,20 @@ impl TypeChecker {
     }
 
     fn can_assign_iface<'a>(
-        &'a self,
-        source: &'a IfaceType,
+        &mut self,
+        source: &'a Type,
         target: &'a IfaceType,
-        reasons: &mut Vec<TypeCheckError<'a>>,
-    ) -> Result<bool, TypeCheckError<'a>> {
+        reasons: &mut Vec<TypeCheckError>,
+    ) -> Result<bool, TypeCheckError> {
         let initial_reasons_len = reasons.len();
 
         // Source is assignable if all fields of target are assignable from
         // source to target. If field is missing in source, nil must be
         // assignable in target.
         for (f_name, f_type_id) in target.fields.iter() {
-            let f_type = self.lookup_type(*f_type_id)?;
-
-            match source.fields.get(f_name) {
+            match self.get_field_type(source, *f_name) {
                 Some(source_f_type_id) => {
-                    let source_f_type = self.lookup_type(*source_f_type_id)?;
-
-                    if let Err(reason) = self.can_assign(source_f_type, f_type) {
+                    if let Err(reason) = self.can_assign(source_f_type_id, *f_type_id) {
                         reasons.push(TypeCheckError::IncompatibleFieldType {
                             field_name: self.lookup_type_string(*f_name)?,
                             source: Box::new(reason),
@@ -316,10 +348,10 @@ impl TypeChecker {
                 }
                 None => {
                     // Field is required but missing in source.
-                    if self.can_assign(&Type::NIL, f_type).is_err() {
+                    if self.can_assign(TypeId::NIL, *f_type_id).is_err() {
                         reasons.push(TypeCheckError::RequiredFieldMissing {
-                            field_name: self.lookup_type_string(*f_name)?,
-                            field_type: f_type,
+                            field_name: *f_name,
+                            field_type: *f_type_id,
                         })
                     }
                 }
@@ -490,13 +522,41 @@ impl TypeChecker {
             i += 1;
         }
     }
+
+    pub fn get_field_type<'a>(&'a mut self, t: &'a Type, field: TypeId) -> Option<TypeId> {
+        match t {
+            Type::Never => Some(TypeId::NEVER),
+            Type::Literal { .. } => None,
+            // TODO: support metatable __index lookup.
+            Type::Primitive { .. } => None,
+            Type::Function(_) => None,
+            Type::Union(u) => {
+                let types = u
+                    .types
+                    .iter()
+                    .filter_map(|id| {
+                        let t = self.lookup_type(*id).map(ToOwned::to_owned).unwrap();
+                        self.get_field_type(&t, field)
+                    })
+                    .collect::<Vec<_>>();
+                if types.is_empty() {
+                    None
+                } else {
+                    self.normalize(&UnionType::new(types).into())
+                }
+            }
+            Type::Iface(i) => i.fields.get(&field).map(ToOwned::to_owned),
+            Type::Any => Some(TypeId::ANY),
+            Type::Unknown => None,
+        }
+    }
 }
 
 /// TypeCheckError enumerates errors returned by [TypeChecker] during type
 /// checking.
 #[derive(Debug, PartialEq)]
-pub enum TypeCheckError<'a> {
-    IncompatibleType(IncompatibleTypeError<'a>),
+pub enum TypeCheckError {
+    IncompatibleType(IncompatibleTypeError),
     InvalidTypeId(TypeId),
     TargetSignatureTooFewParams {
         expected: usize,
@@ -508,25 +568,25 @@ pub enum TypeCheckError<'a> {
     },
     IncompatibleParameterType {
         nth: usize,
-        source: Box<TypeCheckError<'a>>,
+        source: Box<TypeCheckError>,
     },
     IncompatibleReturnType {
         nth: usize,
-        source: Box<TypeCheckError<'a>>,
+        source: Box<TypeCheckError>,
     },
     IncompatibleFieldType {
         field_name: String,
-        source: Box<TypeCheckError<'a>>,
+        source: Box<TypeCheckError>,
     },
     RequiredFieldMissing {
-        field_name: String,
-        field_type: &'a Type,
+        field_name: TypeId,
+        field_type: TypeId,
     },
 }
 
-impl<'a> std::error::Error for TypeCheckError<'a> {}
+impl std::error::Error for TypeCheckError {}
 
-impl<'a> fmt::Display for TypeCheckError<'a> {
+impl fmt::Display for TypeCheckError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TypeCheckError::IncompatibleType(err) => fmt::Display::fmt(err, f),
@@ -536,27 +596,27 @@ impl<'a> fmt::Display for TypeCheckError<'a> {
             TypeCheckError::IncompatibleParameterType { nth, source } => write!(f, "Type of parameters {nth} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
             TypeCheckError::IncompatibleReturnType { nth, source } => write!(f, "Type of return values {nth} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
             TypeCheckError::IncompatibleFieldType { field_name, source } => write!(f, "Type of fields {field_name:?} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
-            TypeCheckError::RequiredFieldMissing { field_name, field_type } => write!(f,r#"Mandatory field {field_name:?} of type "{field_type}" is missing"#)
+            TypeCheckError::RequiredFieldMissing { field_name, field_type } => write!(f,r#"Mandatory field {field_name:?} of type "{field_type:?}" is missing"#)
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct IncompatibleTypeError<'a> {
-    source_type: &'a Type,
-    target_type: &'a Type,
-    reasons: Vec<TypeCheckError<'a>>,
+pub struct IncompatibleTypeError {
+    source_type: TypeId,
+    target_type: TypeId,
+    reasons: Vec<TypeCheckError>,
 }
 
-impl<'a> From<IncompatibleTypeError<'a>> for TypeCheckError<'a> {
-    fn from(value: IncompatibleTypeError<'a>) -> Self {
+impl<'a> From<IncompatibleTypeError> for TypeCheckError {
+    fn from(value: IncompatibleTypeError) -> Self {
         TypeCheckError::IncompatibleType(value)
     }
 }
 
-impl<'a> std::error::Error for IncompatibleTypeError<'a> {}
+impl std::error::Error for IncompatibleTypeError {}
 
-impl<'a> fmt::Display for IncompatibleTypeError<'a> {
+impl fmt::Display for IncompatibleTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let reasons = self
             .reasons
@@ -569,14 +629,14 @@ impl<'a> fmt::Display for IncompatibleTypeError<'a> {
 
         write!(
             f,
-            r#"Type "{}" is not assignable to type "{}".{sep}{reasons}"#,
+            r#"Type "{:?}" is not assignable to type "{:?}".{sep}{reasons}"#,
             self.source_type, self.target_type
         )
     }
 }
 
 /// TypeId define a unique type identifier in a [Context].
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 pub struct TypeId(usize);
 
 impl TypeId {
@@ -605,7 +665,7 @@ impl fmt::Debug for TypeId {
 }
 
 /// Type define a Lua type in our type system.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Type {
     Never,
     Literal {
@@ -682,7 +742,7 @@ impl Type {
 }
 
 /// PrimitiveKind enumerates all Lua primitive types.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum PrimitiveKind {
     Nil,
     Boolean,
@@ -715,7 +775,7 @@ impl fmt::Display for PrimitiveKind {
 }
 
 /// FunctionType define a Lua function type.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct FunctionType {
     params: Vec<TypeId>,
     results: Vec<TypeId>,
@@ -747,7 +807,7 @@ impl fmt::Display for FunctionType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct UnionType {
     types: Vec<TypeId>,
 }
@@ -785,15 +845,15 @@ impl fmt::Display for UnionType {
 
 /// IfaceType define a Lua table with keys and values of specified types.
 /// Every type that contains those fields is assignable to an interface.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct IfaceType {
-    fields: HashMap<TypeId, TypeId>,
+    fields: BTreeMap<TypeId, TypeId>,
 }
 
 impl IfaceType {
     pub fn new(fields: impl IntoIterator<Item = (TypeId, TypeId)>) -> Self {
         Self {
-            fields: HashMap::from_iter(fields),
+            fields: BTreeMap::from_iter(fields),
         }
     }
 }
@@ -834,30 +894,31 @@ mod tests {
     }
 
     #[test]
+    fn type_environment_register_is_idempotent() {
+        let mut env = TypeEnvironment::new();
+        assert_eq!(env.register(Type::NIL), TypeId::NIL)
+    }
+
+    #[test]
     fn any_is_assignable_to_any() {
-        let checker = TypeChecker::new();
-        let any = Type::Any;
-        assert!(checker.can_assign(&any, &any).is_ok());
+        let mut checker = TypeChecker::new();
+        assert!(checker.can_assign(TypeId::ANY, TypeId::ANY).is_ok());
     }
 
     #[test]
     fn never_is_assignable_to_any() {
-        let checker = TypeChecker::new();
-        let never = Type::Never;
-        let any = Type::Any;
-        assert!(checker.can_assign(&never, &any).is_ok());
+        let mut checker = TypeChecker::new();
+        assert!(checker.can_assign(TypeId::NEVER, TypeId::ANY).is_ok());
     }
 
     #[test]
     fn any_is_not_assignable_to_never() {
-        let checker = TypeChecker::new();
-        let never = Type::Never;
-        let any = Type::Any;
+        let mut checker = TypeChecker::new();
         assert_eq!(
-            checker.can_assign(&any, &never),
+            checker.can_assign(TypeId::ANY, TypeId::NEVER),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &any,
-                target_type: &never,
+                source_type: TypeId::ANY,
+                target_type: TypeId::NEVER,
                 reasons: Vec::new(),
             }))
         );
@@ -865,30 +926,24 @@ mod tests {
 
     #[test]
     fn any_is_assignable_to_unknown() {
-        let checker = TypeChecker::new();
-        let any = Type::Any;
-        let unknown = Type::Unknown;
-        assert!(checker.can_assign(&any, &unknown).is_ok());
+        let mut checker = TypeChecker::new();
+        assert!(checker.can_assign(TypeId::ANY, TypeId::UNKNOWN).is_ok());
     }
 
     #[test]
     fn unknown_is_assignable_to_any() {
-        let checker = TypeChecker::new();
-        let any = Type::Any;
-        let unknown = Type::Unknown;
-        assert!(checker.can_assign(&unknown, &any).is_ok());
+        let mut checker = TypeChecker::new();
+        assert!(checker.can_assign(TypeId::UNKNOWN, TypeId::ANY).is_ok());
     }
 
     #[test]
     fn unknown_is_not_assignable_to_never() {
-        let checker = TypeChecker::new();
-        let never = Type::Never;
-        let unknown = Type::Unknown;
+        let mut checker = TypeChecker::new();
         assert_eq!(
-            checker.can_assign(&unknown, &never),
+            checker.can_assign(TypeId::UNKNOWN, TypeId::NEVER),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &unknown,
-                target_type: &never,
+                source_type: TypeId::UNKNOWN,
+                target_type: TypeId::NEVER,
                 reasons: Vec::new(),
             }))
         );
@@ -896,100 +951,108 @@ mod tests {
 
     #[test]
     fn literal_is_assignable_to_itself() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let lit = Type::number(1.0);
+        let lit_id = type_id_of!(checker, lit);
 
-        assert!(checker.can_assign(&lit, &lit).is_ok())
+        assert!(checker.can_assign(lit_id, lit_id).is_ok())
     }
 
     #[test]
     fn literal_is_assignable_to_primitive_of_same_kind() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let lit = Type::number(1.0);
+        let lit_id = type_id_of!(checker, lit);
 
-        assert!(checker.can_assign(&lit, &Type::NUMBER).is_ok())
+        assert!(checker.can_assign(lit_id, TypeId::NUMBER).is_ok())
     }
 
     #[test]
     fn primitive_is_assignable_to_itself() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
 
-        assert!(checker.can_assign(&Type::NUMBER, &Type::NUMBER).is_ok())
+        assert!(checker.can_assign(TypeId::NUMBER, TypeId::NUMBER).is_ok())
     }
 
     #[test]
     fn function_without_params_and_results_is_assignable_to_itself() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let function = FunctionType {
             params: vec![],
             results: vec![],
-        };
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
 
-        assert!(checker
-            .can_assign(&Type::Function(function.clone()), &Type::Function(function))
-            .is_ok())
+        assert!(checker.can_assign(function_id, function_id).is_ok())
     }
 
     #[test]
     fn function_with_same_params_and_returns_is_assignable_to_itself() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let function = FunctionType {
             params: vec![TypeId::NUMBER],
             results: vec![TypeId::STRING],
-        };
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
 
-        assert!(checker
-            .can_assign(&Type::Function(function.clone()), &Type::Function(function))
-            .is_ok())
+        assert!(checker.can_assign(function_id, function_id).is_ok())
     }
 
     #[test]
     fn function_with_number_param_is_assignable_to_function_with_literal_number_param() {
         let mut checker = TypeChecker::new();
         let lit = Type::number(1.0);
-        let lit_id = checker.environment_mut().register(lit);
+        let lit_id = type_id_of!(checker, lit);
 
         let function1 = FunctionType {
             params: vec![lit_id],
             results: vec![],
-        };
+        }
+        .into();
+        let function1_id = type_id_of!(checker, function1);
+
         let function2 = FunctionType {
             params: vec![TypeId::NUMBER],
             results: vec![],
-        };
+        }
+        .into();
+        let function2_id = type_id_of!(checker, function2);
 
-        assert!(checker
-            .can_assign(&function2.into(), &function1.into())
-            .is_ok())
+        assert!(checker.can_assign(function2_id, function1_id).is_ok())
     }
 
     #[test]
     fn function_with_literal_number_param_is_not_assignable_to_function_with_number_param() {
         let mut checker = TypeChecker::new();
         let lit = Type::number(1.0);
-        let lit_id = checker.environment_mut().register(lit.clone());
+        let lit_id = type_id_of!(checker, lit);
 
-        let function1: Type = FunctionType {
+        let function1 = FunctionType {
             params: vec![lit_id],
             results: vec![],
         }
         .into();
-        let function2: Type = FunctionType {
+        let function1_id = type_id_of!(checker, function1);
+
+        let function2 = FunctionType {
             params: vec![TypeId::NUMBER],
             results: vec![],
         }
         .into();
+        let function2_id = type_id_of!(checker, function2);
 
         assert_eq!(
-            checker.can_assign(&function1, &function2),
+            checker.can_assign(function1_id, function2_id),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &function1,
-                target_type: &function2,
+                source_type: function1_id,
+                target_type: function2_id,
                 reasons: vec![TypeCheckError::IncompatibleParameterType {
                     nth: 0,
                     source: Box::new(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                        source_type: &Type::NUMBER,
-                        target_type: &lit,
+                        source_type: TypeId::NUMBER,
+                        target_type: lit_id,
                         reasons: vec![]
                     }))
                 }]
@@ -1008,13 +1071,16 @@ mod tests {
             results: vec![lit_id],
         }
         .into();
+        let function1_id = type_id_of!(checker, function1);
+
         let function2: Type = FunctionType {
             params: vec![],
             results: vec![TypeId::NUMBER],
         }
         .into();
+        let function2_id = type_id_of!(checker, function2);
 
-        assert!(checker.can_assign(&function1, &function2).is_ok())
+        assert!(checker.can_assign(function1_id, function2_id).is_ok())
     }
 
     #[test]
@@ -1028,22 +1094,25 @@ mod tests {
             results: vec![lit_id],
         }
         .into();
+        let function1_id = type_id_of!(checker, function1);
+
         let function2: Type = FunctionType {
             params: vec![],
             results: vec![TypeId::NUMBER],
         }
         .into();
+        let function2_id = type_id_of!(checker, function2);
 
         assert_eq!(
-            checker.can_assign(&function2, &function1),
+            checker.can_assign(function2_id, function1_id),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &function2,
-                target_type: &function1,
+                source_type: function2_id,
+                target_type: function1_id,
                 reasons: vec![TypeCheckError::IncompatibleReturnType {
                     nth: 0,
                     source: Box::new(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                        source_type: &Type::NUMBER,
-                        target_type: &lit,
+                        source_type: TypeId::NUMBER,
+                        target_type: lit_id,
                         reasons: vec![]
                     }))
                 }]
@@ -1053,45 +1122,51 @@ mod tests {
 
     #[test]
     fn function_with_1_number_params_is_assignable_to_function_with_2_number_params() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let function1: Type = FunctionType {
             params: vec![TypeId::NUMBER],
             results: vec![],
         }
         .into();
+        let function1_id = type_id_of!(checker, function1);
+
         let function2: Type = FunctionType {
             params: vec![TypeId::NUMBER, TypeId::NUMBER],
             results: vec![],
         }
         .into();
+        let function2_id = type_id_of!(checker, function2);
 
-        assert!(checker.can_assign(&function1, &function2).is_ok())
+        assert!(checker.can_assign(function1_id, function2_id).is_ok())
     }
 
     #[test]
     fn function_with_2_number_params_is_not_assignable_to_function_with_1_number_params() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let function1: Type = FunctionType {
             params: vec![TypeId::NUMBER],
             results: vec![],
         }
         .into();
+        let function1_id = type_id_of!(checker, function1);
+
         let function2: Type = FunctionType {
             params: vec![TypeId::NUMBER, TypeId::NUMBER],
             results: vec![],
         }
         .into();
+        let function2_id = type_id_of!(checker, function2);
 
         assert_eq!(
-            checker.can_assign(&function2, &function1),
+            checker.can_assign(function2_id, function1_id),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &function2,
-                target_type: &function1,
+                source_type: function2_id,
+                target_type: function1_id,
                 reasons: vec![TypeCheckError::IncompatibleParameterType {
                     nth: 1,
                     source: Box::new(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                        source_type: &Type::NIL,
-                        target_type: &Type::NUMBER,
+                        source_type: TypeId::NIL,
+                        target_type: TypeId::NUMBER,
                         reasons: vec![]
                     }))
                 }]
@@ -1101,45 +1176,51 @@ mod tests {
 
     #[test]
     fn function_with_2_number_returns_is_assignable_to_function_with_1_number_returns() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let function1: Type = FunctionType {
             params: vec![],
             results: vec![TypeId::NUMBER],
         }
         .into();
+        let function1_id = type_id_of!(checker, function1);
+
         let function2: Type = FunctionType {
             params: vec![],
             results: vec![TypeId::NUMBER, TypeId::NUMBER],
         }
         .into();
+        let function2_id = type_id_of!(checker, function2);
 
-        assert!(checker.can_assign(&function2, &function1).is_ok(),)
+        assert!(checker.can_assign(function2_id, function1_id).is_ok(),)
     }
 
     #[test]
     fn function_with_1_number_returns_is_not_assignable_to_function_with_2_number_returns() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let function1: Type = FunctionType {
             params: vec![],
             results: vec![TypeId::NUMBER],
         }
         .into();
+        let function1_id = type_id_of!(checker, function1);
+
         let function2: Type = FunctionType {
             params: vec![],
             results: vec![TypeId::NUMBER, TypeId::NUMBER],
         }
         .into();
+        let function2_id = type_id_of!(checker, function2);
 
         assert_eq!(
-            checker.can_assign(&function1, &function2),
+            checker.can_assign(function1_id, function2_id),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &function1,
-                target_type: &function2,
+                source_type: function1_id,
+                target_type: function2_id,
                 reasons: vec![TypeCheckError::IncompatibleReturnType {
                     nth: 1,
                     source: Box::new(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                        source_type: &Type::NIL,
-                        target_type: &Type::NUMBER,
+                        source_type: TypeId::NIL,
+                        target_type: TypeId::NUMBER,
                         reasons: vec![]
                     }))
                 }]
@@ -1149,31 +1230,33 @@ mod tests {
 
     #[test]
     fn union_of_literal_is_assignable_to_itself() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::STRING]).into();
+        let union_type_id = type_id_of!(checker, union_type);
 
-        assert!(checker.can_assign(&union_type, &union_type).is_ok());
+        assert!(checker.can_assign(union_type_id, union_type_id).is_ok());
     }
 
     #[test]
     fn union_of_string_nil_is_not_assignable_to_number() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::STRING, TypeId::NIL]).into();
+        let union_type_id = type_id_of!(checker, union_type);
 
         assert_eq!(
-            checker.can_assign(&union_type, &Type::NUMBER),
+            checker.can_assign(union_type_id, TypeId::NUMBER),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &union_type,
-                target_type: &Type::NUMBER,
+                source_type: union_type_id,
+                target_type: TypeId::NUMBER,
                 reasons: vec![
                     TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                        source_type: &Type::STRING,
-                        target_type: &Type::NUMBER,
+                        source_type: TypeId::STRING,
+                        target_type: TypeId::NUMBER,
                         reasons: vec![],
                     }),
                     TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                        source_type: &Type::NIL,
-                        target_type: &Type::NUMBER,
+                        source_type: TypeId::NIL,
+                        target_type: TypeId::NUMBER,
                         reasons: vec![],
                     }),
                 ]
@@ -1207,14 +1290,16 @@ mod tests {
             ),
         ])
         .into();
+        let iface_type_id = type_id_of!(checker, iface_type);
 
-        assert!(checker.can_assign(&iface_type, &iface_type).is_ok())
+        assert!(checker.can_assign(iface_type_id, iface_type_id).is_ok())
     }
 
     #[test]
     fn iface_is_assignable_to_empty_iface() {
         let mut checker = TypeChecker::new();
         let empty_iface_type = IfaceType::new(vec![]).into();
+        let empty_iface_type_id = type_id_of!(checker, empty_iface_type);
         let iface_type = IfaceType::new(vec![
             (
                 type_id_of!(checker, Type::string("foo".to_owned())),
@@ -1238,14 +1323,18 @@ mod tests {
             ),
         ])
         .into();
+        let iface_type_id = type_id_of!(checker, iface_type);
 
-        assert!(checker.can_assign(&iface_type, &empty_iface_type).is_ok())
+        assert!(checker
+            .can_assign(iface_type_id, empty_iface_type_id)
+            .is_ok())
     }
 
     #[test]
     fn empty_iface_is_assignable_to_iface_with_field_union_of_number_nil() {
         let mut checker = TypeChecker::new();
         let empty_iface_type = IfaceType::new(vec![]).into();
+        let empty_iface_type_id = type_id_of!(checker, empty_iface_type);
 
         let number_or_nil = UnionType::new(vec![TypeId::NUMBER, TypeId::NIL]).into();
         let number_or_nil_id = checker.environment_mut().register(number_or_nil);
@@ -1255,51 +1344,110 @@ mod tests {
             number_or_nil_id,
         )])
         .into();
+        let iface_type_id = type_id_of!(checker, iface_type);
 
-        assert!(checker.can_assign(&empty_iface_type, &iface_type).is_ok())
+        assert!(checker
+            .can_assign(empty_iface_type_id, iface_type_id)
+            .is_ok())
     }
 
     #[test]
     fn empty_iface_is_not_assignable_to_iface_with_field_number() {
         let mut checker = TypeChecker::new();
+
         let empty_iface_type = IfaceType::new(vec![]).into();
-        let iface_type = IfaceType::new(vec![(
-            type_id_of!(checker, Type::string("foo".to_owned())),
-            TypeId::NUMBER,
-        )])
-        .into();
+        let empty_iface_type_id = type_id_of!(checker, empty_iface_type);
+
+        let lit_foo_string = Type::string(r#""foo""#.to_string());
+        let lit_foo_string_id = type_id_of!(checker, lit_foo_string);
+
+        let iface_type = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
+        let iface_type_id = type_id_of!(checker, iface_type);
 
         assert_eq!(
-            checker.can_assign(&empty_iface_type, &iface_type),
+            checker.can_assign(empty_iface_type_id, iface_type_id),
             Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
-                source_type: &empty_iface_type,
-                target_type: &iface_type,
+                source_type: empty_iface_type_id,
+                target_type: iface_type_id,
                 reasons: vec![TypeCheckError::RequiredFieldMissing {
-                    field_name: r#""foo""#.to_owned(),
-                    field_type: &Type::NUMBER,
+                    field_name: lit_foo_string_id,
+                    field_type: TypeId::NUMBER,
                 }]
             }))
         )
     }
 
     #[test]
+    fn union_of_iface_foo_number_iface_bar_number_is_assignable_to_iface_foo_bar_numbers() {
+        let mut checker = TypeChecker::new();
+
+        let lit_foo_string = Type::string(r#""foo""#.to_owned());
+        let lit_foo_string_id = type_id_of!(checker, lit_foo_string);
+        let lit_bar_string = Type::string(r#""foo""#.to_owned());
+        let lit_bar_string_id = type_id_of!(checker, lit_bar_string);
+
+        let iface_foo = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
+        let iface_foo_id = type_id_of!(checker, iface_foo);
+        let iface_bar = IfaceType::new(vec![(lit_bar_string_id, TypeId::NUMBER)]).into();
+        let iface_bar_id = type_id_of!(checker, iface_bar);
+
+        let union_iface_foo_iface_bar = UnionType::new(vec![iface_foo_id, iface_bar_id]).into();
+        let union_iface_foo_iface_bar_id = type_id_of!(checker, union_iface_foo_iface_bar);
+
+        let iface_foo_bar = IfaceType::new(vec![
+            (lit_foo_string_id, TypeId::NUMBER),
+            (lit_bar_string_id, TypeId::NUMBER),
+        ])
+        .into();
+        let iface_foo_bar_id = type_id_of!(checker, iface_foo_bar);
+
+        assert!(checker
+            .can_assign(union_iface_foo_iface_bar_id, iface_foo_bar_id)
+            .is_ok());
+    }
+
+    #[test]
+    fn iface_foo_bar_numbers_is_assignable_to_union_of_iface_foo_number_iface_bar_number() {
+        let mut checker = TypeChecker::new();
+
+        let lit_foo_string = Type::string(r#""foo""#.to_owned());
+        let lit_foo_string_id = type_id_of!(checker, lit_foo_string);
+        let lit_bar_string = Type::string(r#""foo""#.to_owned());
+        let lit_bar_string_id = type_id_of!(checker, lit_bar_string);
+
+        let iface_foo = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
+        let iface_foo_id = type_id_of!(checker, iface_foo);
+        let iface_bar = IfaceType::new(vec![(lit_bar_string_id, TypeId::NUMBER)]).into();
+        let iface_bar_id = type_id_of!(checker, iface_bar);
+
+        let union_iface_foo_iface_bar = UnionType::new(vec![iface_foo_id, iface_bar_id]).into();
+        let union_iface_foo_iface_bar_id = type_id_of!(checker, union_iface_foo_iface_bar);
+
+        let iface_foo_bar = IfaceType::new(vec![
+            (lit_foo_string_id, TypeId::NUMBER),
+            (lit_bar_string_id, TypeId::NUMBER),
+        ])
+        .into();
+        let iface_foo_bar_id = type_id_of!(checker, iface_foo_bar);
+
+        assert!(checker
+            .can_assign(iface_foo_bar_id, union_iface_foo_iface_bar_id)
+            .is_ok());
+    }
+
+    #[test]
     fn normalize_union_of_number_number_returns_number() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]);
-        assert_eq!(
-            checker.normalize_then_lookup(&union_type.into()),
-            &Type::NUMBER
-        );
+        let union_type: Type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]).into();
+
+        assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
 
     #[test]
     fn normalize_union_of_number_never_returns_number() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::NEVER]);
-        assert_eq!(
-            checker.normalize_then_lookup(&union_type.into()),
-            &Type::NUMBER
-        );
+        let union_type: Type = UnionType::new(vec![TypeId::NUMBER, TypeId::NEVER]).into();
+        assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
 
     #[test]
@@ -1345,46 +1493,42 @@ mod tests {
     #[test]
     fn normalize_union_of_number_number_literal_returns_number() {
         let mut checker = TypeChecker::new();
-        let env = checker.environment_mut();
 
         let lit = Type::number(1.0);
-        let lit_id = env.register(lit.clone());
+        let lit_id = type_id_of!(checker, lit);
         let union_type = UnionType::new(vec![TypeId::NUMBER, lit_id]).into();
 
-        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::NUMBER);
+        assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
 
     #[test]
     fn normalize_union_of_number_literal_number_returns_number() {
         let mut checker = TypeChecker::new();
-        let env = checker.environment_mut();
 
         let lit = Type::number(1.0);
-        let lit_id = env.register(lit.clone());
+        let lit_id = type_id_of!(checker, lit);
         let union_type = UnionType::new(vec![lit_id, TypeId::NUMBER]).into();
 
-        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::NUMBER);
+        assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
 
     #[test]
     fn normalize_union_of_number_union_of_number_number_returns_number() {
         let mut checker = TypeChecker::new();
-        let env = checker.environment_mut();
 
         let union_type1: Type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]).into();
-        let union_type1_id = env.register(union_type1.clone());
+        let union_type1_id = type_id_of!(checker, union_type1);
         let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
 
-        assert_eq!(checker.normalize_then_lookup(&union_type2), &Type::NUMBER);
+        assert_eq!(checker.normalize(&union_type2), Some(TypeId::NUMBER));
     }
 
     #[test]
     fn normalize_union_of_number_union_of_nil_string_returns_union_of_number_nil_string() {
         let mut checker = TypeChecker::new();
-        let env = checker.environment_mut();
 
         let union_type1: Type = UnionType::new(vec![TypeId::STRING, TypeId::NIL]).into();
-        let union_type1_id = env.register(union_type1.clone());
+        let union_type1_id = type_id_of!(checker, union_type1);
         let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
 
         let union_type3 = UnionType::new(vec![TypeId::NUMBER, TypeId::STRING, TypeId::NIL]).into();
