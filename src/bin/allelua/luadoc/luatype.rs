@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::{borrow::Cow, collections::HashMap, fmt};
 
 use similar::DiffableStr;
 
@@ -329,32 +329,54 @@ impl TypeChecker {
         Ok(initial_reasons_len == reasons.len())
     }
 
+    pub fn normalize_then_lookup<'a>(&'a mut self, t: &'a Type) -> &'a Type {
+        match self.normalize(t) {
+            Some(id) => self.lookup_type(id).unwrap(),
+            None => t,
+        }
+    }
+
     /// Normalize the given type, adds it to then environment and returns a
     /// reference to it.
-    pub fn normalize<'a>(&'a mut self, t: &'a Type) -> &'a Type {
+    pub fn normalize<'a>(&'a mut self, t: &'a Type) -> Option<TypeId> {
         match t {
             Type::Never
             | Type::Any
             | Type::Unknown
             | Type::Literal { .. }
-            | Type::Primitive { .. }
-            | Type::Function(_)
-            | Type::Iface(_) => t,
-            Type::Union(u) => self.normalize_union(u),
+            | Type::Primitive { .. } => None,
+            Type::Function(f) => Some(self.normalize_function(f)),
+            Type::Iface(_) => None,
+            Type::Union(u) => Some(self.normalize_union(u)),
         }
     }
 
-    fn normalize_union<'a>(&'a mut self, u: &'a UnionType) -> &'a Type {
+    pub fn normalize_function(&mut self, function: &FunctionType) -> TypeId {
+        let mut normalized = function.clone();
+
+        // Normalize parameters.
+        for (i, id) in function.params.iter().enumerate() {
+            let param = self.lookup_type(*id).map(|p| p.to_owned()).unwrap();
+            normalized.params[i] = self.normalize(&param).unwrap_or(*id)
+        }
+
+        // Normalize results.
+        for (i, id) in function.results.iter().enumerate() {
+            let result = self.lookup_type(*id).map(|p| p.to_owned()).unwrap();
+            normalized.results[i] = self.normalize(&result).unwrap_or(*id)
+        }
+
+        self.env.register(Type::Function(normalized))
+    }
+
+    fn normalize_union<'a>(&'a mut self, u: &'a UnionType) -> TypeId {
         let mut type_ids = Vec::new();
 
         type_ids = self.normalize_union_types(&u.types, type_ids);
         match type_ids.len() {
-            0 => &Type::Never,
-            1 => self.env.lookup(type_ids[0]).unwrap(),
-            _ => {
-                let id = self.env.register(UnionType::new(type_ids).into());
-                self.env.lookup(id).unwrap()
-            }
+            0 => TypeId::NEVER,
+            1 => type_ids[0],
+            _ => self.env.register(UnionType::new(type_ids).into()),
         }
     }
 
@@ -1125,42 +1147,60 @@ mod tests {
     fn normalize_union_of_number_number_returns_number() {
         let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]);
-        assert_eq!(checker.normalize(&union_type.into()), &Type::NUMBER);
+        assert_eq!(
+            checker.normalize_then_lookup(&union_type.into()),
+            &Type::NUMBER
+        );
     }
 
     #[test]
     fn normalize_union_of_number_never_returns_number() {
         let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::NEVER]);
-        assert_eq!(checker.normalize(&union_type.into()), &Type::NUMBER);
+        assert_eq!(
+            checker.normalize_then_lookup(&union_type.into()),
+            &Type::NUMBER
+        );
     }
 
     #[test]
     fn normalize_union_of_number_any_returns_any() {
         let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]);
-        assert_eq!(checker.normalize(&union_type.into()), &Type::Any);
+        assert_eq!(
+            checker.normalize_then_lookup(&union_type.into()),
+            &Type::Any
+        );
     }
 
     #[test]
     fn normalize_union_of_number_unknown_returns_unknown() {
         let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::UNKNOWN]);
-        assert_eq!(checker.normalize(&union_type.into()), &Type::Unknown);
+        assert_eq!(
+            checker.normalize_then_lookup(&union_type.into()),
+            &Type::Unknown
+        );
     }
 
     #[test]
     fn normalize_union_of_any_unknown_returns_any() {
         let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::ANY, TypeId::UNKNOWN]);
-        assert_eq!(checker.normalize(&union_type.into()), &Type::Any);
+        assert_eq!(
+            checker.normalize_then_lookup(&union_type.into()),
+            &Type::Any
+        );
     }
 
     #[test]
     fn normalize_union_of_unknown_any_returns_any() {
         let mut checker = TypeChecker::new();
         let union_type = UnionType::new(vec![TypeId::UNKNOWN, TypeId::ANY]);
-        assert_eq!(checker.normalize(&union_type.into()), &Type::Any);
+        assert_eq!(
+            checker.normalize_then_lookup(&union_type.into()),
+            &Type::Any
+        );
     }
 
     #[test]
@@ -1172,7 +1212,7 @@ mod tests {
         let lit_id = env.register(lit.clone());
         let union_type = UnionType::new(vec![TypeId::NUMBER, lit_id]).into();
 
-        assert_eq!(checker.normalize(&union_type), &Type::NUMBER);
+        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::NUMBER);
     }
 
     #[test]
@@ -1184,7 +1224,7 @@ mod tests {
         let lit_id = env.register(lit.clone());
         let union_type = UnionType::new(vec![lit_id, TypeId::NUMBER]).into();
 
-        assert_eq!(checker.normalize(&union_type), &Type::NUMBER);
+        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::NUMBER);
     }
 
     #[test]
@@ -1196,7 +1236,7 @@ mod tests {
         let union_type1_id = env.register(union_type1.clone());
         let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
 
-        assert_eq!(checker.normalize(&union_type2), &Type::NUMBER);
+        assert_eq!(checker.normalize_then_lookup(&union_type2), &Type::NUMBER);
     }
 
     #[test]
@@ -1209,7 +1249,7 @@ mod tests {
         let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
 
         let union_type3 = UnionType::new(vec![TypeId::NUMBER, TypeId::STRING, TypeId::NIL]).into();
-        assert_eq!(checker.normalize(&union_type2), &union_type3);
+        assert_eq!(checker.normalize_then_lookup(&union_type2), &union_type3);
     }
 
     #[test]
@@ -1217,7 +1257,7 @@ mod tests {
         let mut checker = TypeChecker::new();
 
         let union_type1: Type = UnionType::new(vec![]).into();
-        assert_eq!(checker.normalize(&union_type1), &Type::Never);
+        assert_eq!(checker.normalize_then_lookup(&union_type1), &Type::Never);
     }
 
     #[test]
@@ -1225,7 +1265,53 @@ mod tests {
         let mut checker = TypeChecker::new();
 
         let union_type1: Type = UnionType::new(vec![TypeId::NIL]).into();
-        assert_eq!(checker.normalize(&union_type1), &Type::NIL);
+        assert_eq!(checker.normalize_then_lookup(&union_type1), &Type::NIL);
+    }
+
+    #[test]
+    fn normalize_function_with_arg_union_of_number_any() {
+        let mut checker = TypeChecker::new();
+        let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
+        let number_any_id = checker.environment_mut().register(number_any);
+        let function: Type = FunctionType {
+            params: vec![number_any_id],
+            results: vec![],
+        }
+        .into();
+
+        let normalized_function: Type = FunctionType {
+            params: vec![TypeId::ANY],
+            results: vec![],
+        }
+        .into();
+
+        assert_eq!(
+            checker.normalize_then_lookup(&function),
+            &normalized_function
+        );
+    }
+
+    #[test]
+    fn normalize_function_with_result_union_of_number_any() {
+        let mut checker = TypeChecker::new();
+        let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
+        let number_any_id = checker.environment_mut().register(number_any);
+        let function: Type = FunctionType {
+            params: vec![],
+            results: vec![number_any_id],
+        }
+        .into();
+
+        let normalized_function: Type = FunctionType {
+            params: vec![],
+            results: vec![TypeId::ANY],
+        }
+        .into();
+
+        assert_eq!(
+            checker.normalize_then_lookup(&function),
+            &normalized_function
+        );
     }
 
     #[test]
