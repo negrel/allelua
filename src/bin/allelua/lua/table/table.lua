@@ -71,11 +71,10 @@ return function(is_empty)
 		if a == b then return true end
 
 		-- If either value is not a table, they're not equal (since a ~= b)
-		if type(a) ~= "table" or type(b) ~= "table" then return false end
+		if rawtype(a) ~= "table" or rawtype(b) ~= "table" then return false end
 
 		-- We can't use M.is_empty for fast checks has table may have __index
 		-- metamethod.
-		-- if M.is_empty(a) ~= M.is_empty(b) then return false end
 
 		-- Check for cycles
 		seen = seen or {}
@@ -89,18 +88,12 @@ return function(is_empty)
 
 		-- Check if all keys in 'a' exist in 'b' and have the same values
 		for k, v in pairs(a) do
-			if not M.deep_eq(v, b[k], seen) then
-				print("a has keys different in b", k)
-				return false
-			end
+			if not M.deep_eq(v, b[k], seen) then return false end
 		end
 
 		-- Check if 'b' has any keys that 'a' doesn't have
 		for k in pairs(b) do
-			if a[k] == nil then
-				print("b has keys not in a", k)
-				return false
-			end
+			if a[k] == nil then return false end
 		end
 
 		return true

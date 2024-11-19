@@ -4,15 +4,16 @@ use error::load_error;
 use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
 
 use self::{
-    coroutine::load_coroutine, globals::register_globals, io::load_io, os::load_os,
-    package::load_package, path::load_path, sh::load_sh, string::load_string, sync::load_sync,
-    table::load_table, test::load_test, time::load_time,
+    coroutine::load_coroutine, globals::register_globals, io::load_io, json::load_json,
+    os::load_os, package::load_package, path::load_path, sh::load_sh, string::load_string,
+    sync::load_sync, table::load_table, test::load_test, time::load_time,
 };
 
 mod coroutine;
 mod error;
 mod globals;
 mod io;
+mod json;
 mod os;
 mod package;
 mod path;
@@ -105,7 +106,8 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
     handle_result(load_table(&lua));
     handle_result(load_sh(&lua));
     handle_result(load_time(&lua));
-    handle_result(register_globals(lua.clone()));
+    handle_result(load_json(&lua));
+    handle_result(register_globals(&lua));
 
     if safety == RuntimeSafetyLevel::Unsafe {
         handle_result(load_test(lua.clone()));
