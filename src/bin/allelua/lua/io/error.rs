@@ -1,12 +1,11 @@
 use std::{io, ops::Deref};
 
-use mlua::{FromLua, UserData};
 use thiserror::Error;
 
 use crate::lua::error::{self, AlleluaError};
 
 #[derive(Debug, Error)]
-#[error("io.Error(kind={} message={:?})", self.kind(), self.0.to_string())]
+#[error(transparent)]
 pub struct LuaError(#[from] pub io::Error);
 
 impl Deref for LuaError {
@@ -52,38 +51,5 @@ impl AlleluaError for LuaError {
             io::ErrorKind::Other => "Other",
             _ => "Unknown",
         }
-    }
-}
-
-impl UserData for LuaError {
-    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "io.Error")
-    }
-
-    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("kind", |_lua, err, ()| Ok(LuaErrorKind(err.0.kind())))
-    }
-}
-
-#[derive(Debug, Clone, Copy, FromLua)]
-pub struct LuaErrorKind(pub io::ErrorKind);
-
-impl From<io::ErrorKind> for LuaErrorKind {
-    fn from(value: io::ErrorKind) -> Self {
-        Self(value)
-    }
-}
-
-impl UserData for LuaErrorKind {
-    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(_fields: &mut F) {}
-
-    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(mlua::MetaMethod::ToString, |_, errkind, ()| {
-            Ok(io::Error::from(errkind.0).to_string())
-        });
-
-        methods.add_meta_method(mlua::MetaMethod::Eq, |_, errkind, other: LuaErrorKind| {
-            Ok(errkind.0 == other.0)
-        });
     }
 }

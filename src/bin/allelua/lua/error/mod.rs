@@ -9,8 +9,17 @@ use crate::include_lua;
 pub trait AlleluaError: std::error::Error + Send + Sync + 'static {
     fn type_name(&self) -> &str;
     fn kind(&self) -> &str;
+
     fn cause(&self) -> Option<LuaError> {
         None
+    }
+
+    fn fields(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    fn field_getter(&self, _lua: &Lua, _key: mlua::String) -> mlua::Result<mlua::Value> {
+        Ok(mlua::Nil)
     }
 }
 
@@ -43,7 +52,13 @@ impl AlleluaError for UserError {
 /// LuaError define a wrapper that implements [mlua::UserData] for the wrapped
 /// [AlleluaError] type.
 #[derive(thiserror::Error, Clone, FromLua)]
-#[error(transparent)]
+#[error(
+    "{}(kind={} message={:?} properties=[{}])",
+    self.0.type_name(),
+    self.0.kind(),
+    self.0.to_string(),
+    self.0.fields().iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", "))
+]
 pub struct LuaError(Arc<dyn AlleluaError>);
 
 impl Deref for LuaError {
@@ -78,13 +93,18 @@ impl UserData for LuaError {
         fields.add_field_method_get("kind", |lua, err| lua.create_string(err.0.kind()));
         fields.add_field_method_get("message", |lua, err| lua.create_string(err.0.to_string()));
         fields.add_field_method_get("cause", |_, err| Ok(AlleluaError::cause(&**err)));
+        fields.add_field_method_get("properties", |_, err| Ok(AlleluaError::fields(&**err)));
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("is", |_lua, err, ref target: LuaError| Ok(err.is(target)));
 
+        methods.add_meta_method(mlua::MetaMethod::Index, |lua, err, k: mlua::String| {
+            err.0.field_getter(lua, k)
+        });
+
         methods.add_meta_method(mlua::MetaMethod::ToString, |_lua, err, ()| {
-            Ok(format!("{}", err.0))
+            Ok(err.to_string())
         })
     }
 }
