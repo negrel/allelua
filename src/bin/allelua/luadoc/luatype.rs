@@ -7,6 +7,7 @@ use std::{
 use similar::DiffableStr;
 
 /// TypeEnvironment define an environment in our type system.
+#[derive(Debug)]
 pub struct TypeEnvironment {
     parent: Option<Box<TypeEnvironment>>,
     types: Vec<Type>,
@@ -77,7 +78,7 @@ impl TypeEnvironment {
 
     /// Returns type id associated to given type within the environment.
     pub fn reverse_lookup(&self, t: &Type) -> Option<TypeId> {
-        if let Some(id) = self.reverse_lookup.get(&t) {
+        if let Some(id) = self.reverse_lookup.get(t) {
             Some(*id)
         } else if let Some(parent) = &self.parent {
             parent.reverse_lookup(t)
@@ -119,10 +120,53 @@ impl TypeEnvironment {
 
         result + str
     }
+
+    /// Finds all types contained within type with the given [TypeId] and returns
+    /// them.
+    pub fn find_associated(&self, id: TypeId) -> Option<Vec<TypeId>> {
+        let mut result = Vec::new();
+
+        match self.lookup(id)? {
+            Type::Never => {}
+            Type::Literal { kind, .. } | Type::Primitive { kind, .. } => {
+                result.push((*kind).into())
+            }
+            Type::Function(function) => {
+                result.extend(
+                    function
+                        .params
+                        .iter()
+                        .flat_map(|id| self.find_associated(*id))
+                        .flatten(),
+                );
+                result.extend(
+                    function
+                        .results
+                        .iter()
+                        .flat_map(|id| self.find_associated(*id))
+                        .flatten(),
+                )
+            }
+            Type::Union(u) => result.extend_from_slice(&u.types),
+            Type::Iface(iface) => result.extend(
+                iface
+                    .fields
+                    .iter()
+                    .flat_map(|(k, v)| vec![self.find_associated(*k), self.find_associated(*v)])
+                    .flatten()
+                    .flatten(),
+            ),
+            Type::Any => {}
+            Type::Unknown => {}
+        }
+
+        Some(result)
+    }
 }
 
 /// TypeChecker is a Lua type checker. All logic related to type checking is
 /// implemented in this type.
+#[derive(Debug)]
 pub struct TypeChecker {
     env: TypeEnvironment,
 }
@@ -138,8 +182,8 @@ impl TypeChecker {
         &self.env
     }
 
-    pub fn environment_mut(&mut self) -> &mut TypeEnvironment {
-        &mut self.env
+    pub fn register_type(&mut self, t: Type) -> TypeId {
+        self.env.register(t)
     }
 
     /// Search [Type] with given [TypeId] in the current environment and returns it.
@@ -889,7 +933,7 @@ mod tests {
 
     macro_rules! type_id_of {
         ($checker:ident, $t:expr) => {
-            $checker.environment_mut().register($t)
+            $checker.register_type($t)
         };
     }
 
@@ -1064,7 +1108,7 @@ mod tests {
     fn function_with_literal_number_return_is_assignable_to_function_with_number_return() {
         let mut checker = TypeChecker::new();
         let lit = Type::number(1.0);
-        let lit_id = checker.environment_mut().register(lit.clone());
+        let lit_id = type_id_of!(checker, lit);
 
         let function1: Type = FunctionType {
             params: vec![],
@@ -1087,7 +1131,7 @@ mod tests {
     fn function_with_number_return_is_not_assignable_to_function_with_literal_number_return() {
         let mut checker = TypeChecker::new();
         let lit = Type::number(1.0);
-        let lit_id = checker.environment_mut().register(lit.clone());
+        let lit_id = type_id_of!(checker, lit);
 
         let function1: Type = FunctionType {
             params: vec![],
@@ -1337,7 +1381,7 @@ mod tests {
         let empty_iface_type_id = type_id_of!(checker, empty_iface_type);
 
         let number_or_nil = UnionType::new(vec![TypeId::NUMBER, TypeId::NIL]).into();
-        let number_or_nil_id = checker.environment_mut().register(number_or_nil);
+        let number_or_nil_id = type_id_of!(checker, number_or_nil);
 
         let iface_type = IfaceType::new(vec![(
             type_id_of!(checker, Type::string("foo".to_owned())),
@@ -1555,7 +1599,7 @@ mod tests {
     fn normalize_function_with_arg_union_of_number_any() {
         let mut checker = TypeChecker::new();
         let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
-        let number_any_id = checker.environment_mut().register(number_any);
+        let number_any_id = type_id_of!(checker, number_any);
         let function: Type = FunctionType {
             params: vec![number_any_id],
             results: vec![],
@@ -1578,7 +1622,7 @@ mod tests {
     fn normalize_function_with_result_union_of_number_any() {
         let mut checker = TypeChecker::new();
         let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
-        let number_any_id = checker.environment_mut().register(number_any);
+        let number_any_id = type_id_of!(checker, number_any);
         let function: Type = FunctionType {
             params: vec![],
             results: vec![number_any_id],
@@ -1601,7 +1645,7 @@ mod tests {
     fn normalize_iface_with_field_union_of_number_any() {
         let mut checker = TypeChecker::new();
         let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
-        let number_any_id = checker.environment_mut().register(number_any);
+        let number_any_id = type_id_of!(checker, number_any);
         let lit_foo_type_id = type_id_of!(checker, Type::string("foo".to_owned()));
         let iface: Type = IfaceType::new(vec![(lit_foo_type_id, number_any_id)]).into();
 
@@ -1616,9 +1660,7 @@ mod tests {
         let lit_foo_type_id = type_id_of!(checker, Type::string("foo".to_owned()));
         let literal_foo_string_string =
             UnionType::new(vec![lit_foo_type_id, TypeId::STRING]).into();
-        let literal_foo_string_string_id = checker
-            .environment_mut()
-            .register(literal_foo_string_string);
+        let literal_foo_string_string_id = type_id_of!(checker, literal_foo_string_string);
         let iface: Type =
             IfaceType::new(vec![(literal_foo_string_string_id, TypeId::NUMBER)]).into();
 
