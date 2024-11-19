@@ -64,36 +64,64 @@ pub fn lint(paths: Vec<PathBuf>) -> anyhow::Result<()> {
             let source_id = files.add(fpath.as_os_str(), &source);
 
             eprint!("linting file {fpath:?} ... ");
-            let ast = full_moon::parse(&source)
-                .with_context(|| format!("failed to parse lua file {fpath:?}"))?;
+            match full_moon::parse(&source) {
+                Ok(ast) => {
+                    let mut diagnostics = checker.test_on(&ast);
+                    diagnostics.sort_by_key(|d| d.diagnostic.start_position());
 
-            let mut diagnostics = checker.test_on(&ast);
-            diagnostics.sort_by_key(|d| d.diagnostic.start_position());
+                    if !diagnostics.is_empty() {
+                        eprintln!("FAILED");
 
-            if !diagnostics.is_empty() {
-                eprintln!("FAILED");
-
-                for d in diagnostics {
-                    let diag = d.diagnostic.into_codespan_diagnostic(
-                        source_id,
-                        match d.severity {
-                            Severity::Allow => continue,
-                            Severity::Error => CodespanSeverity::Error,
-                            Severity::Warning => CodespanSeverity::Warning,
-                        },
-                    );
-                    codespan_reporting::term::emit(
-                        &mut stderr,
-                        &codespan_reporting::term::Config::default(),
-                        &files,
-                        &diag,
-                    )
-                    .context("failed to report lint")?;
-                    problems += 1;
+                        for d in diagnostics {
+                            let diag = d.diagnostic.into_codespan_diagnostic(
+                                source_id,
+                                match d.severity {
+                                    Severity::Allow => continue,
+                                    Severity::Error => CodespanSeverity::Error,
+                                    Severity::Warning => CodespanSeverity::Warning,
+                                },
+                            );
+                            codespan_reporting::term::emit(
+                                &mut stderr,
+                                &codespan_reporting::term::Config::default(),
+                                &files,
+                                &diag,
+                            )
+                            .context("failed to report lint")?;
+                            problems += 1;
+                        }
+                    } else {
+                        eprintln!("ok");
+                    }
                 }
-            } else {
-                eprintln!("ok");
-            }
+                Err(errors) => {
+                    eprintln!("FAILED");
+                    for err in errors {
+                        let (start, end) = err.range();
+                        let diag = codespan_reporting::diagnostic::Diagnostic {
+                            severity: codespan_reporting::diagnostic::Severity::Error,
+                            code: None,
+                            message: err.error_message().to_string(),
+                            labels: vec![codespan_reporting::diagnostic::Label {
+                                style: codespan_reporting::diagnostic::LabelStyle::Primary,
+                                file_id: source_id,
+                                range: start.bytes()..end.bytes(),
+                                message: "".to_owned(),
+                            }],
+                            notes: Vec::new(),
+                        };
+
+                        codespan_reporting::term::emit(
+                            &mut stderr,
+                            &codespan_reporting::term::Config::default(),
+                            &files,
+                            &diag,
+                        )
+                        .context("failed to report lint")?;
+                        problems += 1;
+                    }
+                }
+            };
         }
     }
 

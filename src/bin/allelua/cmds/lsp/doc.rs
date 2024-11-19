@@ -87,72 +87,70 @@ impl Doc {
                     })
                     .collect()
             }
-            Err(err) => match err {
-                full_moon::Error::AstError(err) => match err {
-                    full_moon::ast::AstError::Empty => vec![],
-                    full_moon::ast::AstError::NoEof => unreachable!(),
-                    full_moon::ast::AstError::UnexpectedToken { token, additional } => {
+            Err(errors) => errors
+                .iter()
+                .flat_map(|err| match err {
+                    full_moon::Error::AstError(err) => {
+                        let (start_position, end_position) = err.range();
                         let range = Range::new(
                             Position::new(
-                                token.start_position().line() as u32,
-                                token.start_position().character() as u32,
+                                start_position.line() as u32,
+                                start_position.character() as u32,
                             ),
                             Position::new(
-                                token.end_position().line() as u32,
-                                token.end_position().character() as u32,
+                                end_position.line() as u32,
+                                end_position.character() as u32,
                             ),
                         );
 
-                        vec![Diagnostic {
+                        Some(Diagnostic {
                             range,
                             severity: Some(DiagnosticSeverity::ERROR),
                             code: Some(NumberOrString::String("unexpected_token".to_string())),
                             code_description: None,
                             source: Some("full_moon".to_string()),
-                            message: additional
-                                .unwrap_or(std::borrow::Cow::Borrowed("Unexpected token."))
-                                .to_string(),
+                            message: err.error_message().to_owned(),
                             related_information: None,
                             tags: None,
                             data: None,
-                        }]
+                        })
                     }
-                },
-                full_moon::Error::TokenizerError(err) => {
-                    let pos = Position::new(
-                        // LSP clients expect zero based position.
-                        (err.position().line() - 1) as u32,
-                        (err.position().character() - 1) as u32,
-                    );
-                    let range = Range::new(pos, pos);
-                    let mut diag = Diagnostic {
-                        range,
-                        severity: Some(DiagnosticSeverity::ERROR),
-                        source: Some("full_moon".to_owned()),
-                        ..Default::default()
-                    };
+                    full_moon::Error::TokenizerError(err) => {
+                        let pos = Position::new(
+                            // LSP clients expect zero based position.
+                            (err.position().line() - 1) as u32,
+                            (err.position().character() - 1) as u32,
+                        );
+                        let range = Range::new(pos, pos);
+                        let mut diag = Diagnostic {
+                            range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            source: Some("full_moon".to_owned()),
+                            ..Default::default()
+                        };
 
-                    match err.error() {
-                        full_moon::tokenizer::TokenizerErrorType::UnclosedComment => {
-                            diag.message = "Unclosed comment".to_owned()
+                        match err.error() {
+                            full_moon::tokenizer::TokenizerErrorType::UnclosedComment => {
+                                diag.message = "Unclosed comment".to_owned()
+                            }
+                            full_moon::tokenizer::TokenizerErrorType::UnclosedString => {
+                                diag.message = "Unclosed string".to_owned()
+                            }
+                            full_moon::tokenizer::TokenizerErrorType::UnexpectedToken(char) => {
+                                diag.message = format!("Unexpected token {char}")
+                            }
+                            full_moon::tokenizer::TokenizerErrorType::InvalidSymbol(symbol) => {
+                                diag.message = format!("Invalid symbol {symbol}")
+                            }
+                            full_moon::tokenizer::TokenizerErrorType::InvalidNumber => {
+                                diag.message = format!("invalid number")
+                            }
                         }
-                        full_moon::tokenizer::TokenizerErrorType::UnclosedString => {
-                            diag.message = "Unclosed string".to_owned()
-                        }
-                        full_moon::tokenizer::TokenizerErrorType::UnexpectedShebang => {
-                            diag.message = "Unexpected shebang".to_owned()
-                        }
-                        full_moon::tokenizer::TokenizerErrorType::UnexpectedToken(char) => {
-                            diag.message = format!("Unexpected token {char}")
-                        }
-                        full_moon::tokenizer::TokenizerErrorType::InvalidSymbol(symbol) => {
-                            diag.message = format!("Invalid symbol {symbol}")
-                        }
+
+                        Some(diag)
                     }
-
-                    vec![diag]
-                }
-            },
+                })
+                .collect(),
         }
     }
 }

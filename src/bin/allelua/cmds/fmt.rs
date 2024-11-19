@@ -2,7 +2,8 @@ use std::{env, fs, path::PathBuf};
 
 use anyhow::{bail, Context};
 use stylua_lib::{
-    format_code, Config, LineEndings, OutputVerification, QuoteStyle, SortRequiresConfig,
+    format_code, Config, LineEndings, LuaVersion, OutputVerification, QuoteStyle,
+    SortRequiresConfig,
 };
 use walkdir::WalkDir;
 
@@ -15,10 +16,12 @@ const CONFIG: Config = Config {
     indent_type: stylua_lib::IndentType::Tabs,
     indent_width: 2,
     quote_style: QuoteStyle::AutoPreferDouble,
+    no_call_parentheses: false,
     call_parentheses: stylua_lib::CallParenType::NoSingleTable,
     collapse_simple_statement: stylua_lib::CollapseSimpleStatement::ConditionalOnly,
     sort_requires: SortRequiresConfig { enabled: true },
-    no_call_parentheses: false,
+    syntax: LuaVersion::Lua52,
+    space_after_function_names: stylua_lib::SpaceAfterFunctionNames::Never,
 };
 
 pub fn fmt(paths: Vec<PathBuf>, check: bool) -> anyhow::Result<()> {
