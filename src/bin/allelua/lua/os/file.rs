@@ -161,7 +161,7 @@ pub async fn open_file(
         buffer_size = opt_table.get::<Option<usize>>("buffer_size")?;
     }
 
-    let file = options.open(path).await?;
+    let file = options.open(path).await.map_err(io::LuaError)?;
 
     match buffer_size {
         Some(0) => LuaFile::new(file).into_lua(&lua),
