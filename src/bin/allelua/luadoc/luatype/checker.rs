@@ -1,6 +1,9 @@
 use std::fmt;
 
-use super::{FunctionType, IfaceType, Type, TypeEnvironment, TypeId, UnionType};
+use super::{
+    FunctionType, GenericType, IfaceType, Type, TypeEnvironment, TypeId, TypeParameter,
+    TypeParameterConstraint, UnionType,
+};
 
 /// TypeChecker is a Lua type checker. All logic related to type checking is
 /// implemented in this type.
@@ -104,7 +107,7 @@ impl TypeChecker {
                 }
             }
             (Type::Function(source), Type::Function(target)) => {
-                if self.can_assign_functions(&source, &target, &mut reasons)? {
+                if self.can_assign_functions(&source, &target, &mut reasons) {
                     return Ok(());
                 }
             }
@@ -128,10 +131,37 @@ impl TypeChecker {
                 }
             }
             (source, Type::Iface(target)) => {
-                if self.can_assign_iface(&source, &target, &mut reasons)? {
+                if self.can_assign_iface(&source, &target, &mut reasons) {
                     return Ok(());
                 }
             }
+            (Type::Parameter(source), Type::Parameter(target)) => {
+                match (source.constraint, target.constraint) {
+                    (
+                        TypeParameterConstraint::Extends(source),
+                        TypeParameterConstraint::Extends(target),
+                    ) => match self.can_assign(source, target) {
+                        Ok(_) => return Ok(()),
+                        Err(err) => reasons.push(err),
+                    },
+                }
+            }
+            // TypeParameter is assignable if it's constraint satisfy target type.
+            (Type::Parameter(param), _) => match param.constraint {
+                TypeParameterConstraint::Extends(id) => match self.can_assign(id, target_id) {
+                    Ok(_) => return Ok(()),
+                    Err(err) => reasons.push(err),
+                },
+            },
+            (Type::Generic(source), Type::Generic(target)) => {
+                if self.can_assign_generic(source, target, &mut reasons) {
+                    return Ok(());
+                }
+            }
+            (_, Type::Generic(generic)) => match self.can_assign(source_id, generic.on) {
+                Ok(_) => return Ok(()),
+                Err(err) => reasons.push(err),
+            },
             (Type::Never, _)
             | (_, Type::Never)
             | (Type::Any, _)
@@ -153,7 +183,7 @@ impl TypeChecker {
         source: &'a FunctionType,
         target: &'a FunctionType,
         reasons: &mut Vec<TypeCheckError>,
-    ) -> Result<bool, TypeCheckError> {
+    ) -> bool {
         let initial_reasons_len = reasons.len();
 
         // Check that target params are assignable to source params (contravariant).
@@ -174,7 +204,7 @@ impl TypeChecker {
             }),
         }
 
-        Ok(initial_reasons_len == reasons.len())
+        initial_reasons_len == reasons.len()
     }
 
     fn can_assign_tuple<'a>(
@@ -212,7 +242,7 @@ impl TypeChecker {
         source: &'a Type,
         target: &'a IfaceType,
         reasons: &mut Vec<TypeCheckError>,
-    ) -> Result<bool, TypeCheckError> {
+    ) -> bool {
         let initial_reasons_len = reasons.len();
 
         // Source is assignable if all fields of target are assignable from
@@ -223,7 +253,7 @@ impl TypeChecker {
                 Some(source_f_type_id) => {
                     if let Err(reason) = self.can_assign(source_f_type_id, *f_type_id) {
                         reasons.push(TypeCheckError::IncompatibleFieldType {
-                            field_name: self.lookup_type_string(*f_name)?,
+                            field_name: *f_name,
                             source: Box::new(reason),
                         })
                     }
@@ -240,7 +270,22 @@ impl TypeChecker {
             }
         }
 
-        Ok(initial_reasons_len == reasons.len())
+        initial_reasons_len == reasons.len()
+    }
+
+    pub fn can_assign_generic<'a>(
+        &self,
+        source: &'a GenericType,
+        target: &'a GenericType,
+    ) -> Result<(), TypeCheckError> {
+        // if !source.on.is_function() || target.on.is_function() {
+        //     return Err(TypeCheckError::TypeParameterInstantiationMismatch {
+        //         source: (),
+        //         target: (),
+        //     });
+        // }
+
+        Ok(())
     }
 
     pub fn normalize_then_lookup<'a>(&'a mut self, t: &'a Type) -> &'a Type {
@@ -262,6 +307,8 @@ impl TypeChecker {
             Type::Function(f) => Some(self.normalize_function(f)),
             Type::Iface(i) => Some(self.normalize_iface(i)),
             Type::Union(u) => Some(self.normalize_union(u)),
+            Type::Parameter(p) => Some(self.normalize_type_parameter(p)),
+            Type::Generic(g) => Some(self.normalize_generic(g)),
         }
     }
 
@@ -332,7 +379,7 @@ impl TypeChecker {
         }
     }
 
-    fn normalize_union_types(&self, ids: &Vec<TypeId>, mut result: Vec<TypeId>) -> Vec<TypeId> {
+    fn normalize_union_types(&mut self, ids: &Vec<TypeId>, mut result: Vec<TypeId>) -> Vec<TypeId> {
         // Any as priority over unknown so we check it first.
         if ids.contains(&TypeId::ANY) {
             return vec![TypeId::ANY];
@@ -344,13 +391,15 @@ impl TypeChecker {
                 continue;
             }
 
-            let t = self.env.lookup(*type_id).unwrap();
+            let mut type_id = *type_id;
+
+            let t = self.env.lookup(type_id).unwrap().to_owned();
             match t {
                 Type::Never => continue,
                 Type::Literal { kind, .. } => {
                     // Skip literal if primitive already present.
                     for id in &result {
-                        if *id == (*kind).into() {
+                        if *id == kind.into() {
                             continue 'type_ids_loop;
                         }
                     }
@@ -361,29 +410,64 @@ impl TypeChecker {
                 } => {
                     Self::filter_types(&self.env, &mut result, |t| {
                         if let Type::Literal { kind, .. } = t {
-                            if kind == primitive_kind {
+                            if *kind == primitive_kind {
                                 return false;
                             }
                         }
                         true
                     });
                 }
-                Type::Function(_function) => {
-                    // Nothing to do.
-                }
+                Type::Function(function) => type_id = self.normalize_function(&function),
                 Type::Union(union) => {
                     result = self.normalize_union_types(&union.types, result);
                     continue;
                 }
-                Type::Iface(_) => {}
+                Type::Iface(iface) => type_id = self.normalize_iface(&iface),
                 Type::Any => unreachable!(),
                 Type::Unknown => return vec![TypeId::UNKNOWN],
+                Type::Parameter(p) => type_id = self.normalize_type_parameter(&p),
+                Type::Generic(g) => type_id = self.normalize_generic(&g),
             }
 
-            result.push(*type_id);
+            // Filter duplicate.
+            if result.contains(&type_id) {
+                continue;
+            }
+
+            result.push(type_id);
         }
 
         result
+    }
+
+    fn normalize_type_parameter(&mut self, tparam: &TypeParameter) -> TypeId {
+        let mut normalized = tparam.to_owned();
+        match normalized.constraint {
+            TypeParameterConstraint::Extends(id) => {
+                let t = self.lookup_type(id).unwrap();
+                if let Some(id) = self.normalize(&t.to_owned()) {
+                    normalized.constraint = TypeParameterConstraint::Extends(id);
+                }
+            }
+        }
+        self.register_type(normalized.into())
+    }
+
+    fn normalize_generic(&mut self, generic: &GenericType) -> TypeId {
+        let mut normalized = generic.to_owned();
+        normalized.on = self
+            .normalize(&self.lookup_type(normalized.on).unwrap().to_owned())
+            .unwrap();
+        normalized.params = normalized
+            .params
+            .iter()
+            .map(|p| {
+                let t = self.lookup_type(*p).unwrap();
+                self.normalize(&t.to_owned()).unwrap_or(*p)
+            })
+            .collect();
+
+        self.register_type(normalized.into())
     }
 
     fn filter_types(
@@ -430,7 +514,113 @@ impl TypeChecker {
             Type::Iface(i) => i.fields.get(&field).map(ToOwned::to_owned),
             Type::Any => Some(TypeId::ANY),
             Type::Unknown => None,
+            Type::Parameter(p) => match p.constraint {
+                TypeParameterConstraint::Extends(id) => {
+                    let t = self.lookup_type(id).unwrap().to_owned();
+                    self.get_field_type(&t, field)
+                }
+            },
+            Type::Generic(g) => {
+                let t = self.lookup_type(g.on).unwrap().to_owned();
+                self.get_field_type(&t, field)
+            }
         }
+    }
+
+    fn is_generic(&self, id: TypeId) -> bool {
+        if id.is_generic() || id.is_type_parameter() {
+            return true;
+        }
+        if !id.is_composite() {
+            return false;
+        }
+
+        let t = self.lookup_type(id).unwrap();
+
+        match t {
+            Type::Function(function) => {
+                function.params.iter().any(|p| self.is_generic(*p))
+                    || function.results.iter().any(|r| self.is_generic(*r))
+            }
+            Type::Union(u) => u.types.iter().any(|i| self.is_generic(*i)),
+            Type::Iface(f) => f
+                .fields
+                .iter()
+                .any(|(k, v)| self.is_generic(*k) || self.is_generic(*v)),
+            _ => unreachable!(),
+        }
+    }
+
+    fn substitute_type_params(
+        &mut self,
+        generic: &GenericType,
+        type_args: Vec<TypeId>,
+    ) -> Result<TypeId, TypeCheckError> {
+        if type_args.len() != generic.params.len() {
+            panic!("number of type arguments and type parameters doesn't match");
+        }
+
+        let mut concrete = self.lookup_type(generic.on).unwrap().to_owned();
+
+        match concrete {
+            Type::Never
+            | Type::Literal { .. }
+            | Type::Primitive { .. }
+            | Type::Any
+            | Type::Unknown
+            | Type::Generic(_)
+            | Type::Parameter(_) => unreachable!(),
+            Type::Function(ref mut function) => {
+                for param in &mut function.params {
+                    if param.is_type_parameter() {
+                        match generic.params.iter().position(|p| p == param) {
+                            Some(i) => *param = type_args[i],
+                            None => panic!("{function} contains unknown type parameter"),
+                        }
+                    }
+                }
+            }
+            Type::Union(ref mut u) => {
+                for t in &mut u.types {
+                    if t.is_type_parameter() {
+                        match generic.params.iter().position(|p| p == t) {
+                            Some(i) => *t = type_args[i],
+                            None => panic!("{u} contains unknown type parameter"),
+                        }
+                    }
+                }
+            }
+            Type::Iface(ref mut iface) => {
+                iface.fields = iface
+                    .fields
+                    .iter()
+                    .map(|(mut k, mut v)| {
+                        if k.is_type_parameter() {
+                            match generic.params.iter().position(|p| p == k) {
+                                Some(i) => k = &type_args[i],
+                                None => {
+                                    panic!("{iface} field key {k} is an unknown type parameter")
+                                }
+                            }
+                        }
+                        if v.is_type_parameter() {
+                            match generic.params.iter().position(|p| p == v) {
+                                Some(i) => v = &type_args[i],
+                                None => {
+                                    panic!(
+                                        "{iface} field {k} value {v} is an unknown type parameter"
+                                    )
+                                }
+                            }
+                        }
+
+                        (*k, *v)
+                    })
+                    .collect();
+            }
+        }
+
+        Ok(self.register_type(concrete))
     }
 }
 
@@ -457,12 +647,16 @@ pub enum TypeCheckError {
         source: Box<TypeCheckError>,
     },
     IncompatibleFieldType {
-        field_name: String,
+        field_name: TypeId,
         source: Box<TypeCheckError>,
     },
     RequiredFieldMissing {
         field_name: TypeId,
         field_type: TypeId,
+    },
+    TypeParameterInstantiationMismatch {
+        source: TypeId,
+        target: TypeId,
     },
 }
 
@@ -478,7 +672,8 @@ impl fmt::Display for TypeCheckError {
             TypeCheckError::IncompatibleParameterType { nth, source } => write!(f, "Type of parameters {nth} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
             TypeCheckError::IncompatibleReturnType { nth, source } => write!(f, "Type of return values {nth} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
             TypeCheckError::IncompatibleFieldType { field_name, source } => write!(f, "Type of fields {field_name:?} are incompatible.\n{}", space_indent_by(&source.to_string(), 2)),
-            TypeCheckError::RequiredFieldMissing { field_name, field_type } => write!(f,r#"Mandatory field {field_name:?} of type "{field_type:?}" is missing"#)
+            TypeCheckError::RequiredFieldMissing { field_name, field_type } => write!(f, r#"Mandatory field {field_name:?} of type "{field_type:?}" is missing"#),
+            TypeCheckError::TypeParameterInstantiationMismatch { source, target } => write!(f, r#""{source}" is assignable to the constraint of type '{target:#}', but '{target}' could be instantiated with a different subtype of constraint."#),
         }
     }
 }
@@ -1068,6 +1263,301 @@ mod tests {
         assert!(checker
             .can_assign(iface_foo_bar_id, union_iface_foo_iface_bar_id)
             .is_ok());
+    }
+
+    #[test]
+    fn generic_iface_foo_t_extends_number_is_assignable_to_iface_foo_number() {
+        let mut checker = TypeChecker::new();
+
+        let lit_foo_string = Type::string(r#""foo""#.to_owned());
+        let lit_foo_string_id = type_id_of!(checker, lit_foo_string);
+
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::ANY),
+        }
+        .into();
+        let t_id = type_id_of!(checker, t);
+
+        let generic_iface_foo = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
+        let generic_iface_foo_id = type_id_of!(checker, generic_iface_foo);
+
+        let generic = GenericType {
+            on: generic_iface_foo_id,
+            params: vec![t_id],
+        }
+        .into();
+        let generic_id = type_id_of!(checker, generic);
+
+        let iface_foo = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
+        let iface_foo_id = type_id_of!(checker, iface_foo);
+
+        assert!(checker.can_assign(generic_id, iface_foo_id).is_ok());
+    }
+
+    #[test]
+    fn generic_function_with_param_t_extends_any_and_return_t_is_assignable_to_function_with_param_any_and_return_any(
+    ) {
+        let mut checker = TypeChecker::new();
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::ANY),
+        }
+        .into();
+        let t_id = type_id_of!(checker, t);
+
+        let generic_function = FunctionType {
+            params: vec![t_id],
+            results: vec![t_id],
+        }
+        .into();
+        let generic_function_id = type_id_of!(checker, generic_function);
+
+        let function = FunctionType {
+            params: vec![TypeId::ANY],
+            results: vec![TypeId::ANY],
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
+
+        assert!(checker.can_assign(generic_function_id, function_id).is_ok())
+    }
+
+    #[test]
+    fn function_with_param_any_and_return_any_is_assignable_to_generic_function_with_param_t_extends_any_and_return_t(
+    ) {
+        let mut checker = TypeChecker::new();
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::ANY),
+        }
+        .into();
+        let t_id = type_id_of!(checker, t);
+
+        let generic_function = FunctionType {
+            params: vec![t_id],
+            results: vec![t_id],
+        }
+        .into();
+        let generic_function_id = type_id_of!(checker, generic_function);
+
+        let function = FunctionType {
+            params: vec![TypeId::ANY],
+            results: vec![TypeId::ANY],
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
+
+        assert!(checker.can_assign(function_id, generic_function_id).is_ok())
+    }
+
+    #[test]
+    fn generic_function_with_param_t_extends_any_and_return_t_is_assignable_to_function_with_param_number_and_return_number(
+    ) {
+        let mut checker = TypeChecker::new();
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::ANY),
+        }
+        .into();
+        let t_id = type_id_of!(checker, t);
+
+        let generic_function = FunctionType {
+            params: vec![t_id],
+            results: vec![t_id],
+        }
+        .into();
+        let generic_function_id = type_id_of!(checker, generic_function);
+
+        let function = FunctionType {
+            params: vec![TypeId::NUMBER],
+            results: vec![TypeId::NUMBER],
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
+
+        println!("{}", {
+            let err = checker
+                .can_assign(generic_function_id, function_id)
+                .unwrap_err();
+            checker.environment().replace_type_ids(err.to_string())
+        });
+
+        assert!(checker.can_assign(generic_function_id, function_id).is_ok())
+    }
+
+    #[test]
+    fn function_with_param_number_and_return_number_is_assignable_to_generic_function_with_param_t_extends_any_and_return_t(
+    ) {
+        let mut checker = TypeChecker::new();
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::ANY),
+        }
+        .into();
+        let t_id = type_id_of!(checker, t);
+
+        let generic_function = FunctionType {
+            params: vec![t_id],
+            results: vec![t_id],
+        }
+        .into();
+        let generic_function_id = type_id_of!(checker, generic_function);
+
+        let function = FunctionType {
+            params: vec![TypeId::NUMBER],
+            results: vec![TypeId::NUMBER],
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
+
+        assert!(checker.can_assign(function_id, generic_function_id).is_ok())
+    }
+
+    #[test]
+    fn generic_function_with_param_t_extends_string_and_return_t_is_assignable_to_function_with_param_string_and_return_string(
+    ) {
+        let mut checker = TypeChecker::new();
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::STRING),
+        };
+        let t_id = type_id_of!(checker, t.clone().into());
+
+        let generic_function = FunctionType {
+            params: vec![t_id],
+            results: vec![t_id],
+        }
+        .into();
+        let generic_function_id = type_id_of!(checker, generic_function);
+        let generic = GenericType {
+            on: generic_function_id,
+            params: vec![t_id],
+        }
+        .into();
+        let generic_id = type_id_of!(checker, generic);
+
+        let function = FunctionType {
+            params: vec![TypeId::STRING],
+            results: vec![TypeId::STRING],
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
+
+        assert!(checker.can_assign(generic_id, function_id).is_ok())
+    }
+
+    #[test]
+    fn function_with_param_string_and_return_string_is_assignable_to_generic_function_with_param_t_extends_string_and_return_t(
+    ) {
+        let mut checker = TypeChecker::new();
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::STRING),
+        }
+        .into();
+        let t_id = type_id_of!(checker, t);
+
+        let generic_function = FunctionType {
+            params: vec![t_id],
+            results: vec![t_id],
+        }
+        .into();
+        let generic_function_id = type_id_of!(checker, generic_function);
+
+        let generic = GenericType {
+            on: generic_function_id,
+            params: vec![t_id],
+        }
+        .into();
+        let generic_id = type_id_of!(checker, generic);
+
+        let function = FunctionType {
+            params: vec![TypeId::STRING],
+            results: vec![TypeId::STRING],
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
+
+        assert!(checker.can_assign(function_id, generic_id).is_ok())
+    }
+
+    #[test]
+    fn generic_function_with_param_t_extends_string_and_return_t_is_not_assignable_to_function_with_param_number_and_return_number(
+    ) {
+        let mut checker = TypeChecker::new();
+        let t = TypeParameter {
+            name: "T".to_owned(),
+            constraint: TypeParameterConstraint::Extends(TypeId::STRING),
+        }
+        .into();
+        let t_id = type_id_of!(checker, t);
+
+        let generic_function = FunctionType {
+            params: vec![t_id],
+            results: vec![t_id],
+        }
+        .into();
+        let generic_function_id = type_id_of!(checker, generic_function);
+        let generic = GenericType {
+            on: generic_function_id,
+            params: vec![t_id],
+        }
+        .into();
+        let generic_id = type_id_of!(checker, generic);
+
+        let function = FunctionType {
+            params: vec![TypeId::NUMBER],
+            results: vec![TypeId::NUMBER],
+        }
+        .into();
+        let function_id = type_id_of!(checker, function);
+
+        assert_eq!(
+            checker.can_assign(generic_id, function_id),
+            Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                source_type: generic_id,
+                target_type: function_id,
+                reasons: vec![TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                    source_type: generic_function_id,
+                    target_type: function_id,
+                    reasons: vec![
+                        TypeCheckError::IncompatibleParameterType {
+                            nth: 0,
+                            source: Box::new(TypeCheckError::IncompatibleType(
+                                IncompatibleTypeError {
+                                    source_type: TypeId::NUMBER,
+                                    target_type: t_id,
+                                    reasons: vec![TypeCheckError::IncompatibleType(
+                                        IncompatibleTypeError {
+                                            source_type: TypeId::NUMBER,
+                                            target_type: TypeId::STRING,
+                                            reasons: vec![]
+                                        }
+                                    )]
+                                }
+                            ))
+                        },
+                        TypeCheckError::IncompatibleReturnType {
+                            nth: 0,
+                            source: Box::new(TypeCheckError::IncompatibleType(
+                                IncompatibleTypeError {
+                                    source_type: t_id,
+                                    target_type: TypeId::NUMBER,
+                                    reasons: vec![TypeCheckError::IncompatibleType(
+                                        IncompatibleTypeError {
+                                            source_type: TypeId::STRING,
+                                            target_type: TypeId::NUMBER,
+                                            reasons: vec![]
+                                        }
+                                    )]
+                                }
+                            ))
+                        }
+                    ]
+                })],
+            }))
+        )
     }
 
     #[test]

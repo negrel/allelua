@@ -77,7 +77,7 @@ pub fn main() -> anyhow::Result<()> {
         Command::Fmt { path, check } => cmds::fmt(path, check)?,
         Command::Lsp => cmds::lsp()?,
         Command::Lint { path } => cmds::lint(path)?,
-        Command::Doc { path: _ } => todo!(),
+        Command::Doc { path } => cmds::doc(path)?,
     }
 
     Ok(())

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use similar::DiffableStr;
 
@@ -24,13 +25,13 @@ impl TypeEnvironment {
         };
 
         // Keep same order as TypeId::XXX values.
-        env.register(Type::Never);
-        env.register(Type::Any);
-        env.register(Type::Unknown);
-        env.register(Type::NIL);
-        env.register(Type::BOOLEAN);
-        env.register(Type::NUMBER);
-        env.register(Type::STRING);
+        env.register_new(Type::Never, TypeId::NEVER);
+        env.register_new(Type::Any, TypeId::ANY);
+        env.register_new(Type::Unknown, TypeId::UNKNOWN);
+        env.register_new(Type::NIL, TypeId::NIL);
+        env.register_new(Type::BOOLEAN, TypeId::BOOLEAN);
+        env.register_new(Type::NUMBER, TypeId::NUMBER);
+        env.register_new(Type::STRING, TypeId::STRING);
 
         env
     }
@@ -61,14 +62,15 @@ impl TypeEnvironment {
 
     /// Returns type associated to given id within the environment.
     pub fn lookup(&self, id: TypeId) -> Option<&Type> {
-        if id.0 < self.offset {
+        let i = Into::<usize>::into(id);
+        if i < self.offset {
             if let Some(parent) = &self.parent {
                 parent.lookup(id)
             } else {
                 None
             }
-        } else if id.0 < (self.types.len() + self.offset) {
-            Some(&self.types[id.0 - self.offset])
+        } else if (self.offset..self.types.len()).contains(&i) {
+            Some(&self.types[i - self.offset])
         } else {
             None
         }
@@ -92,25 +94,35 @@ impl TypeEnvironment {
             return id;
         }
 
-        self.types.push(t.clone());
-        let id = TypeId(self.offset + self.types.len() - 1);
-        self.reverse_lookup.insert(t, id);
+        let i = (self.offset + self.types.len()).try_into().unwrap();
+        let id = TypeId::new(&t, i);
+        self.register_new(t, id);
         id
     }
 
+    fn register_new(&mut self, t: Type, id: TypeId) {
+        self.types.push(t.clone());
+        self.reverse_lookup.insert(t, id);
+    }
+
     /// Replace TypeId(n) in a string with actual types. This is needed as
-    /// we can't access environment in fmt::Display implementation of Type.
+    /// we can't access environment in [std::fmt::Display] implementation of Type.
     pub fn replace_type_ids(&self, s: impl AsRef<str>) -> String {
         let mut str = s.as_ref();
 
         let mut result = "".to_owned();
         while let Some(i) = str.find("TypeId(") {
             result += str.slice(0..i);
-            str = str.slice(i + "TypeId(".len()..str.len());
-            if let Some(i) = str.find(")") {
-                let type_id: usize = str.slice(0..i).parse().unwrap();
-                if let Some(t) = self.lookup(TypeId(type_id)) {
-                    result += &self.replace_type_ids(t.to_string());
+            str = &str[i + "TypeId(".len()..str.len()];
+            if let Some(mut i) = str.find(")") {
+                let type_id = TypeId::from_str(&str[0..i]).unwrap();
+                if let Some(t) = self.lookup(type_id) {
+                    if i + 1 < str.len() && str.as_bytes()[i + 1] == b'#' {
+                        result += &self.replace_type_ids(format!("{t:#}"));
+                        i += 1;
+                    } else {
+                        result += &self.replace_type_ids(t.to_string());
+                    }
                 }
                 str = str.slice(i + 1..str.len());
             }
@@ -118,52 +130,10 @@ impl TypeEnvironment {
 
         result + str
     }
-
-    /// Finds all types contained within type with the given [TypeId] and returns
-    /// them.
-    pub fn find_associated(&self, id: TypeId) -> Option<Vec<TypeId>> {
-        let mut result = Vec::new();
-
-        match self.lookup(id)? {
-            Type::Never => {}
-            Type::Literal { kind, .. } | Type::Primitive { kind, .. } => {
-                result.push((*kind).into())
-            }
-            Type::Function(function) => {
-                result.extend(
-                    function
-                        .params
-                        .iter()
-                        .flat_map(|id| self.find_associated(*id))
-                        .flatten(),
-                );
-                result.extend(
-                    function
-                        .results
-                        .iter()
-                        .flat_map(|id| self.find_associated(*id))
-                        .flatten(),
-                )
-            }
-            Type::Union(u) => result.extend_from_slice(&u.types),
-            Type::Iface(iface) => result.extend(
-                iface
-                    .fields
-                    .iter()
-                    .flat_map(|(k, v)| vec![self.find_associated(*k), self.find_associated(*v)])
-                    .flatten()
-                    .flatten(),
-            ),
-            Type::Any => {}
-            Type::Unknown => {}
-        }
-
-        Some(result)
-    }
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]

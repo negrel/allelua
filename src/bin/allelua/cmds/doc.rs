@@ -1,9 +1,5 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use anyhow::Context;
 use full_moon::{
     ast::{punctuated::Pair, LastStmt, Prefix, Var},
     tokenizer::{Token, TokenType},
@@ -12,6 +8,7 @@ use full_moon::{
 use walkdir::WalkDir;
 
 use super::is_dir_or_lua_file;
+use crate::luadoc;
 
 pub fn doc(paths: Vec<PathBuf>) -> anyhow::Result<()> {
     for path in paths {
@@ -27,15 +24,13 @@ pub fn doc(paths: Vec<PathBuf>) -> anyhow::Result<()> {
 
             let fpath = entry.into_path();
 
-            let source = fs::read_to_string(&fpath)
-                .with_context(|| format!("failed to read lua file {fpath:?}"))?;
-            let ast = full_moon::parse(&source)
-                .with_context(|| format!("failed to parse lua file {fpath:?}"))?;
+            let mut foo = luadoc::AstTypeEvaluator::new(fpath);
+            foo.eval();
 
-            let mut doc_visitor = LuaDocVisitor::new(&fpath, &source);
-            doc_visitor.visit_ast(&ast);
+            // let mut doc_visitor = LuaDocVisitor::new(&fpath, &source);
+            // doc_visitor.visit_ast(&ast);
 
-            println!("{:?}", doc_visitor.module_doc());
+            // println!("{:?}", doc_visitor.module_doc());
         }
     }
 
