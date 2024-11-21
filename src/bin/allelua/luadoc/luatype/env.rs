@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use core::fmt;
+use std::{collections::HashMap, str::FromStr};
 
 use similar::DiffableStr;
 
@@ -59,7 +60,7 @@ impl TypeEnvironment {
         }
     }
 
-    /// Returns type associated to given id within the environment.
+    /// Returns [Type] associated to given [TypeId] within the environment.
     pub fn lookup(&self, id: TypeId) -> Option<&Type> {
         if id.0 < self.offset {
             if let Some(parent) = &self.parent {
@@ -74,7 +75,7 @@ impl TypeEnvironment {
         }
     }
 
-    /// Returns type id associated to given type within the environment.
+    /// Returns [TypeId] associated to given [Type] within the environment.
     pub fn reverse_lookup(&self, t: &Type) -> Option<TypeId> {
         if let Some(id) = self.reverse_lookup.get(t) {
             Some(*id)
@@ -100,19 +101,29 @@ impl TypeEnvironment {
 
     /// Replace TypeId(n) in a string with actual types. This is needed as
     /// we can't access environment in fmt::Display implementation of Type.
-    pub fn replace_type_ids(&self, s: impl AsRef<str>) -> String {
-        let mut str = s.as_ref();
+    pub fn fmt(&self, d: impl fmt::Display, alternate: bool) -> String {
+        let str = if alternate {
+            format!("{d:#}")
+        } else {
+            format!("{d}")
+        };
+        let mut str = str.as_str();
 
         let mut result = "".to_owned();
         while let Some(i) = str.find("TypeId(") {
             result += str.slice(0..i);
-            str = str.slice(i + "TypeId(".len()..str.len());
-            if let Some(i) = str.find(")") {
-                let type_id: usize = str.slice(0..i).parse().unwrap();
-                if let Some(t) = self.lookup(TypeId(type_id)) {
-                    result += &self.replace_type_ids(t.to_string());
+            str = &str[i + "TypeId(".len()..str.len()];
+            if let Some(mut j) = str.find(")") {
+                let type_id = TypeId::from_str(&str[0..j]).unwrap();
+                if let Some(t) = self.lookup(type_id) {
+                    if let Some(b'#') = str.as_bytes().get(j + 1) {
+                        result += &self.fmt(format!("{t:#}"), alternate);
+                        j += 1; // Skip #
+                    } else {
+                        result += &self.fmt(t.to_string(), alternate);
+                    }
                 }
-                str = str.slice(i + 1..str.len());
+                str = str.slice(j + 1..str.len());
             }
         }
 

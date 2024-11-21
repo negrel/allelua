@@ -43,8 +43,8 @@ impl TypeChecker {
     }
 
     /// Transform given type to it's formatted string representation.
-    pub fn fmt(&self, t: &Type) -> String {
-        self.environment().replace_type_ids(t.to_string())
+    pub fn fmt(&self, t: &Type, alternate: bool) -> String {
+        self.environment().fmt(t.to_string(), alternate)
     }
 
     /// Checks whether source [Type] is assignable to target [Type].

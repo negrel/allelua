@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, fmt};
 
 /// TypeId define a unique type identifier in a [Context].
-#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
-pub struct TypeId(pub usize);
+#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+pub struct TypeId(pub(super) usize);
 
 impl TypeId {
     pub const NEVER: TypeId = TypeId(0);
@@ -14,7 +14,16 @@ impl TypeId {
     pub const STRING: TypeId = TypeId(6);
 }
 
-impl fmt::Debug for TypeId {
+impl std::str::FromStr for TypeId {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let u = usize::from_str(value)?;
+        Ok(Self(u))
+    }
+}
+
+impl fmt::Display for TypeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Self::NEVER => write!(f, "never"),
@@ -157,18 +166,34 @@ impl fmt::Display for FunctionType {
         let params = self
             .params
             .iter()
-            .map(|id| format!("{:?}", id))
+            .map(|id| {
+                if f.alternate() {
+                    format!("{:#}", id)
+                } else {
+                    format!("{id}")
+                }
+            })
             .collect::<Vec<_>>()
             .join(", ");
 
         let results = self
             .results
             .iter()
-            .map(|id| format!("{:?}", id))
+            .map(|id| {
+                if f.alternate() {
+                    format!("{:#}", id)
+                } else {
+                    format!("{id}")
+                }
+            })
             .collect::<Vec<_>>()
             .join(", ");
 
-        write!(f, "({params}) -> ({results})")
+        if self.results.len() == 1 {
+            write!(f, "({params}) -> {results}")
+        } else {
+            write!(f, "({params}) -> ({results})")
+        }
     }
 }
 
@@ -200,7 +225,13 @@ impl fmt::Display for UnionType {
         let str = self
             .types
             .iter()
-            .map(|id| format!("{id:?}"))
+            .map(|id| {
+                if f.alternate() {
+                    format!("{:#}", id)
+                } else {
+                    format!("{id}")
+                }
+            })
             .collect::<Vec<_>>()
             .join(" | ");
 
@@ -228,11 +259,17 @@ impl fmt::Display for IfaceType {
         let fields = self
             .fields
             .iter()
-            .map(|(k, v)| format!(" {k:?}: {v:?};"))
+            .map(|(k, v)| {
+                if f.alternate() {
+                    format!("\n {k}: {v:#},")
+                } else {
+                    format!(" {k}: {v:#},")
+                }
+            })
             .collect::<Vec<_>>()
             .join("");
 
-        write!(f, "{{{fields} }}")
+        write!(f, "{{{fields}{}}}", if f.alternate() { "\n" } else { "" })
     }
 }
 
