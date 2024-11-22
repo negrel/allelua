@@ -1,9 +1,12 @@
 use core::fmt;
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{BTreeMap, HashMap},
+    str::FromStr,
+};
 
 use similar::DiffableStr;
 
-use super::{Type, TypeId};
+use super::{FunctionType, IfaceType, PrimitiveKind, Type, TypeId, UnionType};
 
 /// TypeEnvironment define an environment in our type system.
 #[derive(Debug)]
@@ -171,7 +174,99 @@ impl TypeEnvironment {
 
         Some(result)
     }
+
+    /// Creates a new boolean literal type in the environment.
+    pub fn boolean(&mut self, value: bool) -> TypeId {
+        self.register(Type::Literal {
+            value: value.to_string(),
+            kind: PrimitiveKind::Boolean,
+        })
+    }
+
+    /// Creates a new string literal type in the environment.
+    pub fn string(&mut self, lit: String) -> TypeId {
+        if lit.len() < 2 || lit.as_bytes()[0] != b'"' || lit.as_bytes()[lit.len() - 1] != b'"' {
+            panic!("literal string is unquoted");
+        }
+
+        self.register(Type::Literal {
+            value: lit,
+            kind: PrimitiveKind::String,
+        })
+    }
+
+    /// Creates a new number literal type in the environment.
+    pub fn number(&mut self, value: f64) -> TypeId {
+        self.register(Type::Literal {
+            value: value.to_string(),
+            kind: PrimitiveKind::Number,
+        })
+    }
+
+    /// Creates a new [FunctionType] type in the environment.
+    pub fn function(
+        &mut self,
+        params: Vec<TypeId>,
+        results: Vec<TypeId>,
+    ) -> Result<TypeId, TypeError> {
+        params.iter().for_each(|id| {
+            self.lookup(*id).expect("unknown type id");
+        });
+
+        Ok(self.register(FunctionType { params, results }.into()))
+    }
+
+    /// Creates a new [UnionType] type in the environment.
+    pub fn union(&mut self, types: Vec<TypeId>) -> Result<TypeId, TypeError> {
+        let types: Vec<_> = types
+            .iter()
+            .flat_map(|id| {
+                let t = self.lookup(*id).expect("unknown type id");
+
+                if let Type::Union(u) = t {
+                    u.types.clone()
+                } else {
+                    vec![*id]
+                }
+            })
+            .collect();
+
+        if types.len() == 1 {
+            return Ok(types[0]);
+        }
+
+        Ok(self.register(UnionType { types }.into()))
+    }
+
+    /// Creates a new [IfaceType] type in the environment.
+    pub fn iface(
+        &mut self,
+        fields: impl IntoIterator<Item = (TypeId, TypeId)>,
+    ) -> Result<TypeId, TypeError> {
+        let fields = BTreeMap::from_iter(fields);
+
+        fields.iter().for_each(|(k, v)| {
+            let k = self.lookup(*k).expect("unknown iface field key type id");
+            self.lookup(*v).expect("unknown field iface value type id");
+
+            match k {
+                Type::Literal { .. } => {}
+                Type::Never
+                | Type::Primitive { .. }
+                | Type::Function(_)
+                | Type::Union(_)
+                | Type::Iface(_)
+                | Type::Any
+                | Type::Unknown => panic!("iface field key must be a literal"),
+            }
+        });
+
+        Ok(self.register(IfaceType { fields }.into()))
+    }
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum TypeError {}
 
 #[cfg(test)]
 mod tests {
@@ -181,5 +276,187 @@ mod tests {
     fn type_environment_register_is_idempotent() {
         let mut env = TypeEnvironment::new();
         assert_eq!(env.register(Type::NIL), TypeId::NIL)
+    }
+
+    #[test]
+    fn literal_bool() {
+        let mut env = TypeEnvironment::new();
+        let true_id = env.boolean(true);
+        let false_id = env.boolean(false);
+
+        assert!(true_id != false_id);
+        assert_eq!(
+            env.lookup(true_id),
+            Some(&Type::Literal {
+                value: "true".to_owned(),
+                kind: PrimitiveKind::Boolean
+            })
+        );
+        assert_eq!(
+            env.lookup(false_id),
+            Some(&Type::Literal {
+                value: "false".to_owned(),
+                kind: PrimitiveKind::Boolean
+            })
+        )
+    }
+
+    #[test]
+    #[should_panic(expected = "literal string is unquoted")]
+    fn literal_string_panics_if_unquoted() {
+        let mut env = TypeEnvironment::new();
+        env.string("foo".to_owned());
+    }
+
+    #[test]
+    fn literal_string() {
+        let mut env = TypeEnvironment::new();
+        let foo_id = env.string(r#""FOO BAR BAZ""#.to_owned());
+
+        assert_eq!(
+            env.lookup(foo_id),
+            Some(&Type::Literal {
+                value: r#""FOO BAR BAZ""#.to_owned(),
+                kind: PrimitiveKind::String
+            })
+        )
+    }
+
+    #[test]
+    fn literal_number() {
+        let mut env = TypeEnvironment::new();
+        let num_id = env.number(0.05);
+
+        assert_eq!(
+            env.lookup(num_id),
+            Some(&Type::Literal {
+                value: r#"0.05"#.to_owned(),
+                kind: PrimitiveKind::Number
+            })
+        )
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown type id")]
+    fn function_with_unknown_type_id_panics() {
+        let mut env = TypeEnvironment::new();
+        let mut env2 = TypeEnvironment::new();
+
+        let true_id = env2.boolean(true);
+
+        env.function(vec![true_id], vec![]).unwrap();
+    }
+
+    #[test]
+    fn function() {
+        let mut env = TypeEnvironment::new();
+
+        let hundred_id = env.number(100.0);
+        let hundred_one_id = env.number(101.0);
+
+        let fun_id = env
+            .function(vec![hundred_id], vec![hundred_one_id])
+            .unwrap();
+
+        assert_eq!(
+            env.lookup(fun_id),
+            Some(&Type::Function(FunctionType {
+                params: vec![hundred_id],
+                results: vec![hundred_one_id]
+            }))
+        )
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown type id")]
+    fn union_with_unknown_type_id_panics() {
+        let mut env = TypeEnvironment::new();
+        let mut env2 = TypeEnvironment::new();
+
+        let true_id = env2.boolean(true);
+
+        let _ = env.union(vec![true_id]);
+    }
+
+    #[test]
+    fn union_with_single_type_returns_it() {
+        let mut env = TypeEnvironment::new();
+
+        let true_id = env.boolean(true);
+        let union_id = env.union(vec![true_id]).unwrap();
+
+        assert_eq!(true_id, union_id);
+    }
+
+    #[test]
+    fn union() {
+        let mut env = TypeEnvironment::new();
+
+        let true_id = env.boolean(true);
+        let false_id = env.boolean(false);
+        let union_id = env.union(vec![true_id, false_id]).unwrap();
+
+        assert_eq!(
+            env.lookup(union_id),
+            Some(
+                &UnionType {
+                    types: vec![true_id, false_id]
+                }
+                .into()
+            )
+        )
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown iface field key type id")]
+    fn iface_with_unknown_field_key_type_panics() {
+        let mut env = TypeEnvironment::new();
+        let mut env2 = TypeEnvironment::new();
+
+        let true_id = env2.boolean(true);
+
+        let _ = env.iface(vec![(true_id, TypeId::BOOLEAN)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown field iface value type id")]
+    fn iface_with_unknown_field_value_type_panics() {
+        let mut env = TypeEnvironment::new();
+        let mut env2 = TypeEnvironment::new();
+
+        let true_id = env.boolean(true);
+
+        // We must create two IDs or foo_id will collide with true_id.
+        env2.string(r#""bar""#.to_owned());
+        let foo_id = env2.string(r#""foo""#.to_owned());
+
+        let _ = env.iface(vec![(true_id, foo_id)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "iface field key must be a literal")]
+    fn iface_with_non_literal_field_key_panics() {
+        let mut env = TypeEnvironment::new();
+
+        let _ = env.iface(vec![(TypeId::NUMBER, TypeId::STRING)]);
+    }
+
+    #[test]
+    fn iface() {
+        let mut env = TypeEnvironment::new();
+
+        let foo_id = env.string(r#""foo""#.to_owned());
+
+        let iface_id = env.iface(vec![(foo_id, TypeId::STRING)]).unwrap();
+
+        assert_eq!(
+            env.lookup(iface_id),
+            Some(
+                &IfaceType {
+                    fields: BTreeMap::from_iter(vec![(foo_id, TypeId::STRING)])
+                }
+                .into()
+            )
+        )
     }
 }
