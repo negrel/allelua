@@ -12,6 +12,8 @@ impl TypeId {
     pub const BOOLEAN: TypeId = TypeId(4);
     pub const NUMBER: TypeId = TypeId(5);
     pub const STRING: TypeId = TypeId(6);
+    pub const REQUIRE: TypeId = TypeId(7);
+    pub const GLOBAL: TypeId = TypeId(8);
 }
 
 impl std::str::FromStr for TypeId {
@@ -51,8 +53,10 @@ pub enum Type {
         metatable: TypeId,
     },
     Function(FunctionType),
+    Require(FunctionType),
     Union(UnionType),
     Iface(IfaceType),
+    Global(IfaceType),
     Any,
     Unknown,
 }
@@ -65,9 +69,11 @@ impl fmt::Display for Type {
             Self::Unknown => "unknown",
             Self::Literal { value, .. } => value,
             Self::Primitive { kind, .. } => &kind.to_string(),
-            Type::Function(function) => return fmt::Display::fmt(function, f),
-            Type::Union(union) => return fmt::Display::fmt(union, f),
-            Type::Iface(s) => return fmt::Display::fmt(s, f),
+            Self::Function(function) | Self::Require(function) => {
+                return fmt::Display::fmt(function, f)
+            }
+            Self::Union(union) => return fmt::Display::fmt(union, f),
+            Self::Iface(iface) | Self::Global(iface) => return fmt::Display::fmt(iface, f),
         };
 
         write!(f, "{str}")
@@ -202,14 +208,6 @@ pub struct UnionType {
     pub types: Vec<TypeId>,
 }
 
-impl UnionType {
-    pub fn new(types: impl IntoIterator<Item = TypeId>) -> Self {
-        Self {
-            types: Vec::from_iter(types),
-        }
-    }
-}
-
 impl From<UnionType> for Type {
     fn from(value: UnionType) -> Self {
         Self::Union(value)
@@ -246,14 +244,6 @@ pub struct IfaceType {
     pub fields: BTreeMap<TypeId, TypeId>,
 }
 
-impl IfaceType {
-    pub fn new(fields: impl IntoIterator<Item = (TypeId, TypeId)>) -> Self {
-        Self {
-            fields: BTreeMap::from_iter(fields),
-        }
-    }
-}
-
 impl fmt::Display for IfaceType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let fields = self
@@ -261,15 +251,15 @@ impl fmt::Display for IfaceType {
             .iter()
             .map(|(k, v)| {
                 if f.alternate() {
-                    format!("\n {k}: {v:#},")
+                    format!("\n {k}: {v:#}")
                 } else {
-                    format!(" {k}: {v:#},")
+                    format!(" {k}: {v:#}")
                 }
             })
             .collect::<Vec<_>>()
-            .join("");
+            .join(",");
 
-        write!(f, "{{{fields}{}}}", if f.alternate() { "\n" } else { "" })
+        write!(f, "{{{fields}{}}}", if f.alternate() { "\n" } else { " " })
     }
 }
 

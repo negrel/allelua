@@ -9,6 +9,39 @@ pub struct TypeChecker {
     env: TypeEnvironment,
 }
 
+macro_rules! literal_constructor {
+    ($name:ident, $name_then_lookup:ident, $type:ty) => {
+        pub fn $name(&mut self, arg: $type) -> TypeId {
+            self.env.$name(arg)
+        }
+        pub fn $name_then_lookup(&mut self, arg: $type) -> &Type {
+            let id = self.$name(arg);
+            self.lookup_type(id).unwrap()
+        }
+    };
+}
+
+macro_rules! forward_composite_constructor {
+    ($name:ident, $name_then_lookup:ident, $type:ty) => {
+        pub fn $name(&mut self, arg: $type) -> TypeId {
+            self.env.$name(arg)
+        }
+        pub fn $name_then_lookup(&mut self, arg: $type) -> &Type {
+            let id = self.$name(arg);
+            self.lookup_type(id).unwrap()
+        }
+    };
+    ($name:ident, $name_then_lookup:ident, $type1:ty, $type2:ty) => {
+        pub fn $name(&mut self, arg1: $type1, arg2: $type2) -> TypeId {
+            self.env.$name(arg1, arg2)
+        }
+        pub fn $name_then_lookup(&mut self, arg1: $type1, arg2: $type2) -> &Type {
+            let id = self.$name(arg1, arg2);
+            self.lookup_type(id).unwrap()
+        }
+    };
+}
+
 impl TypeChecker {
     pub fn new() -> Self {
         Self {
@@ -16,10 +49,23 @@ impl TypeChecker {
         }
     }
 
+    literal_constructor!(boolean, boolean_then_lookup, bool);
+    literal_constructor!(number, number_then_lookup, f64);
+    literal_constructor!(string, string_then_lookup, String);
+    forward_composite_constructor!(function, function_then_lookup, Vec<TypeId>, Vec<TypeId>);
+    forward_composite_constructor!(union, union_then_lookup, Vec<TypeId>);
+    forward_composite_constructor!(
+        iface,
+        iface_then_lookup,
+        impl IntoIterator<Item = (TypeId, TypeId)>
+    );
+
+    /// Returns current type environment.
     pub fn environment(&self) -> &TypeEnvironment {
         &self.env
     }
 
+    /// Registers a type in current type environment.
     pub fn register_type(&mut self, t: Type) -> TypeId {
         self.env.register(t)
     }
@@ -34,12 +80,8 @@ impl TypeChecker {
     }
 
     /// Search [TypeId] of the given [Type] in the current environment and returns it.
-    fn lookup_type_id<'a>(&'a self, id: &'a Type) -> Option<TypeId> {
-        self.env.reverse_lookup(id)
-    }
-
-    fn lookup_type_string(&self, id: TypeId) -> Result<String, TypeCheckError> {
-        self.lookup_type(id).map(|t| t.to_string())
+    fn lookup_type_id<'a>(&'a self, t: &'a Type) -> Option<TypeId> {
+        self.env.reverse_lookup(t)
     }
 
     /// Transform given type to it's formatted string representation.
@@ -103,6 +145,11 @@ impl TypeChecker {
                     return Ok(());
                 }
             }
+            (source, Type::Iface(target)) => {
+                if self.can_assign_iface(&source, &target, &mut reasons)? {
+                    return Ok(());
+                }
+            }
             (Type::Function(source), Type::Function(target)) => {
                 if self.can_assign_functions(&source, &target, &mut reasons)? {
                     return Ok(());
@@ -125,11 +172,6 @@ impl TypeChecker {
                         Ok(_) => return Ok(()),
                         Err(err) => reasons.push(err),
                     }
-                }
-            }
-            (source, Type::Iface(target)) => {
-                if self.can_assign_iface(&source, &target, &mut reasons)? {
-                    return Ok(());
                 }
             }
             (Type::Never, _)
@@ -223,7 +265,7 @@ impl TypeChecker {
                 Some(source_f_type_id) => {
                     if let Err(reason) = self.can_assign(source_f_type_id, *f_type_id) {
                         reasons.push(TypeCheckError::IncompatibleFieldType {
-                            field_name: self.lookup_type_string(*f_name)?,
+                            field_name: self.lookup_type(*f_name).map(|t| t.to_string())?,
                             source: Box::new(reason),
                         })
                     }
@@ -259,8 +301,8 @@ impl TypeChecker {
             | Type::Unknown
             | Type::Literal { .. }
             | Type::Primitive { .. } => None,
-            Type::Function(f) => Some(self.normalize_function(f)),
-            Type::Iface(i) => Some(self.normalize_iface(i)),
+            Type::Function(f) | Type::Require(f) => Some(self.normalize_function(f)),
+            Type::Iface(i) | Type::Global(i) => Some(self.normalize_iface(i)),
             Type::Union(u) => Some(self.normalize_union(u)),
         }
     }
@@ -328,7 +370,7 @@ impl TypeChecker {
         match type_ids.len() {
             0 => TypeId::NEVER,
             1 => type_ids[0],
-            _ => self.env.register(UnionType::new(type_ids).into()),
+            _ => self.env.union(type_ids),
         }
     }
 
@@ -368,14 +410,14 @@ impl TypeChecker {
                         true
                     });
                 }
-                Type::Function(_function) => {
+                Type::Function(_) | Type::Require(_) => {
                     // Nothing to do.
                 }
                 Type::Union(union) => {
                     result = self.normalize_union_types(&union.types, result);
                     continue;
                 }
-                Type::Iface(_) => {}
+                Type::Iface(_) | Type::Global(_) => {}
                 Type::Any => unreachable!(),
                 Type::Unknown => return vec![TypeId::UNKNOWN],
             }
@@ -411,7 +453,7 @@ impl TypeChecker {
             Type::Literal { .. } => None,
             // TODO: support metatable __index lookup.
             Type::Primitive { .. } => None,
-            Type::Function(_) => None,
+            Type::Function(_) | Type::Require(_) => None,
             Type::Union(u) => {
                 let types = u
                     .types
@@ -424,10 +466,12 @@ impl TypeChecker {
                 if types.is_empty() {
                     None
                 } else {
-                    self.normalize(&UnionType::new(types).into())
+                    let id = self.env.union(types);
+                    let u = self.lookup_type(id).unwrap();
+                    self.normalize(&u.to_owned())
                 }
             }
-            Type::Iface(i) => i.fields.get(&field).map(ToOwned::to_owned),
+            Type::Iface(i) | Type::Global(i) => i.fields.get(&field).map(ToOwned::to_owned),
             Type::Any => Some(TypeId::ANY),
             Type::Unknown => None,
         }
@@ -528,12 +572,6 @@ fn space_indent_by(str: &str, n: usize) -> String {
 mod tests {
     use super::*;
 
-    macro_rules! type_id_of {
-        ($checker:ident, $t:expr) => {
-            $checker.register_type($t)
-        };
-    }
-
     #[test]
     fn any_is_assignable_to_any() {
         let mut checker = TypeChecker::new();
@@ -587,8 +625,7 @@ mod tests {
     #[test]
     fn literal_is_assignable_to_itself() {
         let mut checker = TypeChecker::new();
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
+        let lit_id = checker.number(1.0);
 
         assert!(checker.can_assign(lit_id, lit_id).is_ok())
     }
@@ -596,8 +633,7 @@ mod tests {
     #[test]
     fn literal_is_assignable_to_primitive_of_same_kind() {
         let mut checker = TypeChecker::new();
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
+        let lit_id = checker.number(1.0);
 
         assert!(checker.can_assign(lit_id, TypeId::NUMBER).is_ok())
     }
@@ -612,12 +648,7 @@ mod tests {
     #[test]
     fn function_without_params_and_results_is_assignable_to_itself() {
         let mut checker = TypeChecker::new();
-        let function = FunctionType {
-            params: vec![],
-            results: vec![],
-        }
-        .into();
-        let function_id = type_id_of!(checker, function);
+        let function_id = checker.function(vec![], vec![]);
 
         assert!(checker.can_assign(function_id, function_id).is_ok())
     }
@@ -625,12 +656,7 @@ mod tests {
     #[test]
     fn function_with_same_params_and_returns_is_assignable_to_itself() {
         let mut checker = TypeChecker::new();
-        let function = FunctionType {
-            params: vec![TypeId::NUMBER],
-            results: vec![TypeId::STRING],
-        }
-        .into();
-        let function_id = type_id_of!(checker, function);
+        let function_id = checker.function(vec![TypeId::NUMBER], vec![TypeId::STRING]);
 
         assert!(checker.can_assign(function_id, function_id).is_ok())
     }
@@ -638,22 +664,9 @@ mod tests {
     #[test]
     fn function_with_number_param_is_assignable_to_function_with_literal_number_param() {
         let mut checker = TypeChecker::new();
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
-
-        let function1 = FunctionType {
-            params: vec![lit_id],
-            results: vec![],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2 = FunctionType {
-            params: vec![TypeId::NUMBER],
-            results: vec![],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let lit_id = checker.number(1.0);
+        let function1_id = checker.function(vec![lit_id], vec![]);
+        let function2_id = checker.function(vec![TypeId::NUMBER], vec![]);
 
         assert!(checker.can_assign(function2_id, function1_id).is_ok())
     }
@@ -661,22 +674,10 @@ mod tests {
     #[test]
     fn function_with_literal_number_param_is_not_assignable_to_function_with_number_param() {
         let mut checker = TypeChecker::new();
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
+        let lit_id = checker.number(1.0);
 
-        let function1 = FunctionType {
-            params: vec![lit_id],
-            results: vec![],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2 = FunctionType {
-            params: vec![TypeId::NUMBER],
-            results: vec![],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let function1_id = checker.function(vec![lit_id], vec![]);
+        let function2_id = checker.function(vec![TypeId::NUMBER], vec![]);
 
         assert_eq!(
             checker.can_assign(function1_id, function2_id),
@@ -698,22 +699,9 @@ mod tests {
     #[test]
     fn function_with_literal_number_return_is_assignable_to_function_with_number_return() {
         let mut checker = TypeChecker::new();
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
-
-        let function1: Type = FunctionType {
-            params: vec![],
-            results: vec![lit_id],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2: Type = FunctionType {
-            params: vec![],
-            results: vec![TypeId::NUMBER],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let lit_id = checker.number(1.0);
+        let function1_id = checker.function(vec![], vec![lit_id]);
+        let function2_id = checker.function(vec![], vec![TypeId::NUMBER]);
 
         assert!(checker.can_assign(function1_id, function2_id).is_ok())
     }
@@ -721,22 +709,9 @@ mod tests {
     #[test]
     fn function_with_number_return_is_not_assignable_to_function_with_literal_number_return() {
         let mut checker = TypeChecker::new();
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
-
-        let function1: Type = FunctionType {
-            params: vec![],
-            results: vec![lit_id],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2: Type = FunctionType {
-            params: vec![],
-            results: vec![TypeId::NUMBER],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let lit_id = checker.number(1.0);
+        let function1_id = checker.function(vec![], vec![lit_id]);
+        let function2_id = checker.function(vec![], vec![TypeId::NUMBER]);
 
         assert_eq!(
             checker.can_assign(function2_id, function1_id),
@@ -758,19 +733,8 @@ mod tests {
     #[test]
     fn function_with_1_number_params_is_assignable_to_function_with_2_number_params() {
         let mut checker = TypeChecker::new();
-        let function1: Type = FunctionType {
-            params: vec![TypeId::NUMBER],
-            results: vec![],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2: Type = FunctionType {
-            params: vec![TypeId::NUMBER, TypeId::NUMBER],
-            results: vec![],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let function1_id = checker.function(vec![TypeId::NUMBER], vec![]);
+        let function2_id = checker.function(vec![TypeId::NUMBER, TypeId::NUMBER], vec![]);
 
         assert!(checker.can_assign(function1_id, function2_id).is_ok())
     }
@@ -778,19 +742,8 @@ mod tests {
     #[test]
     fn function_with_2_number_params_is_not_assignable_to_function_with_1_number_params() {
         let mut checker = TypeChecker::new();
-        let function1: Type = FunctionType {
-            params: vec![TypeId::NUMBER],
-            results: vec![],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2: Type = FunctionType {
-            params: vec![TypeId::NUMBER, TypeId::NUMBER],
-            results: vec![],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let function1_id = checker.function(vec![TypeId::NUMBER], vec![]);
+        let function2_id = checker.function(vec![TypeId::NUMBER, TypeId::NUMBER], vec![]);
 
         assert_eq!(
             checker.can_assign(function2_id, function1_id),
@@ -812,19 +765,8 @@ mod tests {
     #[test]
     fn function_with_2_number_returns_is_assignable_to_function_with_1_number_returns() {
         let mut checker = TypeChecker::new();
-        let function1: Type = FunctionType {
-            params: vec![],
-            results: vec![TypeId::NUMBER],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2: Type = FunctionType {
-            params: vec![],
-            results: vec![TypeId::NUMBER, TypeId::NUMBER],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let function1_id = checker.function(vec![], vec![TypeId::NUMBER]);
+        let function2_id = checker.function(vec![], vec![TypeId::NUMBER, TypeId::NUMBER]);
 
         assert!(checker.can_assign(function2_id, function1_id).is_ok(),)
     }
@@ -832,19 +774,8 @@ mod tests {
     #[test]
     fn function_with_1_number_returns_is_not_assignable_to_function_with_2_number_returns() {
         let mut checker = TypeChecker::new();
-        let function1: Type = FunctionType {
-            params: vec![],
-            results: vec![TypeId::NUMBER],
-        }
-        .into();
-        let function1_id = type_id_of!(checker, function1);
-
-        let function2: Type = FunctionType {
-            params: vec![],
-            results: vec![TypeId::NUMBER, TypeId::NUMBER],
-        }
-        .into();
-        let function2_id = type_id_of!(checker, function2);
+        let function1_id = checker.function(vec![], vec![TypeId::NUMBER]);
+        let function2_id = checker.function(vec![], vec![TypeId::NUMBER, TypeId::NUMBER]);
 
         assert_eq!(
             checker.can_assign(function1_id, function2_id),
@@ -866,8 +797,7 @@ mod tests {
     #[test]
     fn union_of_literal_is_assignable_to_itself() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::STRING]).into();
-        let union_type_id = type_id_of!(checker, union_type);
+        let union_type_id = checker.union(vec![TypeId::NUMBER, TypeId::STRING]);
 
         assert!(checker.can_assign(union_type_id, union_type_id).is_ok());
     }
@@ -875,8 +805,7 @@ mod tests {
     #[test]
     fn union_of_string_nil_is_not_assignable_to_number() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::STRING, TypeId::NIL]).into();
-        let union_type_id = type_id_of!(checker, union_type);
+        let union_type_id = checker.union(vec![TypeId::STRING, TypeId::NIL]);
 
         assert_eq!(
             checker.can_assign(union_type_id, TypeId::NUMBER),
@@ -902,30 +831,20 @@ mod tests {
     #[test]
     fn iface_is_assignable_to_itself() {
         let mut checker = TypeChecker::new();
-        let iface_type = IfaceType::new(vec![
-            (
-                type_id_of!(checker, Type::string("foo".to_owned())),
-                TypeId::NUMBER,
-            ),
-            (
-                type_id_of!(checker, Type::string("bar".to_owned())),
-                TypeId::STRING,
-            ),
-            (
-                type_id_of!(checker, Type::string("baz".to_owned())),
-                TypeId::BOOLEAN,
-            ),
-            (
-                type_id_of!(checker, Type::string("qux".to_owned())),
-                TypeId::NIL,
-            ),
-            (
-                type_id_of!(checker, Type::string("quz".to_owned())),
-                TypeId::ANY,
-            ),
-        ])
-        .into();
-        let iface_type_id = type_id_of!(checker, iface_type);
+        let (foo_id, bar_id, baz_id, qux_id, quz_id) = (
+            checker.string(r#""foo""#.to_string()),
+            checker.string(r#""bar""#.to_string()),
+            checker.string(r#""baz""#.to_string()),
+            checker.string(r#""qux""#.to_string()),
+            checker.string(r#""quz""#.to_string()),
+        );
+        let iface_type_id = checker.iface(vec![
+            (foo_id, TypeId::NUMBER),
+            (bar_id, TypeId::STRING),
+            (baz_id, TypeId::BOOLEAN),
+            (qux_id, TypeId::NIL),
+            (quz_id, TypeId::ANY),
+        ]);
 
         assert!(checker.can_assign(iface_type_id, iface_type_id).is_ok())
     }
@@ -933,32 +852,22 @@ mod tests {
     #[test]
     fn iface_is_assignable_to_empty_iface() {
         let mut checker = TypeChecker::new();
-        let empty_iface_type = IfaceType::new(vec![]).into();
-        let empty_iface_type_id = type_id_of!(checker, empty_iface_type);
-        let iface_type = IfaceType::new(vec![
-            (
-                type_id_of!(checker, Type::string("foo".to_owned())),
-                TypeId::NUMBER,
-            ),
-            (
-                type_id_of!(checker, Type::string("bar".to_owned())),
-                TypeId::STRING,
-            ),
-            (
-                type_id_of!(checker, Type::string("baz".to_owned())),
-                TypeId::BOOLEAN,
-            ),
-            (
-                type_id_of!(checker, Type::string("qux".to_owned())),
-                TypeId::NIL,
-            ),
-            (
-                type_id_of!(checker, Type::string("quz".to_owned())),
-                TypeId::ANY,
-            ),
-        ])
-        .into();
-        let iface_type_id = type_id_of!(checker, iface_type);
+        let empty_iface_type_id = checker.iface(vec![]).to_owned();
+
+        let (foo_id, bar_id, baz_id, qux_id, quz_id) = (
+            checker.string(r#""foo""#.to_string()),
+            checker.string(r#""bar""#.to_string()),
+            checker.string(r#""baz""#.to_string()),
+            checker.string(r#""qux""#.to_string()),
+            checker.string(r#""quz""#.to_string()),
+        );
+        let iface_type_id = checker.iface(vec![
+            (foo_id, TypeId::NUMBER),
+            (bar_id, TypeId::STRING),
+            (baz_id, TypeId::BOOLEAN),
+            (qux_id, TypeId::NIL),
+            (quz_id, TypeId::ANY),
+        ]);
 
         assert!(checker
             .can_assign(iface_type_id, empty_iface_type_id)
@@ -968,18 +877,11 @@ mod tests {
     #[test]
     fn empty_iface_is_assignable_to_iface_with_field_union_of_number_nil() {
         let mut checker = TypeChecker::new();
-        let empty_iface_type = IfaceType::new(vec![]).into();
-        let empty_iface_type_id = type_id_of!(checker, empty_iface_type);
+        let empty_iface_type_id = checker.iface(vec![]).to_owned();
+        let number_or_nil_id = checker.union(vec![TypeId::NUMBER, TypeId::NIL]);
+        let foo_id = checker.string(r#""foo""#.to_owned());
 
-        let number_or_nil = UnionType::new(vec![TypeId::NUMBER, TypeId::NIL]).into();
-        let number_or_nil_id = type_id_of!(checker, number_or_nil);
-
-        let iface_type = IfaceType::new(vec![(
-            type_id_of!(checker, Type::string("foo".to_owned())),
-            number_or_nil_id,
-        )])
-        .into();
-        let iface_type_id = type_id_of!(checker, iface_type);
+        let iface_type_id = checker.iface(vec![(foo_id, number_or_nil_id)]);
 
         assert!(checker
             .can_assign(empty_iface_type_id, iface_type_id)
@@ -989,15 +891,9 @@ mod tests {
     #[test]
     fn empty_iface_is_not_assignable_to_iface_with_field_number() {
         let mut checker = TypeChecker::new();
-
-        let empty_iface_type = IfaceType::new(vec![]).into();
-        let empty_iface_type_id = type_id_of!(checker, empty_iface_type);
-
-        let lit_foo_string = Type::string(r#""foo""#.to_string());
-        let lit_foo_string_id = type_id_of!(checker, lit_foo_string);
-
-        let iface_type = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
-        let iface_type_id = type_id_of!(checker, iface_type);
+        let empty_iface_type_id = checker.iface(vec![]);
+        let lit_foo_string_id = checker.string(r#""foo""#.to_string());
+        let iface_type_id = checker.iface(vec![(lit_foo_string_id, TypeId::NUMBER)]);
 
         assert_eq!(
             checker.can_assign(empty_iface_type_id, iface_type_id),
@@ -1013,57 +909,57 @@ mod tests {
     }
 
     #[test]
-    fn union_of_iface_foo_number_iface_bar_number_is_assignable_to_iface_foo_bar_numbers() {
+    fn union_of_iface_foo_number_iface_bar_number_is_not_assignable_to_iface_foo_bar_numbers() {
         let mut checker = TypeChecker::new();
 
-        let lit_foo_string = Type::string(r#""foo""#.to_owned());
-        let lit_foo_string_id = type_id_of!(checker, lit_foo_string);
-        let lit_bar_string = Type::string(r#""foo""#.to_owned());
-        let lit_bar_string_id = type_id_of!(checker, lit_bar_string);
+        let lit_foo_string_id = checker.string(r#""foo""#.to_owned());
+        let lit_bar_string_id = checker.string(r#""bar""#.to_owned());
 
-        let iface_foo = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
-        let iface_foo_id = type_id_of!(checker, iface_foo);
-        let iface_bar = IfaceType::new(vec![(lit_bar_string_id, TypeId::NUMBER)]).into();
-        let iface_bar_id = type_id_of!(checker, iface_bar);
+        let iface_foo_id = checker.iface(vec![(lit_foo_string_id, TypeId::NUMBER)]);
+        let iface_bar_id = checker.iface(vec![(lit_bar_string_id, TypeId::NUMBER)]);
 
-        let union_iface_foo_iface_bar = UnionType::new(vec![iface_foo_id, iface_bar_id]).into();
-        let union_iface_foo_iface_bar_id = type_id_of!(checker, union_iface_foo_iface_bar);
+        let union_iface_foo_iface_bar_id = checker.union(vec![iface_foo_id, iface_bar_id]);
 
-        let iface_foo_bar = IfaceType::new(vec![
+        let iface_foo_bar_id = checker.iface(vec![
             (lit_foo_string_id, TypeId::NUMBER),
             (lit_bar_string_id, TypeId::NUMBER),
-        ])
-        .into();
-        let iface_foo_bar_id = type_id_of!(checker, iface_foo_bar);
+        ]);
 
-        assert!(checker
-            .can_assign(union_iface_foo_iface_bar_id, iface_foo_bar_id)
-            .is_ok());
+        assert_eq!(
+            checker.can_assign(union_iface_foo_iface_bar_id, iface_foo_bar_id),
+            Err(TypeCheckError::IncompatibleType(IncompatibleTypeError {
+                source_type: union_iface_foo_iface_bar_id,
+                target_type: iface_foo_bar_id,
+                reasons: vec![
+                    TypeCheckError::RequiredFieldMissing {
+                        field_name: lit_foo_string_id,
+                        field_type: TypeId::NUMBER
+                    },
+                    TypeCheckError::RequiredFieldMissing {
+                        field_name: lit_bar_string_id,
+                        field_type: TypeId::NUMBER
+                    },
+                ],
+            }))
+        );
     }
 
     #[test]
     fn iface_foo_bar_numbers_is_assignable_to_union_of_iface_foo_number_iface_bar_number() {
         let mut checker = TypeChecker::new();
 
-        let lit_foo_string = Type::string(r#""foo""#.to_owned());
-        let lit_foo_string_id = type_id_of!(checker, lit_foo_string);
-        let lit_bar_string = Type::string(r#""foo""#.to_owned());
-        let lit_bar_string_id = type_id_of!(checker, lit_bar_string);
+        let lit_foo_string_id = checker.string(r#""foo""#.to_owned());
+        let lit_bar_string_id = checker.string(r#""bar""#.to_owned());
 
-        let iface_foo = IfaceType::new(vec![(lit_foo_string_id, TypeId::NUMBER)]).into();
-        let iface_foo_id = type_id_of!(checker, iface_foo);
-        let iface_bar = IfaceType::new(vec![(lit_bar_string_id, TypeId::NUMBER)]).into();
-        let iface_bar_id = type_id_of!(checker, iface_bar);
+        let iface_foo_id = checker.iface(vec![(lit_foo_string_id, TypeId::NUMBER)]);
+        let iface_bar_id = checker.iface(vec![(lit_bar_string_id, TypeId::NUMBER)]);
 
-        let union_iface_foo_iface_bar = UnionType::new(vec![iface_foo_id, iface_bar_id]).into();
-        let union_iface_foo_iface_bar_id = type_id_of!(checker, union_iface_foo_iface_bar);
+        let union_iface_foo_iface_bar_id = checker.union(vec![iface_foo_id, iface_bar_id]);
 
-        let iface_foo_bar = IfaceType::new(vec![
+        let iface_foo_bar_id = checker.iface(vec![
             (lit_foo_string_id, TypeId::NUMBER),
             (lit_bar_string_id, TypeId::NUMBER),
-        ])
-        .into();
-        let iface_foo_bar_id = type_id_of!(checker, iface_foo_bar);
+        ]);
 
         assert!(checker
             .can_assign(iface_foo_bar_id, union_iface_foo_iface_bar_id)
@@ -1073,7 +969,9 @@ mod tests {
     #[test]
     fn normalize_union_of_number_number_returns_number() {
         let mut checker = TypeChecker::new();
-        let union_type: Type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]).into();
+        let union_type = checker
+            .union_then_lookup(vec![TypeId::NUMBER, TypeId::NUMBER])
+            .to_owned();
 
         assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
@@ -1081,57 +979,56 @@ mod tests {
     #[test]
     fn normalize_union_of_number_never_returns_number() {
         let mut checker = TypeChecker::new();
-        let union_type: Type = UnionType::new(vec![TypeId::NUMBER, TypeId::NEVER]).into();
+        let union_type = checker
+            .union_then_lookup(vec![TypeId::NUMBER, TypeId::NEVER])
+            .to_owned();
         assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
 
     #[test]
     fn normalize_union_of_number_any_returns_any() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]);
-        assert_eq!(
-            checker.normalize_then_lookup(&union_type.into()),
-            &Type::Any
-        );
+        let union_type = checker
+            .union_then_lookup(vec![TypeId::NUMBER, TypeId::ANY])
+            .to_owned();
+        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::Any);
     }
 
     #[test]
     fn normalize_union_of_number_unknown_returns_unknown() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::NUMBER, TypeId::UNKNOWN]);
-        assert_eq!(
-            checker.normalize_then_lookup(&union_type.into()),
-            &Type::Unknown
-        );
+        let union_type = checker
+            .union_then_lookup(vec![TypeId::NUMBER, TypeId::UNKNOWN])
+            .to_owned();
+        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::Unknown);
     }
 
     #[test]
     fn normalize_union_of_any_unknown_returns_any() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::ANY, TypeId::UNKNOWN]);
-        assert_eq!(
-            checker.normalize_then_lookup(&union_type.into()),
-            &Type::Any
-        );
+        let union_type = checker
+            .union_then_lookup(vec![TypeId::ANY, TypeId::UNKNOWN])
+            .to_owned();
+        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::Any);
     }
 
     #[test]
     fn normalize_union_of_unknown_any_returns_any() {
         let mut checker = TypeChecker::new();
-        let union_type = UnionType::new(vec![TypeId::UNKNOWN, TypeId::ANY]);
-        assert_eq!(
-            checker.normalize_then_lookup(&union_type.into()),
-            &Type::Any
-        );
+        let union_type = checker
+            .union_then_lookup(vec![TypeId::UNKNOWN, TypeId::ANY])
+            .to_owned();
+        assert_eq!(checker.normalize_then_lookup(&union_type), &Type::Any);
     }
 
     #[test]
     fn normalize_union_of_number_number_literal_returns_number() {
         let mut checker = TypeChecker::new();
 
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
-        let union_type = UnionType::new(vec![TypeId::NUMBER, lit_id]).into();
+        let lit_id = checker.number(1.0);
+        let union_type = checker
+            .union_then_lookup(vec![TypeId::NUMBER, lit_id])
+            .to_owned();
 
         assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
@@ -1140,9 +1037,10 @@ mod tests {
     fn normalize_union_of_number_literal_number_returns_number() {
         let mut checker = TypeChecker::new();
 
-        let lit = Type::number(1.0);
-        let lit_id = type_id_of!(checker, lit);
-        let union_type = UnionType::new(vec![lit_id, TypeId::NUMBER]).into();
+        let lit_id = checker.number(1.0);
+        let union_type = checker
+            .union_then_lookup(vec![lit_id, TypeId::NUMBER])
+            .to_owned();
 
         assert_eq!(checker.normalize(&union_type), Some(TypeId::NUMBER));
     }
@@ -1151,9 +1049,13 @@ mod tests {
     fn normalize_union_of_number_union_of_number_number_returns_number() {
         let mut checker = TypeChecker::new();
 
-        let union_type1: Type = UnionType::new(vec![TypeId::NUMBER, TypeId::NUMBER]).into();
-        let union_type1_id = type_id_of!(checker, union_type1);
-        let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
+        let union_type1 = checker
+            .union_then_lookup(vec![TypeId::NUMBER, TypeId::NUMBER])
+            .to_owned();
+        let union_type1_id = checker.lookup_type_id(&union_type1).unwrap();
+        let union_type2 = checker
+            .union_then_lookup(vec![TypeId::NUMBER, union_type1_id])
+            .to_owned();
 
         assert_eq!(checker.normalize(&union_type2), Some(TypeId::NUMBER));
     }
@@ -1162,11 +1064,17 @@ mod tests {
     fn normalize_union_of_number_union_of_nil_string_returns_union_of_number_nil_string() {
         let mut checker = TypeChecker::new();
 
-        let union_type1: Type = UnionType::new(vec![TypeId::STRING, TypeId::NIL]).into();
-        let union_type1_id = type_id_of!(checker, union_type1);
-        let union_type2 = UnionType::new(vec![TypeId::NUMBER, union_type1_id]).into();
+        let union_type1 = checker
+            .union_then_lookup(vec![TypeId::STRING, TypeId::NIL])
+            .to_owned();
+        let union_type1_id = checker.lookup_type_id(&union_type1).unwrap();
+        let union_type2 = checker
+            .union_then_lookup(vec![TypeId::NUMBER, union_type1_id])
+            .to_owned();
 
-        let union_type3 = UnionType::new(vec![TypeId::NUMBER, TypeId::STRING, TypeId::NIL]).into();
+        let union_type3 = checker
+            .union_then_lookup(vec![TypeId::NUMBER, TypeId::STRING, TypeId::NIL])
+            .to_owned();
         assert_eq!(checker.normalize_then_lookup(&union_type2), &union_type3);
     }
 
@@ -1174,7 +1082,7 @@ mod tests {
     fn normalize_empty_union_returns_never() {
         let mut checker = TypeChecker::new();
 
-        let union_type1: Type = UnionType::new(vec![]).into();
+        let union_type1 = checker.union_then_lookup(vec![]).to_owned();
         assert_eq!(checker.normalize_then_lookup(&union_type1), &Type::Never);
     }
 
@@ -1182,15 +1090,14 @@ mod tests {
     fn normalize_union_with_1_type_returns_it() {
         let mut checker = TypeChecker::new();
 
-        let union_type1: Type = UnionType::new(vec![TypeId::NIL]).into();
+        let union_type1 = checker.union_then_lookup(vec![TypeId::NIL]).to_owned();
         assert_eq!(checker.normalize_then_lookup(&union_type1), &Type::NIL);
     }
 
     #[test]
     fn normalize_function_with_arg_union_of_number_any() {
         let mut checker = TypeChecker::new();
-        let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
-        let number_any_id = type_id_of!(checker, number_any);
+        let number_any_id = checker.union(vec![TypeId::NUMBER, TypeId::ANY]);
         let function: Type = FunctionType {
             params: vec![number_any_id],
             results: vec![],
@@ -1212,8 +1119,7 @@ mod tests {
     #[test]
     fn normalize_function_with_result_union_of_number_any() {
         let mut checker = TypeChecker::new();
-        let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
-        let number_any_id = type_id_of!(checker, number_any);
+        let number_any_id = checker.union(vec![TypeId::NUMBER, TypeId::ANY]);
         let function: Type = FunctionType {
             params: vec![],
             results: vec![number_any_id],
@@ -1235,27 +1141,15 @@ mod tests {
     #[test]
     fn normalize_iface_with_field_union_of_number_any() {
         let mut checker = TypeChecker::new();
-        let number_any = UnionType::new(vec![TypeId::NUMBER, TypeId::ANY]).into();
-        let number_any_id = type_id_of!(checker, number_any);
-        let lit_foo_type_id = type_id_of!(checker, Type::string("foo".to_owned()));
-        let iface: Type = IfaceType::new(vec![(lit_foo_type_id, number_any_id)]).into();
+        let number_any_id = checker.union(vec![TypeId::NUMBER, TypeId::ANY]);
+        let lit_foo_id = checker.string(r#""foo""#.to_owned());
+        let iface = checker
+            .iface_then_lookup(vec![(lit_foo_id, number_any_id)])
+            .to_owned();
 
-        let normalized_iface: Type = IfaceType::new(vec![(lit_foo_type_id, TypeId::ANY)]).into();
-
-        assert_eq!(checker.normalize_then_lookup(&iface), &normalized_iface);
-    }
-
-    #[test]
-    fn normalize_iface_with_field_name_union_of_literal_foo_string_or_string() {
-        let mut checker = TypeChecker::new();
-        let lit_foo_type_id = type_id_of!(checker, Type::string("foo".to_owned()));
-        let literal_foo_string_string =
-            UnionType::new(vec![lit_foo_type_id, TypeId::STRING]).into();
-        let literal_foo_string_string_id = type_id_of!(checker, literal_foo_string_string);
-        let iface: Type =
-            IfaceType::new(vec![(literal_foo_string_string_id, TypeId::NUMBER)]).into();
-
-        let normalized_iface: Type = IfaceType::new(vec![(TypeId::STRING, TypeId::NUMBER)]).into();
+        let normalized_iface = checker
+            .iface_then_lookup(vec![(lit_foo_id, TypeId::ANY)])
+            .to_owned();
 
         assert_eq!(checker.normalize_then_lookup(&iface), &normalized_iface);
     }

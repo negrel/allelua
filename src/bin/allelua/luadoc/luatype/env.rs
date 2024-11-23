@@ -36,6 +36,16 @@ impl TypeEnvironment {
         env.register(Type::NUMBER);
         env.register(Type::STRING);
 
+        // require()
+        env.register(Type::Require(FunctionType {
+            params: vec![TypeId::STRING],
+            results: vec![],
+        }));
+        // _G
+        env.register(Type::Global(IfaceType {
+            fields: BTreeMap::new(),
+        }));
+
         env
     }
 
@@ -97,9 +107,15 @@ impl TypeEnvironment {
         }
 
         self.types.push(t.clone());
-        let id = TypeId(self.offset + self.types.len() - 1);
+        let id = self.next_id();
         self.reverse_lookup.insert(t, id);
         id
+    }
+
+    /// Next id returns next [TypeId]. This allows creating self-referential
+    /// composite types.
+    pub fn next_id(&self) -> TypeId {
+        TypeId(self.offset + self.types.len() - 1)
     }
 
     /// Replace TypeId(n) in a string with actual types. This is needed as
@@ -143,7 +159,7 @@ impl TypeEnvironment {
             Type::Literal { kind, .. } | Type::Primitive { kind, .. } => {
                 result.push((*kind).into())
             }
-            Type::Function(function) => {
+            Type::Function(function) | Type::Require(function) => {
                 result.extend(
                     function
                         .params
@@ -160,7 +176,7 @@ impl TypeEnvironment {
                 )
             }
             Type::Union(u) => result.extend_from_slice(&u.types),
-            Type::Iface(iface) => result.extend(
+            Type::Iface(iface) | Type::Global(iface) => result.extend(
                 iface
                     .fields
                     .iter()
@@ -203,70 +219,77 @@ impl TypeEnvironment {
         })
     }
 
-    /// Creates a new [FunctionType] type in the environment.
-    pub fn function(
-        &mut self,
-        params: Vec<TypeId>,
-        results: Vec<TypeId>,
-    ) -> Result<TypeId, TypeError> {
-        params.iter().for_each(|id| {
-            self.lookup(*id).expect("unknown type id");
+    /// Creates a new [FunctionType] type in the environment. This function panics
+    /// if one of the params or results [TypeId] isn't part of the environment.
+    pub fn function(&mut self, params: Vec<TypeId>, results: Vec<TypeId>) -> TypeId {
+        let id = self.next_id();
+
+        params.iter().for_each(|param| {
+            if *param != id {
+                self.lookup(*param).expect("unknown type id");
+            }
         });
 
-        Ok(self.register(FunctionType { params, results }.into()))
+        self.register(FunctionType { params, results }.into())
     }
 
-    /// Creates a new [UnionType] type in the environment.
-    pub fn union(&mut self, types: Vec<TypeId>) -> Result<TypeId, TypeError> {
+    /// Creates a new [UnionType] type in the environment. This function panics
+    /// if one of the [TypeId] isn't part of the environment.
+    pub fn union(&mut self, types: Vec<TypeId>) -> TypeId {
+        let id = self.next_id();
+
         let types: Vec<_> = types
             .iter()
-            .flat_map(|id| {
-                let t = self.lookup(*id).expect("unknown type id");
-
-                if let Type::Union(u) = t {
-                    u.types.clone()
-                } else {
-                    vec![*id]
+            .flat_map(|field| {
+                if *field != id {
+                    let t = self.lookup(*field).expect("unknown type id");
+                    if let Type::Union(u) = t {
+                        return u.types.clone();
+                    }
                 }
+                vec![*field]
             })
             .collect();
 
         if types.len() == 1 {
-            return Ok(types[0]);
+            return types[0];
         }
 
-        Ok(self.register(UnionType { types }.into()))
+        self.register(UnionType { types }.into())
     }
 
-    /// Creates a new [IfaceType] type in the environment.
-    pub fn iface(
-        &mut self,
-        fields: impl IntoIterator<Item = (TypeId, TypeId)>,
-    ) -> Result<TypeId, TypeError> {
+    /// Creates a new [IfaceType] type in the environment. This function panics
+    /// if one of the field's key or value [TypeId] isn't part of the environment.
+    pub fn iface(&mut self, fields: impl IntoIterator<Item = (TypeId, TypeId)>) -> TypeId {
+        let id = self.next_id();
+
         let fields = BTreeMap::from_iter(fields);
 
         fields.iter().for_each(|(k, v)| {
-            let k = self.lookup(*k).expect("unknown iface field key type id");
-            self.lookup(*v).expect("unknown field iface value type id");
+            if *k != id {
+                let k = self.lookup(*k).expect("unknown iface field key type id");
+                match k {
+                    Type::Literal { .. } => {}
+                    Type::Never
+                    | Type::Primitive { .. }
+                    | Type::Function(_)
+                    | Type::Require(_)
+                    | Type::Union(_)
+                    | Type::Iface(_)
+                    | Type::Global(_)
+                    | Type::Any
+                    | Type::Unknown => panic!("iface field key must be a literal"),
+                }
+            }
 
-            match k {
-                Type::Literal { .. } => {}
-                Type::Never
-                | Type::Primitive { .. }
-                | Type::Function(_)
-                | Type::Union(_)
-                | Type::Iface(_)
-                | Type::Any
-                | Type::Unknown => panic!("iface field key must be a literal"),
+            if *v != id {
+                self.lookup(*v).expect("unknown field iface value type id");
             }
         });
 
-        Ok(self.register(IfaceType { fields }.into()))
+        self.register(IfaceType { fields }.into())
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-pub enum TypeError {}
 
 #[cfg(test)]
 mod tests {
@@ -344,7 +367,7 @@ mod tests {
 
         let true_id = env2.boolean(true);
 
-        env.function(vec![true_id], vec![]).unwrap();
+        env.function(vec![true_id], vec![]);
     }
 
     #[test]
@@ -354,9 +377,7 @@ mod tests {
         let hundred_id = env.number(100.0);
         let hundred_one_id = env.number(101.0);
 
-        let fun_id = env
-            .function(vec![hundred_id], vec![hundred_one_id])
-            .unwrap();
+        let fun_id = env.function(vec![hundred_id], vec![hundred_one_id]);
 
         assert_eq!(
             env.lookup(fun_id),
@@ -383,7 +404,7 @@ mod tests {
         let mut env = TypeEnvironment::new();
 
         let true_id = env.boolean(true);
-        let union_id = env.union(vec![true_id]).unwrap();
+        let union_id = env.union(vec![true_id]);
 
         assert_eq!(true_id, union_id);
     }
@@ -394,7 +415,7 @@ mod tests {
 
         let true_id = env.boolean(true);
         let false_id = env.boolean(false);
-        let union_id = env.union(vec![true_id, false_id]).unwrap();
+        let union_id = env.union(vec![true_id, false_id]);
 
         assert_eq!(
             env.lookup(union_id),
@@ -447,7 +468,7 @@ mod tests {
 
         let foo_id = env.string(r#""foo""#.to_owned());
 
-        let iface_id = env.iface(vec![(foo_id, TypeId::STRING)]).unwrap();
+        let iface_id = env.iface(vec![(foo_id, TypeId::STRING)]);
 
         assert_eq!(
             env.lookup(iface_id),
