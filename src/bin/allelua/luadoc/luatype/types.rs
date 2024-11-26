@@ -1,7 +1,8 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::{self},
+    fmt,
     hash::Hash,
+    ops::Deref,
     rc::{Rc, Weak},
 };
 
@@ -11,6 +12,14 @@ use std::{
 pub enum TypeRef {
     Strong(Rc<Type>),
     Weak(Weak<Type>),
+}
+
+impl Deref for TypeRef {
+    type Target = Type;
+
+    fn deref(&self) -> &Self::Target {
+        self.unwrap()
+    }
 }
 
 impl fmt::Debug for TypeRef {
