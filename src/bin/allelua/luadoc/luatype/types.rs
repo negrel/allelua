@@ -96,16 +96,15 @@ impl TypeRef {
     }
 
     pub fn get(&self) -> Rc<Type> {
-        match self {
-            Self::Strong(rc) => rc.to_owned(),
-            Self::Weak(w) => w
-                .upgrade()
-                .expect("Failed to upgrade weak reference, this is likely a bug, please report it at https://github.com/negrel/allelua/issues"),
-        }
+        self.try_get()
+            .expect("Failed to upgrade weak reference, this is likely a bug, please report it at https://github.com/negrel/allelua/issues")
     }
 
-    pub fn get_noalias(&self) -> TypeRef {
-        Type::noalias(self.get())
+    /// Unwrap contained [Type] and returns a reference to it.
+    pub fn unwrap(&self) -> &Type {
+        let rc = self.get();
+        // Safety: returned reference is valid as long as Rc is valid.
+        unsafe { &*Rc::as_ptr(&rc) as &Type }
     }
 
     pub fn as_ptr(&self) -> *const Type {
@@ -146,7 +145,9 @@ impl Type {
         kind: PrimitiveKind::Nil,
     };
 
-    pub fn string(value: String) -> Self {
+    pub fn string(value: impl ToString) -> Self {
+        let value = value.to_string();
+
         if value.len() < 2
             || value.as_bytes().first() != Some(&b'"')
             || value.as_bytes().last() != Some(&b'"')
@@ -171,15 +172,6 @@ impl Type {
         Self::Literal {
             value: value.to_string(),
             kind: PrimitiveKind::Boolean,
-        }
-    }
-
-    /// Unwrap aliased type until type is a primitive or a composite type.
-    pub fn noalias(itref: impl Into<TypeRef>) -> TypeRef {
-        let tref = itref.into();
-        match tref.get().as_ref() {
-            Self::Alias(a) => a.alias.get_noalias(),
-            _ => tref,
         }
     }
 
@@ -552,18 +544,18 @@ impl fmt::Display for Field {
                 {
                     let key = key.strip_prefix('"').unwrap().strip_suffix('"').unwrap();
                     if f.alternate() {
-                        return write!(f, "{}: {:#}", key, self.value);
+                        return write!(f, "{} = {:#}", key, self.value);
                     } else {
-                        return write!(f, "{}: {}", key, self.value);
+                        return write!(f, "{} = {}", key, self.value);
                     }
                 }
             }
         }
 
         if f.alternate() {
-            write!(f, "[{}]: {:#}", self.key, self.value)
+            write!(f, "[{}] = {:#}", self.key, self.value)
         } else {
-            write!(f, "[{}]: {}", self.key, self.value)
+            write!(f, "[{}] = {}", self.key, self.value)
         }
     }
 }
@@ -797,6 +789,22 @@ impl AliasType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn type_ref_unwrap_strong() {
+        let t = Type::string(r#""foo""#);
+        let tref: TypeRef = t.to_owned().into();
+        let unwrapped: &Type = tref.unwrap();
+        assert_eq!(&t, unwrapped)
+    }
+
+    #[test]
+    fn type_ref_unwrap_weak() {
+        let tref = AliasType::new_recursive("Foo".to_string(), |w| w.to_owned().into());
+        let alias: &AliasType = tref.unwrap().try_into().unwrap();
+
+        assert_eq!(alias.alias.unwrap(), tref.unwrap())
+    }
 
     #[test]
     fn literal_bool() {
