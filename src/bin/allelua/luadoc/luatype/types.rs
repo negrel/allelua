@@ -218,34 +218,6 @@ impl Type {
             tref
         }
     }
-
-    /// Returns true if tref contains x.
-    pub fn contains(itref: impl Into<TypeRef>, x: TypeRef) -> bool {
-        let tref = itref.into();
-        match tref.get().as_ref() {
-            Type::Never
-            | Type::Any
-            | Type::Unknown
-            | Type::Literal { .. }
-            | Type::Primitive { .. } => false,
-            Type::Function(f) => f.contains(x),
-            Type::Union(u) => u.contains(x),
-            Type::Iface(i) => i.contains(x),
-            Type::Alias(a) => {
-                if a.alias == x {
-                    true
-                } else {
-                    Type::contains(a.alias.clone(), x)
-                }
-            }
-        }
-    }
-
-    /// Returns true if type is self-referential.
-    pub fn is_cyclic(itref: impl Into<TypeRef>) -> bool {
-        let tref = itref.into();
-        Self::contains(tref.clone(), tref)
-    }
 }
 
 impl From<&'static str> for Type {
@@ -352,20 +324,6 @@ impl FunctionType {
         }
     }
 
-    fn contains(&self, x: TypeRef) -> bool {
-        if self
-            .params
-            .iter()
-            .any(|param| param == &x || Type::contains(param.to_owned(), x.clone()))
-        {
-            true
-        } else {
-            self.results
-                .iter()
-                .any(|result| result == &x || Type::contains(result.to_owned(), x.clone()))
-        }
-    }
-
     fn normalize_with_ctx(function_ref: TypeRef, ctx: &mut NormalizeContext) -> TypeRef {
         let function_rc = function_ref.get();
         let function: &FunctionType = function_rc.as_ref().try_into().unwrap();
@@ -433,18 +391,6 @@ impl UnionType {
         }
 
         Self { variants: types }
-    }
-
-    /// Returns true if given type is contained within this type.
-    pub fn contains(&self, x: TypeRef) -> bool {
-        for trc in &self.variants {
-            let tref = trc.to_owned();
-            if tref == x || Type::contains(tref, x.clone()) {
-                return true;
-            }
-        }
-
-        false
     }
 
     /// Simplifies union type by removing duplicates, merging inner unions and
@@ -614,7 +560,7 @@ impl<K: Into<TypeRef>, V: Into<TypeRef>> From<(K, V)> for Field {
 /// Every type that contains those fields is assignable to an interface.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub struct IfaceType {
-    pub fields: BTreeMap<TypeRef, Field>,
+    pub(super) fields: BTreeMap<TypeRef, Field>,
 }
 
 impl fmt::Display for IfaceType {
@@ -663,15 +609,6 @@ impl IfaceType {
                     .map(|f| (f.key.to_owned(), f)),
             ),
         }
-    }
-
-    fn contains(&self, x: TypeRef) -> bool {
-        self.fields.iter().any(|(_, f)| {
-            f.key == x
-                || f.value == x
-                || Type::contains(f.key.to_owned(), x.clone())
-                || Type::contains(f.value.to_owned(), x.clone())
-        })
     }
 
     fn normalize_with_ctx(iface_ref: TypeRef, ctx: &mut NormalizeContext) -> TypeRef {
