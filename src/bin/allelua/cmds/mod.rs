@@ -1,5 +1,4 @@
 mod bench;
-mod doc;
 mod fmt;
 mod lint;
 mod lsp;
@@ -7,7 +6,6 @@ mod run;
 mod test;
 
 pub use bench::*;
-pub use doc::*;
 pub use fmt::*;
 pub use lint::*;
 pub use lsp::*;
