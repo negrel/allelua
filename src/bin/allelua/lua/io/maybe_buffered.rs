@@ -1,4 +1,4 @@
-use tokio::io::{AsyncRead, AsyncWrite, BufReader, BufStream, BufWriter};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 /// [MaybeBuffered] is a trait implemented by [tokio::io::BufReader],
 /// [tokio::io::BufWriter], [tokio::io::BufStream].
@@ -22,7 +22,7 @@ impl<T> MaybeBuffered<T> for T {
     }
 }
 
-impl<T: AsyncRead> MaybeBuffered<T> for BufReader<T> {
+impl<T: AsyncRead> MaybeBuffered<T> for super::bufio::BufReader<T> {
     fn get_ref(&self) -> &T {
         self.get_ref()
     }
@@ -36,7 +36,7 @@ impl<T: AsyncRead> MaybeBuffered<T> for BufReader<T> {
     }
 }
 
-impl<T: AsyncWrite> MaybeBuffered<T> for BufWriter<T> {
+impl<T: AsyncWrite> MaybeBuffered<T> for super::bufio::BufWriter<T> {
     fn get_ref(&self) -> &T {
         self.get_ref()
     }
@@ -50,7 +50,49 @@ impl<T: AsyncWrite> MaybeBuffered<T> for BufWriter<T> {
     }
 }
 
-impl<T: AsyncRead + AsyncWrite> MaybeBuffered<T> for BufStream<T> {
+impl<T: AsyncRead + AsyncWrite> MaybeBuffered<T> for super::bufio::BufStream<T> {
+    fn get_ref(&self) -> &T {
+        self.get_ref()
+    }
+
+    fn get_mut(&mut self) -> &mut T {
+        self.get_mut()
+    }
+
+    fn into_inner(self) -> T {
+        self.into_inner()
+    }
+}
+
+impl<T: AsyncRead> MaybeBuffered<T> for tokio::io::BufReader<T> {
+    fn get_ref(&self) -> &T {
+        self.get_ref()
+    }
+
+    fn get_mut(&mut self) -> &mut T {
+        self.get_mut()
+    }
+
+    fn into_inner(self) -> T {
+        self.into_inner()
+    }
+}
+
+impl<T: AsyncWrite> MaybeBuffered<T> for tokio::io::BufWriter<T> {
+    fn get_ref(&self) -> &T {
+        self.get_ref()
+    }
+
+    fn get_mut(&mut self) -> &mut T {
+        self.get_mut()
+    }
+
+    fn into_inner(self) -> T {
+        self.into_inner()
+    }
+}
+
+impl<T: AsyncRead + AsyncWrite> MaybeBuffered<T> for tokio::io::BufStream<T> {
     fn get_ref(&self) -> &T {
         self.get_ref()
     }

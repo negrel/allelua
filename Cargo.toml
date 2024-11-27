@@ -26,6 +26,7 @@ full_moon = { version = "1.1.2", default-features = false, features = ["lua52"] 
 mlua = { git = "https://github.com/mlua-rs/mlua", rev = "8d8d521721eaaf8a15792ef517889dd69bb6889e", features = ["luajit52", "async", "macros", "error-send", "serialize"] }
 nanorand = "0.7.0"
 os_pipe = "1.2.1"
+pin-project-lite = "0.2.15"
 regex = "1.11.0"
 selene-lib = { git = "https://github.com/Kampfkarren/selene", rev = "e19e3c4e6a9eb9a02f8991d346e078fe254c6d82", default-features = false }
 serde = "1.0.210"

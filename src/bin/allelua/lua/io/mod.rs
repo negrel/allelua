@@ -1,9 +1,10 @@
 use std::slice;
 
-use mlua::{AnyUserData, FromLua, IntoLua, Lua, ObjectLike, UserData};
+use mlua::{chunk, AnyUserData, FromLua, IntoLua, Lua, ObjectLike, UserData};
 
 use crate::include_lua;
 
+mod bufio;
 mod closer;
 mod error;
 mod maybe_buffered;
@@ -11,12 +12,15 @@ mod reader;
 mod seeker;
 mod writer;
 
+pub use bufio::*;
 pub use closer::*;
 pub use error::*;
 pub use maybe_buffered::*;
 pub use reader::*;
 pub use seeker::*;
 pub use writer::*;
+
+pub const DEFAULT_BUF_SIZE: usize = 8 * 1024;
 
 pub fn load_io(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
@@ -59,7 +63,7 @@ pub fn load_io(lua: &Lua) -> mlua::Result<mlua::Table> {
 /// LuaJitBuffer is a wrapper around the LuaJIT string.buffer extension stored
 /// as a [mlua::AnyUserData].
 #[derive(Debug, Clone)]
-struct LuaJitBuffer {
+pub struct LuaJitBuffer {
     udata: mlua::AnyUserData,
     #[allow(dead_code)]
     lua: Lua,
@@ -86,7 +90,21 @@ impl FromLua for LuaJitBuffer {
 }
 
 impl LuaJitBuffer {
-    fn as_bytes(&self) -> mlua::Result<&mut [u8]> {
+    pub fn new(lua: Lua) -> mlua::Result<Self> {
+        Self::new_with_capacity(lua, DEFAULT_BUF_SIZE)
+    }
+
+    pub fn new_with_capacity(lua: Lua, n: usize) -> mlua::Result<Self> {
+        let udata = lua
+            .load(chunk! {
+                return require("string.buffer").new($n)
+            })
+            .eval::<mlua::AnyUserData>()?;
+
+        Ok(Self { udata, lua })
+    }
+
+    pub fn as_bytes(&self) -> mlua::Result<&mut [u8]> {
         let (ptr, len) = self.udata.call_method::<(mlua::Value, usize)>("ref", ())?;
 
         if len == 0 || ptr.is_null() {
@@ -101,7 +119,12 @@ impl LuaJitBuffer {
         }
     }
 
-    fn reserve_bytes(&self, n: usize) -> mlua::Result<&mut [u8]> {
+    pub fn as_boxed_slice(&self) -> mlua::Result<Box<[u8]>> {
+        let bytes = self.as_bytes()?;
+        unsafe { Ok(Box::from_raw(bytes as *mut [u8])) }
+    }
+
+    pub fn reserve_bytes(&self, n: usize) -> mlua::Result<&mut [u8]> {
         let (ptr, len) = self
             .udata
             .call_method::<(mlua::Value, usize)>("reserve", n)?;
@@ -118,7 +141,7 @@ impl LuaJitBuffer {
         }
     }
 
-    fn skip(&self, n: usize) -> mlua::Result<()> {
+    pub fn skip(&self, n: usize) -> mlua::Result<()> {
         if n == 0 {
             return Ok(());
         }
@@ -126,7 +149,7 @@ impl LuaJitBuffer {
         self.udata.call_method("skip", n)
     }
 
-    fn commit(&self, n: usize) -> mlua::Result<()> {
+    pub fn commit(&self, n: usize) -> mlua::Result<()> {
         if n == 0 {
             return Ok(());
         }

@@ -1,7 +1,7 @@
 use mlua::{AnyUserData, ObjectLike};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
-use super::{Closable, LuaBuffer, LuaJitBuffer};
+use super::{Closable, LuaBuffer, LuaJitBuffer, DEFAULT_BUF_SIZE};
 
 pub fn add_io_read_methods<
     W: AsyncReadExt + Unpin,
@@ -71,7 +71,7 @@ pub fn add_io_buf_read_methods<
     methods.add_async_method_mut("read_until", |lua, reader, byte: u8| async move {
         let mut reader = reader.as_ref().get().await?;
 
-        let mut buf = Vec::with_capacity(4096);
+        let mut buf = Vec::with_capacity(DEFAULT_BUF_SIZE);
         let read = reader.read_until(byte, &mut buf).await?;
 
         let slice = &buf[..];
@@ -85,7 +85,7 @@ pub fn add_io_buf_read_methods<
 
     methods.add_async_method_mut("read_line", |lua, reader, ()| async move {
         let mut reader = reader.as_ref().get().await?;
-        let mut buf = Vec::with_capacity(4096);
+        let mut buf = Vec::with_capacity(DEFAULT_BUF_SIZE);
         let read = reader.read_until(b'\n', &mut buf).await?;
 
         let mut slice = &buf[..];
