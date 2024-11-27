@@ -1,7 +1,7 @@
 use std::{ffi::OsString, fmt::Display, ops::Deref, path::Path, process::exit};
 
 use error::load_error;
-use mlua::{chunk, AsChunk, FromLuaMulti, Lua, LuaOptions, StdLib};
+use mlua::{chunk, AsChunk, FromLua, FromLuaMulti, IntoLua, Lua, LuaOptions, ObjectLike, StdLib};
 
 use self::{
     coroutine::load_coroutine, globals::register_globals, io::load_io, json::load_json,
@@ -175,4 +175,105 @@ macro_rules! include_lua {
             source: include_bytes!($path),
         }
     }};
+}
+
+/// LuaObject is either a [mlua::Table] or [mlua::AnyUserData]. This wrapper
+/// types is convenient when you want to manipulate an object and you don't care
+/// about how it is implemented.
+#[derive(Debug, Clone)]
+pub enum LuaObject {
+    Table(mlua::Table),
+    UserData(mlua::AnyUserData),
+}
+
+impl FromLua for LuaObject {
+    fn from_lua(value: mlua::Value, lua: &Lua) -> mlua::Result<Self> {
+        let obj = mlua::Either::<mlua::Table, mlua::AnyUserData>::from_lua(value, lua)?;
+        match obj {
+            mlua::Either::Left(table) => Ok(Self::Table(table)),
+            mlua::Either::Right(udata) => Ok(Self::UserData(udata)),
+        }
+    }
+}
+
+impl IntoLua for LuaObject {
+    fn into_lua(self, lua: &Lua) -> mlua::Result<mlua::Value> {
+        match self {
+            LuaObject::Table(tab) => tab.into_lua(lua),
+            LuaObject::UserData(udata) => udata.into_lua(lua),
+        }
+    }
+}
+
+macro_rules! lua_obj_do {
+    ($self:ident, $obj:ident => $do:expr) => {
+        match $self {
+            Self::Table($obj) => $do,
+            Self::UserData($obj) => $do,
+        }
+    };
+}
+
+impl LuaObject {
+    pub fn get<V: FromLua>(&self, key: impl IntoLua) -> mlua::Result<V> {
+        lua_obj_do!(self, obj => { obj.get(key) })
+    }
+
+    pub fn set(&self, key: impl IntoLua, value: impl IntoLua) -> mlua::Result<()> {
+        lua_obj_do!(self, obj => { obj.set(key, value) })
+    }
+
+    pub fn call<R>(&self, args: impl mlua::prelude::IntoLuaMulti) -> mlua::Result<R>
+    where
+        R: FromLuaMulti,
+    {
+        lua_obj_do!(self, obj => { obj.call(args) })
+    }
+
+    pub async fn call_async<R>(&self, args: impl mlua::IntoLuaMulti) -> mlua::Result<R>
+    where
+        R: FromLuaMulti,
+    {
+        lua_obj_do!(self, obj => { obj.call_async(args).await })
+    }
+
+    pub fn call_method<R>(&self, name: &str, args: impl mlua::IntoLuaMulti) -> mlua::Result<R>
+    where
+        R: FromLuaMulti,
+    {
+        lua_obj_do!(self, obj => { obj.call_method(name, args) })
+    }
+
+    pub async fn call_async_method<R>(
+        &self,
+        name: &str,
+        args: impl mlua::IntoLuaMulti,
+    ) -> mlua::Result<R>
+    where
+        R: FromLuaMulti,
+    {
+        lua_obj_do!(self, obj => { obj.call_async_method(name, args).await })
+    }
+
+    pub fn call_function<R>(&self, name: &str, args: impl mlua::IntoLuaMulti) -> mlua::Result<R>
+    where
+        R: FromLuaMulti,
+    {
+        lua_obj_do!(self, obj => { obj.call_function(name, args) })
+    }
+
+    pub async fn call_async_function<R>(
+        &self,
+        name: &str,
+        args: impl mlua::IntoLuaMulti,
+    ) -> mlua::Result<R>
+    where
+        R: FromLuaMulti,
+    {
+        lua_obj_do!(self, obj => { obj.call_async_function(name, args).await })
+    }
+
+    pub fn to_string(&self) -> mlua::Result<String> {
+        lua_obj_do!(self, obj => { obj.to_string() })
+    }
 }
