@@ -4,6 +4,8 @@ use mlua::{chunk, Either, FromLua, IntoLua, Lua, MetaMethod, UserData};
 
 use crate::include_lua;
 
+use super::{io::LuaWriter, LuaObject};
+
 pub fn load_string(lua: &Lua) -> mlua::Result<()> {
     let string_extra = lua.create_table()?;
     let slice = lua
@@ -220,5 +222,35 @@ fn regex_or_escaped_regex(str_or_regex: Either<mlua::String, Regex>) -> mlua::Re
                 .map_err(mlua::Error::external)?,
         )),
         Either::Right(re) => Ok(re),
+    }
+}
+
+#[derive(Debug)]
+pub struct LuaStringBuffer(mlua::Table);
+
+impl Deref for LuaStringBuffer {
+    type Target = mlua::Table;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<LuaStringBuffer> for LuaWriter {
+    fn from(val: LuaStringBuffer) -> Self {
+        let obj = LuaObject::Table(val.0);
+        LuaWriter::new(obj)
+    }
+}
+
+impl LuaStringBuffer {
+    pub fn new(lua: &Lua) -> mlua::Result<Self> {
+        let buf = lua
+            .load(chunk! {
+                return require("string").Buffer.new()
+            })
+            .eval::<mlua::Table>()?;
+
+        Ok(Self(buf))
     }
 }

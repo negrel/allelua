@@ -122,8 +122,13 @@ return function(Regex, extra)
 		self.inner:put(buf)
 		return #buf
 	end
+
+	function M.Buffer:flush() end
+	function M.Buffer:shutdown() end
+
 	M.Buffer.write_string = io.write_string
 	M.Buffer.write_all = io.write_all
+	M.Buffer.write_buf = io.write_buf
 
 	function M.Buffer:read_from(reader)
 		local chunk_size = math.max(self:available(), 4096)
