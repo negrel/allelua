@@ -1,8 +1,18 @@
 return function(M)
+	local ffi = require("ffi")
 	local math = require("math")
 	local sync = require("sync")
 	local error = require("error")
-	local buffer = require("string.buffer")
+	local libbuf = require("string.buffer")
+
+	libbuf.copy = function(src, dst, len)
+		local dst_ptr, dst_len = dst:reserve(len or 0)
+		local src_len = #src
+		if rawtype(src) == "buffer" then src = src:ref() end
+		local copied = math.min(dst_len, src_len, len or dst_len)
+		ffi.copy(dst_ptr, src, copied)
+		return copied
+	end
 
 	M.copy = function(reader, writer, opts)
 		opts = opts or {}
@@ -24,7 +34,7 @@ return function(M)
 			if opts.flush then writer:flush() end
 			total = write
 		else
-			local buf = buffer.new()
+			local buf = libbuf.new()
 			while true do
 				-- Read into buffer.
 				local ok, read = pcall(reader.read, reader, buf, 4096)
@@ -63,7 +73,7 @@ return function(M)
 	function M.read_to_end(self)
 		local buf_size = M.default_buffer_size
 		local free_buf_size = buf_size
-		local buf = buffer.new(buf_size)
+		local buf = libbuf.new(buf_size)
 
 		while true do
 			local ok, read = pcall(self.read, self, buf)
@@ -98,7 +108,7 @@ return function(M)
 					write = write + w
 				end
 			else
-				local clone = buffer.new()
+				local clone = libbuf.new()
 				local ptr = buf:ref()
 				clone:putcdata(ptr + write, len - write)
 				while write < len do
@@ -123,7 +133,7 @@ return function(M)
 	end
 
 	function M.write_string(writer, str)
-		local buf = buffer.new(#str)
+		local buf = libbuf.new(#str)
 		buf:put(str)
 		return M.write_all(writer, buf, true)
 	end
@@ -203,5 +213,141 @@ return function(M)
 		if self._done_chan:is_closed() then error("pipe already closed") end
 		self._done_chan:close()
 		self._wr_chan:close()
+	end
+
+	M.discard = {
+		write = function(_, _buf) end,
+	}
+
+	M.BufReader = { __type = "io.BufReader" }
+	M.BufReader.__index = M.BufReader
+
+	function M.BufReader.new(reader, opts)
+		assert(reader, "reader must not be nil")
+
+		opts = opts or {}
+		local cap = opts.size or M.default_buffer_size
+		assert(cap > 0, "buffer size must be greater than 0")
+		local buf = libbuf.new(cap)
+		local buf_reader = { reader = reader, buffer = buf, _cap = cap }
+		setmetatable(buf_reader, M.BufReader)
+		return buf_reader
+	end
+
+	function M.BufReader:buffered()
+		return #self.buffer
+	end
+
+	function M.BufReader:available()
+		return self._cap - #self.buffer
+	end
+
+	function M.BufReader:discard(n)
+		assert(n > 0, "discard count must be a positive number")
+
+		-- Discard from buffer if possible.
+		local buffered = self:buffered()
+		if buffered <= n then
+			-- Reset entire buffer if possible.
+
+			self.buffer:reset()
+			n = n - buffered
+			buffered = 0
+		elseif n < buffered then
+			-- Otherwise just skip data in buffer.
+			self.buffer:skip(n)
+		end
+
+		-- Finally, discard from reader.
+		while n > 0 do
+			local read = self.reader:read(self.buffer)
+
+			-- We read more than we need to discard.
+			if read > n then
+				self.buffer:commit(read)
+				self.buffer:skip(n)
+			end
+			n = n - read
+		end
+	end
+
+	function M.BufReader:read(buf)
+		local copied = 0
+
+		-- Copy data if available.
+		if #self.buffer > 0 then
+			copied = libbuf.copy(self.buffer, buf)
+			buf:commit(copied)
+			self.buffer:skip(copied)
+			-- There still is data in internal buffer, this means given buffer
+			-- is full.
+			if #self.buffer ~= 0 then return copied end
+		end
+		-- No data in internal buffer, reset it to reuse memory.
+		self.buffer:reset()
+
+		-- If given buffer has more space than internal buffer, read directly into
+		-- it.
+		local _, available = buf:reserve(0)
+		if available > self._cap then return self.reader:read(buf) end
+
+		-- Read in internal buffer.
+		local read = self.reader:read(self.buffer)
+		if read == 0 then return 0 end
+
+		-- Copy part of buffered data into given buffer.
+		local copied2 = libbuf.copy(self.buffer, buf)
+		buf:commit(copied2)
+		self.buffer:skip(copied2)
+		return copied + copied2
+	end
+
+	M.BufWriter = { __type = "io.BufWriter" }
+	M.BufWriter.__index = M.BufWriter
+
+	function M.BufWriter:__len()
+		return self._cap
+	end
+
+	function M.BufWriter.new(writer, opts)
+		assert(writer, "writer must not be nil")
+
+		opts = opts or {}
+		local cap = opts.size or M.default_buffer_size
+		assert(cap > 0, "buffer size must be greater than 0")
+		local buf = libbuf.new(cap)
+		local buf_writer = { writer = writer, buffer = buf, _cap = cap }
+		setmetatable(buf_writer, M.BufWriter)
+		return buf_writer
+	end
+
+	function M.BufWriter:buffered()
+		return #self.buffer
+	end
+
+	function M.BufWriter:available()
+		return self._cap - #self.buffer
+	end
+
+	function M.BufWriter:write(buf)
+		-- No more space in internal buffer.
+		if #buf > self:available() then self:flush() end
+
+		-- Given buffer doesn't fit into internal buffer, pass it directly to writer
+		-- to avoid copy.
+		if #buf > self._cap then return self.writer:write(buf) end
+
+		-- Space available, simply copy given buffer.
+		local copied = libbuf.copy(buf, self.buffer)
+		self.buffer:commit(copied)
+		return copied
+	end
+
+	function M.BufWriter:flush()
+		while #self.buffer > 0 do
+			local write = self.writer:write(self.buffer)
+			self.buffer:skip(write)
+		end
+		self.buffer:reset()
 	end
 end

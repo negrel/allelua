@@ -1,5 +1,4 @@
 return function(Regex, extra)
-	local ffi = require("ffi")
 	local buffer = require("string.buffer")
 	local io = require("io")
 	local math = require("math")
@@ -7,16 +6,6 @@ return function(Regex, extra)
 	local M = string
 
 	M.buffer = buffer
-	M.buffer.copy = function(src, dst, len)
-		local dst_ptr, dst_len = dst:reserve(len or 0)
-		local src_len = #src
-		if rawtype(src) == "buffer" then src = src:ref() end
-		local copied = math.min(dst_len, src_len, len)
-		ffi.copy(dst_ptr, src, copied)
-		dst:commit(copied)
-		return copied
-	end
-
 	M.Regex = Regex
 
 	-- Rename sub to slice.

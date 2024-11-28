@@ -2,11 +2,13 @@ local string = require("string")
 local t = require("test")
 
 t.test("string.buffer.copy copies content", function()
-	local src = string.buffer.new()
+	local src = string.buffer.new(32)
 	src:put("Hello world!")
 	local dst = string.buffer.new()
 
-	string.buffer.copy(src, dst, 3)
+	local copied = string.buffer.copy(src, dst, 3)
+	dst:commit(copied)
+	assert(copied == 3)
 	assert(dst:tostring() == "Hel")
 end)
 
