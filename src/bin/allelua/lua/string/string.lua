@@ -28,6 +28,25 @@ return function(Regex, extra)
 	M.gsub = nil
 	M.match = nil
 
+	M.charset = {
+		alpha_lower = "abcdefghijklmnopqrstuvwxyz",
+		alpha_upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		alpha_mixed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		numeric = "0123456789",
+		alphanumeric = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+	}
+
+	function M.random(len, charset)
+		len = len or 32
+		charset = charset or M.charset.alphanumeric
+		local buf = buffer.new(len)
+		for _ = 1, len do
+			local i = math.random(#charset)
+			buf:put(charset:slice(i, i))
+		end
+		return buf:get()
+	end
+
 	M.has_prefix = function(str, prefix)
 		return string.slice(str, 0, #prefix) == prefix
 	end
