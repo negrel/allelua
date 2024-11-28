@@ -207,7 +207,9 @@ return function(M, byte_search)
 	end
 
 	M.discard = {
-		write = function(_, _buf) end,
+		write = function(_, buf)
+			return #buf
+		end,
 	}
 
 	M.BufReader = { __type = "io.BufReader" }
