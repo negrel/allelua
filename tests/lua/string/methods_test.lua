@@ -103,32 +103,26 @@ t.test(
 		local str = "bar-01-foo"
 		local re = string.Regex.new("(?<month>[0-9]{2})")
 		local captures = str:captures(re)
-		t.assert_eq(
-			captures[1],
-			{
-				"01",
-				5,
-				6,
-				"month",
-				match = "01",
-				start = 5,
-				["end"] = 6,
-				name = "month",
-			}
-		)
-		t.assert_eq(
-			captures.month,
-			{
-				"01",
-				5,
-				6,
-				"month",
-				match = "01",
-				start = 5,
-				["end"] = 6,
-				name = "month",
-			}
-		)
+		t.assert_eq(captures[1], {
+			"01",
+			5,
+			6,
+			"month",
+			match = "01",
+			start = 5,
+			["end"] = 6,
+			name = "month",
+		})
+		t.assert_eq(captures.month, {
+			"01",
+			5,
+			6,
+			"month",
+			match = "01",
+			start = 5,
+			["end"] = 6,
+			name = "month",
+		})
 	end
 )
 
@@ -171,3 +165,69 @@ t.test(
 		t.assert_eq(count, 2)
 	end
 )
+
+t.test("slice within bounds return substring", function()
+	local str = "Hello world!"
+	local substr = str:slice(3, 6)
+	assert(substr == "llo ")
+end)
+
+t.test(
+	"slice from within bounds to out of bound return substring from start up to end",
+	function()
+		local str = "Hello world!"
+		local substr = str:slice(3, 64)
+		assert(substr == "llo world!")
+	end
+)
+
+t.test("slice from out of bound to in bound returns empty string", function()
+	local str = "Hello world!"
+	local substr = str:slice(64, 3)
+	assert(substr == "")
+end)
+
+t.test("slice from 0 returns all string", function()
+	local str = "Hello world!"
+	local substr = str:slice(0)
+	assert(substr == str)
+end)
+
+t.test("slice from 1 returns all string", function()
+	local str = "Hello world!"
+	local substr = str:slice(1)
+	assert(substr == str)
+end)
+
+t.test("slice from -2 returns last 2 bytes of string", function()
+	local str = "Hello world!"
+	local substr = str:slice(-2)
+	assert(substr == "d!")
+end)
+
+t.test("slice from -2 to -1 returns last 2 bytes of string", function()
+	local str = "Hello world!"
+	local substr = str:slice(-2, -1)
+	assert(substr == "d!")
+end)
+
+t.test(
+	"slice from -2 to -2 returns single byte before last byte of string",
+	function()
+		local str = "Hello world!"
+		local substr = str:slice(-2, -2)
+		assert(substr == "d")
+	end
+)
+
+t.test("slice from -2 to 0 returns empty string", function()
+	local str = "Hello world!"
+	local substr = str:slice(-2, 0)
+	assert(substr == "")
+end)
+
+t.test("slice from -2 to 1 empty string", function()
+	local str = "Hello world!"
+	local substr = str:slice(-2, 1)
+	assert(substr == "")
+end)
