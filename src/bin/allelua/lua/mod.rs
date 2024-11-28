@@ -116,6 +116,8 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
             package.loaded.debug = nil
             _G.ffi = nil
             package.loaded.ffi = nil
+            // Adds string.buffer as string/buffer for consistency
+            package.loaded["string/buffer"] = package.loaded["string.buffer"]
 
             // Freeze modules.
             table.map(package.loaded, function(_k, v)
