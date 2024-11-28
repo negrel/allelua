@@ -1,4 +1,4 @@
-return function(M)
+return function(M, byte_search)
 	local ffi = require("ffi")
 	local math = require("math")
 	local sync = require("sync")
@@ -70,28 +70,19 @@ return function(M)
 		return total
 	end
 
-	function M.read_to_end(self)
-		local buf_size = M.default_buffer_size
-		local free_buf_size = buf_size
-		local buf = libbuf.new(buf_size)
+	function M.lines(reader)
+		if rawtype(reader.lines) == "function" then return reader.lines() end
+		local buf_reader = M.BufReader.new(reader)
+		return buf_reader:lines()
+	end
 
-		while true do
-			local ok, read = pcall(self.read, self, buf)
-			if not ok then
-				local err = read
-				if err:is(M.errors.closed) then break end
-				error(err)
-			end
-			if read == 0 then break end
-			-- buffer is full, reserve more space.
-			if read == free_buf_size then
-				buf:reserve(free_buf_size)
-				buf_size = buf_size * 2
-				free_buf_size = buf_size - #buf
-			end
+	function M.read_to_end(reader)
+		if rawtype(reader.read_to_end) == "function" then
+			return reader.read_to_end()
 		end
 
-		return buf:tostring()
+		local buf_reader = M.BufReader.new(reader)
+		return buf_reader:read_to_end()
 	end
 
 	function M.write_all(self, buf, edit_buf)
@@ -242,6 +233,12 @@ return function(M)
 		return self._cap - #self.buffer
 	end
 
+	function M.BufReader:reserve(n)
+		local available = self:available()
+		local _, len = self.buffer:reserve(n)
+		self._cap = self._cap + len - available
+	end
+
 	function M.BufReader:discard(n)
 		assert(n > 0, "discard count must be a positive number")
 
@@ -300,6 +297,55 @@ return function(M)
 		buf:commit(copied2)
 		self.buffer:skip(copied2)
 		return copied + copied2
+	end
+
+	function M.BufReader:read_to_end()
+		while true do
+			if self:available() == 0 then
+				self:reserve(1) -- Grow to next power of 2.
+			end
+
+			local read = self.reader:read(self.buffer)
+			if read == 0 then
+				local str = self.buffer:get()
+				self.buffer:reset()
+				return str
+			end
+		end
+	end
+
+	function M.BufReader:read_until(delim)
+		local start = 0
+		while true do
+			if start == #self.buffer then
+				self:reserve(1) -- Grow buffer to next power of 2.
+				local read = self.reader:read(self.buffer)
+
+				-- Last bytes.
+				if read == 0 then
+					local str = self.buffer:get()
+					self.buffer:reset()
+					if #str > 0 then return str end
+					return nil
+				end
+			end
+
+			local i = byte_search(self.buffer, delim, start)
+			if i then return self.buffer:get(i) end
+			start = #self.buffer
+		end
+	end
+
+	function M.BufReader:read_line()
+		local line = self:read_until("\n")
+		if not line then return nil end
+		if line:slice(-1) == "\n" then line = line:slice(0, -2) end
+		if line:slice(-1) == "\r\n" then line = line:slice(0, -2) end
+		return line
+	end
+
+	function M.BufReader:lines()
+		return self.read_line, self, self
 	end
 
 	M.BufWriter = { __type = "io.BufWriter" }

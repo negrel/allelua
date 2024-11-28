@@ -49,9 +49,27 @@ pub fn load_io(lua: &Lua) -> mlua::Result<mlua::Table> {
             )?;
             io.set("SeekFrom", seek_from_constructors)?;
 
+            let byte_search = lua.create_function(
+                |_lua, (buf, str, start): (LuaJitBuffer, mlua::String, usize)| {
+                    if str.as_bytes().len() != 1 {
+                        return Err(mlua::Error::runtime("string must contain a single byte"));
+                    }
+                    let haystack = str.as_bytes()[0];
+
+                    let bytes = &buf.ref_bytes()?[start..];
+                    Ok(bytes.iter().enumerate().find_map(|(i, b)| {
+                        if *b == haystack {
+                            Some(start + i + 1)
+                        } else {
+                            None
+                        }
+                    }))
+                },
+            )?;
+
             lua.load(include_lua!("./io.lua"))
                 .eval::<mlua::Function>()?
-                .call::<()>(io.to_owned())?;
+                .call::<()>((io.to_owned(), byte_search))?;
 
             Ok(io)
         })?,
