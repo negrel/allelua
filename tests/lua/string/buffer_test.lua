@@ -1,6 +1,15 @@
 local string = require("string")
 local t = require("test")
 
+t.test("string.buffer.copy copies content", function()
+	local src = string.buffer.new()
+	src:put("Hello world!")
+	local dst = string.buffer.new()
+
+	string.buffer.copy(src, dst, 3)
+	assert(dst:tostring() == "Hel")
+end)
+
 t.test("write_string and read_to_end from string.Buffer", function()
 	local buf = string.Buffer.new()
 
