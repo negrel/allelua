@@ -5,7 +5,7 @@ use std::{
     process::{ExitStatus, Stdio},
 };
 
-use mlua::{Either, ErrorContext, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
+use mlua::{ErrorContext, IntoLua, Lua, MetaMethod, UserData};
 use tokio::process::{self, Child};
 
 mod stderr;
@@ -15,8 +15,6 @@ mod stdout;
 use stderr::*;
 use stdin::*;
 use stdout::*;
-
-use super::LuaStdio;
 
 #[derive(Debug)]
 pub struct LuaChild {
@@ -91,44 +89,11 @@ fn lua_string_as_stdio(str: mlua::String) -> mlua::Result<Stdio> {
     }
 }
 
-async fn lua_object_as_stdio<T: ObjectLike + IntoLua>(obj: T) -> mlua::Result<Stdio> {
-    let stdio = obj
-        .call_async_method::<LuaStdio>("try_into_stdio", ())
-        .await?;
-    Ok(stdio.into())
-}
-
-async fn lua_value_as_stdio(
-    value: Either<mlua::String, Either<mlua::AnyUserData, mlua::Table>>,
-) -> mlua::Result<(Stdio, Option<usize>)> {
-    match value {
-        Either::Left(str) => lua_string_as_stdio(str).map(|stdio| (stdio, None)),
-        Either::Right(obj) => match obj {
-            Either::Left(udata) => lua_object_as_stdio(udata).await.map(|stdio| (stdio, None)),
-            Either::Right(table) => match table.get::<Option<usize>>("buffer_size")? {
-                Some(size) => {
-                    match table.get::<Option<Either<mlua::String, mlua::AnyUserData>>>("from")? {
-                        Some(Either::Right(udata)) => {
-                            Ok((lua_object_as_stdio(udata).await?, Some(size)))
-                        }
-                        Some(Either::Left(str)) => Ok((lua_string_as_stdio(str)?, Some(size))),
-                        None => Ok((Stdio::piped(), Some(size))),
-                    }
-                }
-                None => Ok((lua_object_as_stdio(table).await?, None)),
-            },
-        },
-    }
-}
-
 pub async fn exec(
     lua: &Lua,
     (program, opts): (mlua::String, mlua::Table),
 ) -> mlua::Result<LuaChild> {
     let mut cmd = process::Command::new(OsStr::from_bytes(&program.as_bytes()));
-    let mut child_stdin_buffer_size = None;
-    let mut child_stdout_buffer_size = None;
-    let mut child_stderr_buffer_size = None;
 
     // Add args.
     if let Some(args) = opts.get::<Option<mlua::Table>>("args")? {
@@ -155,75 +120,40 @@ pub async fn exec(
     }
 
     // Handle stdin.
-    if let Some(stdin) =
-        opts.get::<Option<Either<mlua::String, Either<mlua::AnyUserData, mlua::Table>>>>("stdin")?
-    {
-        let (stdin, buffer_size) = lua_value_as_stdio(stdin)
-            .await
-            .with_context(|_| "invalid stdin option:")?;
+    if let Some(stdin) = opts.get::<Option<mlua::String>>("stdin")? {
+        let stdin = lua_string_as_stdio(stdin).with_context(|_| "invalid stdin option:")?;
         cmd.stdin(stdin);
-        child_stdin_buffer_size = buffer_size;
     }
 
     // Handle stdout.
-    if let Some(stdout) =
-        opts.get::<Option<Either<mlua::String, Either<mlua::AnyUserData, mlua::Table>>>>("stdout")?
-    {
-        let (stdout, buffer_size) = lua_value_as_stdio(stdout)
-            .await
-            .with_context(|_| "invalid stdout option:")?;
-
+    if let Some(stdout) = opts.get::<Option<mlua::String>>("stdout")? {
+        let stdout = lua_string_as_stdio(stdout).with_context(|_| "invalid stdout option:")?;
         cmd.stdout(stdout);
-        child_stdout_buffer_size = buffer_size;
     }
 
     // Handle stderr.
-    if let Some(stderr) =
-        opts.get::<Option<Either<mlua::String, Either<mlua::AnyUserData, mlua::Table>>>>("stderr")?
-    {
-        let (stderr, buffer_size) = lua_value_as_stdio(stderr)
-            .await
-            .with_context(|_| "invalid stderr option")?;
+    if let Some(stderr) = opts.get::<Option<mlua::String>>("stderr")? {
+        let stderr = lua_string_as_stdio(stderr).with_context(|_| "invalid stderr option")?;
         cmd.stderr(stderr);
-        child_stderr_buffer_size = buffer_size;
     }
 
     let mut child = cmd.spawn()?;
 
-    let (stdin, stdout, stderr) = {
-        macro_rules! prepare_stdio {
-            ($ident:ident, $buffer_size:ident, $new:expr, $new_buffered:expr) => {
-                match (child.$ident.take(), $buffer_size) {
-                    (Some($ident), Some(0)) => $new.into_lua(lua)?,
-                    (Some($ident), Some(_)) | (Some($ident), None) => {
-                        $new_buffered.into_lua(lua)?
-                    }
-                    _ => mlua::Value::Nil,
-                }
-            };
-        }
-
-        (
-            prepare_stdio!(
-                stdin,
-                child_stdin_buffer_size,
-                { LuaChildStdin::new(stdin) },
-                { LuaChildStdin::new_buffered(stdin, child_stdin_buffer_size) }
-            ),
-            prepare_stdio!(
-                stdout,
-                child_stdout_buffer_size,
-                { LuaChildStdout::new(stdout) },
-                { LuaChildStdout::new_buffered(stdout, child_stdout_buffer_size) }
-            ),
-            prepare_stdio!(
-                stderr,
-                child_stderr_buffer_size,
-                { LuaChildStderr::new(stderr) },
-                { LuaChildStderr::new_buffered(stderr, child_stdin_buffer_size) }
-            ),
-        )
-    };
+    let stdin = child
+        .stdin
+        .take()
+        .map(|stdin| LuaChildStdin::new(stdin).into_lua(lua))
+        .unwrap_or(Ok(mlua::Value::Nil))?;
+    let stdout = child
+        .stdout
+        .take()
+        .map(|stdout| LuaChildStdout::new(stdout).into_lua(lua))
+        .unwrap_or(Ok(mlua::Value::Nil))?;
+    let stderr = child
+        .stderr
+        .take()
+        .map(|stderr| LuaChildStderr::new(stderr).into_lua(lua))
+        .unwrap_or(Ok(mlua::Value::Nil))?;
 
     let child = LuaChild::new(child, stdin, stdout, stderr);
 

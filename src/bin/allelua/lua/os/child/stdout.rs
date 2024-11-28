@@ -1,45 +1,32 @@
 use std::process::Stdio;
 
 use mlua::{MetaMethod, UserData};
-use tokio::{io::BufReader, process::ChildStdout};
+use tokio::process::ChildStdout;
 
 use crate::lua::{
-    io::{
-        add_io_buf_read_methods, add_io_close_methods, add_io_read_methods, Closable, MaybeBuffered,
-    },
+    io::{add_io_close_methods, add_io_read_methods, Closable},
     os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
 
 #[derive(Debug)]
-pub struct LuaChildStdout<T: MaybeBuffered<ChildStdout>>(Closable<T>);
+pub struct LuaChildStdout(Closable<ChildStdout>);
 
-impl LuaChildStdout<ChildStdout> {
+impl LuaChildStdout {
     pub fn new(stdout: ChildStdout) -> Self {
         Self(Closable::new(stdout))
     }
 }
 
-impl LuaChildStdout<BufReader<ChildStdout>> {
-    pub fn new_buffered(stdout: ChildStdout, buf_size: Option<usize>) -> Self {
-        let buf_reader = match buf_size {
-            Some(n) => BufReader::with_capacity(n, stdout),
-            None => BufReader::new(stdout),
-        };
-
-        Self(Closable::new(buf_reader))
-    }
-}
-
-impl<T: MaybeBuffered<ChildStdout>> TryIntoStdio for LuaChildStdout<T> {
+impl TryIntoStdio for LuaChildStdout {
     async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let stdout: ChildStdout = self.0.into_inner()?.into_inner();
+        let stdout: ChildStdout = self.0.into_inner()?;
         Ok(stdout.try_into()?)
     }
 }
 
 // LuaChildStdout<ChildStdout> implements io.Reader and io.Closer.
-impl LuaInterface for LuaChildStdout<ChildStdout> {
+impl LuaInterface for LuaChildStdout {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_close_methods(methods);
@@ -47,27 +34,18 @@ impl LuaInterface for LuaChildStdout<ChildStdout> {
     }
 }
 
-// LuaChildStdout<ChildStdout> implements io.Reader, io.BufReader and io.Closer.
-impl LuaInterface for LuaChildStdout<BufReader<ChildStdout>> {
-    fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        add_io_read_methods(methods);
-        add_io_buf_read_methods(methods);
-        add_io_close_methods(methods);
-    }
-}
-
-impl<T: MaybeBuffered<ChildStdout>> AsRef<Closable<T>> for LuaChildStdout<T> {
-    fn as_ref(&self) -> &Closable<T> {
+impl AsRef<Closable<ChildStdout>> for LuaChildStdout {
+    fn as_ref(&self) -> &Closable<ChildStdout> {
         &self.0
     }
 }
 
-impl<T: MaybeBuffered<ChildStdout>> AsMut<Closable<T>> for LuaChildStdout<T> {
-    fn as_mut(&mut self) -> &mut Closable<T> {
+impl AsMut<Closable<ChildStdout>> for LuaChildStdout {
+    fn as_mut(&mut self) -> &mut Closable<ChildStdout> {
         &mut self.0
     }
 }
-impl<T: MaybeBuffered<ChildStdout> + 'static> UserData for LuaChildStdout<T>
+impl UserData for LuaChildStdout
 where
     Self: LuaInterface,
 {

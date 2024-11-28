@@ -5,13 +5,10 @@ use std::{
 
 use mlua::{MetaMethod, UserData};
 use os_pipe::PipeWriter;
-use tokio::{
-    fs::File,
-    io::{AsyncWriteExt, BufWriter},
-};
+use tokio::fs::File;
 
 use crate::lua::{
-    io::{add_io_write_close_methods, Closable, MaybeBuffered},
+    io::{add_io_write_close_methods, Closable},
     os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
@@ -19,9 +16,9 @@ use crate::lua::{
 // We use File instead of [os_pipe::PipeWriter] as it doesn't implements
 // [tokio::io::AsyncRead].
 #[derive(Debug)]
-pub(super) struct LuaPipeWriter<T: MaybeBuffered<File>>(Closable<T>);
+pub(super) struct LuaPipeWriter(Closable<File>);
 
-impl LuaPipeWriter<File> {
+impl LuaPipeWriter {
     pub fn new(pipe_writer: PipeWriter) -> Self {
         // TODO: windows
         // Safety: We own the opened fd.
@@ -30,48 +27,35 @@ impl LuaPipeWriter<File> {
     }
 }
 
-impl LuaPipeWriter<BufWriter<File>> {
-    pub fn new_buffered(pipe_writer: PipeWriter, buffer_size: Option<usize>) -> Self {
-        // TODO: windows
-        // Safety: We own the opened fd.
-        let f = unsafe { File::from_raw_fd(pipe_writer.into_raw_fd()) };
-        let buf_writer = match buffer_size {
-            Some(n) => BufWriter::with_capacity(n, f),
-            None => BufWriter::new(f),
-        };
-        Self(Closable::new(buf_writer))
-    }
-}
-
-impl<T: MaybeBuffered<File>> TryIntoStdio for LuaPipeWriter<T> {
+impl TryIntoStdio for LuaPipeWriter {
     async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let file: File = self.0.into_inner()?.into_inner();
+        let file: File = self.0.into_inner()?;
         let std_file = file.into_std().await;
         Ok(std_file.into())
     }
 }
 
-impl<T: MaybeBuffered<File>> AsRef<Closable<T>> for LuaPipeWriter<T> {
-    fn as_ref(&self) -> &Closable<T> {
+impl AsRef<Closable<File>> for LuaPipeWriter {
+    fn as_ref(&self) -> &Closable<File> {
         &self.0
     }
 }
 
-impl<T: MaybeBuffered<File>> AsMut<Closable<T>> for LuaPipeWriter<T> {
-    fn as_mut(&mut self) -> &mut Closable<T> {
+impl AsMut<Closable<File>> for LuaPipeWriter {
+    fn as_mut(&mut self) -> &mut Closable<File> {
         &mut self.0
     }
 }
 
 // LuaPipeWriter<T> implements io.WriteCloser and os.TryIntoStdio.
-impl<T: MaybeBuffered<File> + AsyncWriteExt + Unpin + 'static> LuaInterface for LuaPipeWriter<T> {
+impl LuaInterface for LuaPipeWriter {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_write_close_methods(methods);
         add_os_try_into_stdio_methods(methods);
     }
 }
 
-impl<T: MaybeBuffered<File> + 'static> UserData for LuaPipeWriter<T>
+impl UserData for LuaPipeWriter
 where
     Self: LuaInterface,
 {

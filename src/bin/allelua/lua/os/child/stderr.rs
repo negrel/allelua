@@ -1,45 +1,32 @@
 use std::process::Stdio;
 
 use mlua::{MetaMethod, UserData};
-use tokio::{io::BufReader, process::ChildStderr};
+use tokio::process::ChildStderr;
 
 use crate::lua::{
-    io::{
-        add_io_buf_read_methods, add_io_close_methods, add_io_read_methods, Closable, MaybeBuffered,
-    },
+    io::{add_io_close_methods, add_io_read_methods, Closable},
     os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
 
 #[derive(Debug)]
-pub struct LuaChildStderr<T: MaybeBuffered<ChildStderr>>(Closable<T>);
+pub struct LuaChildStderr(Closable<ChildStderr>);
 
-impl LuaChildStderr<ChildStderr> {
+impl LuaChildStderr {
     pub fn new(stderr: ChildStderr) -> Self {
         Self(Closable::new(stderr))
     }
 }
 
-impl LuaChildStderr<BufReader<ChildStderr>> {
-    pub fn new_buffered(stderr: ChildStderr, buf_size: Option<usize>) -> Self {
-        let buf_reader = match buf_size {
-            Some(n) => BufReader::with_capacity(n, stderr),
-            None => BufReader::new(stderr),
-        };
-
-        Self(Closable::new(buf_reader))
-    }
-}
-
-impl<T: MaybeBuffered<ChildStderr>> TryIntoStdio for LuaChildStderr<T> {
+impl TryIntoStdio for LuaChildStderr {
     async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let stderr: ChildStderr = self.0.into_inner()?.into_inner();
+        let stderr: ChildStderr = self.0.into_inner()?;
         Ok(stderr.try_into()?)
     }
 }
 
 // LuaChildStderr<ChildStderr> implements io.Reader, io.Closer and os.TryIntoStdio.
-impl LuaInterface for LuaChildStderr<ChildStderr> {
+impl LuaInterface for LuaChildStderr {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_close_methods(methods);
@@ -47,30 +34,19 @@ impl LuaInterface for LuaChildStderr<ChildStderr> {
     }
 }
 
-// LuaChildStderr<ChildStderr> implements io.Reader, io.BufReader, io.Closer
-// and os.TryIntoStdio.
-impl LuaInterface for LuaChildStderr<BufReader<ChildStderr>> {
-    fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        add_io_read_methods(methods);
-        add_io_buf_read_methods(methods);
-        add_io_close_methods(methods);
-        add_os_try_into_stdio_methods(methods);
-    }
-}
-
-impl<T: MaybeBuffered<ChildStderr>> AsRef<Closable<T>> for LuaChildStderr<T> {
-    fn as_ref(&self) -> &Closable<T> {
+impl AsRef<Closable<ChildStderr>> for LuaChildStderr {
+    fn as_ref(&self) -> &Closable<ChildStderr> {
         &self.0
     }
 }
 
-impl<T: MaybeBuffered<ChildStderr>> AsMut<Closable<T>> for LuaChildStderr<T> {
-    fn as_mut(&mut self) -> &mut Closable<T> {
+impl AsMut<Closable<ChildStderr>> for LuaChildStderr {
+    fn as_mut(&mut self) -> &mut Closable<ChildStderr> {
         &mut self.0
     }
 }
 
-impl<T: MaybeBuffered<ChildStderr> + 'static> UserData for LuaChildStderr<T>
+impl UserData for LuaChildStderr
 where
     Self: LuaInterface,
 {

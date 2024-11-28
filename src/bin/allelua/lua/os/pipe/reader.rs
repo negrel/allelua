@@ -5,12 +5,10 @@ use std::{
 
 use mlua::{MetaMethod, UserData};
 use os_pipe::PipeReader;
-use tokio::{fs::File, io::BufReader};
+use tokio::fs::File;
 
 use crate::lua::{
-    io::{
-        add_io_buf_read_methods, add_io_close_methods, add_io_read_methods, Closable, MaybeBuffered,
-    },
+    io::{add_io_close_methods, add_io_read_methods, Closable},
     os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
@@ -18,9 +16,9 @@ use crate::lua::{
 // We use File instead of [os_pipe::PipeReader] as it doesn't implements
 // [tokio::io::AsyncRead].
 #[derive(Debug)]
-pub(super) struct LuaPipeReader<T: MaybeBuffered<File>>(Closable<T>);
+pub(super) struct LuaPipeReader(Closable<File>);
 
-impl LuaPipeReader<File> {
+impl LuaPipeReader {
     pub fn new(pipe_reader: PipeReader) -> Self {
         // TODO: windows
         // Safety: We own the opened fd.
@@ -29,41 +27,28 @@ impl LuaPipeReader<File> {
     }
 }
 
-impl LuaPipeReader<BufReader<File>> {
-    pub fn new_buffered(pipe_reader: PipeReader, buffer_size: Option<usize>) -> Self {
-        // TODO: windows
-        // Safety: We own the opened fd.
-        let f = unsafe { File::from_raw_fd(pipe_reader.into_raw_fd()) };
-        let buf_reader = match buffer_size {
-            Some(n) => BufReader::with_capacity(n, f),
-            None => BufReader::new(f),
-        };
-        Self(Closable::new(buf_reader))
-    }
-}
-
-impl<T: MaybeBuffered<File>> TryIntoStdio for LuaPipeReader<T> {
+impl TryIntoStdio for LuaPipeReader {
     async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let file: File = self.0.into_inner()?.into_inner();
+        let file: File = self.0.into_inner()?;
         let std_file = file.into_std().await;
         Ok(std_file.into())
     }
 }
 
-impl<T: MaybeBuffered<File>> AsRef<Closable<T>> for LuaPipeReader<T> {
-    fn as_ref(&self) -> &Closable<T> {
+impl AsRef<Closable<File>> for LuaPipeReader {
+    fn as_ref(&self) -> &Closable<File> {
         &self.0
     }
 }
 
-impl<T: MaybeBuffered<File>> AsMut<Closable<T>> for LuaPipeReader<T> {
-    fn as_mut(&mut self) -> &mut Closable<T> {
+impl AsMut<Closable<File>> for LuaPipeReader {
+    fn as_mut(&mut self) -> &mut Closable<File> {
         &mut self.0
     }
 }
 
 // LuaPipeReader<File> implements io.Reader, io.Closer and os.TryIntoStdio.
-impl LuaInterface for LuaPipeReader<File> {
+impl LuaInterface for LuaPipeReader {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_close_methods(methods);
@@ -71,18 +56,7 @@ impl LuaInterface for LuaPipeReader<File> {
     }
 }
 
-// LuaPipeReader<File> implements io.Reader, io.BufReader, io.Closer and
-// os.TryIntoStdio.
-impl LuaInterface for LuaPipeReader<BufReader<File>> {
-    fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
-        add_io_read_methods(methods);
-        add_io_buf_read_methods(methods);
-        add_io_close_methods(methods);
-        add_os_try_into_stdio_methods(methods);
-    }
-}
-
-impl<T: MaybeBuffered<File> + 'static> UserData for LuaPipeReader<T>
+impl UserData for LuaPipeReader
 where
     Self: LuaInterface,
 {

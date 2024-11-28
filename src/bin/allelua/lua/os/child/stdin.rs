@@ -1,67 +1,51 @@
 use std::process::Stdio;
 
 use mlua::{MetaMethod, UserData};
-use tokio::{
-    io::{AsyncWriteExt, BufWriter},
-    process::ChildStdin,
-};
+use tokio::process::ChildStdin;
 
 use crate::lua::{
-    io::{add_io_write_close_methods, Closable, MaybeBuffered},
+    io::{add_io_write_close_methods, Closable},
     os::{add_os_try_into_stdio_methods, TryIntoStdio},
     LuaInterface,
 };
 
 #[derive(Debug)]
-pub struct LuaChildStdin<T: MaybeBuffered<ChildStdin>>(Closable<T>);
+pub struct LuaChildStdin(Closable<ChildStdin>);
 
-impl LuaChildStdin<ChildStdin> {
+impl LuaChildStdin {
     pub fn new(stdin: ChildStdin) -> Self {
         Self(Closable::new(stdin))
     }
 }
 
-impl LuaChildStdin<BufWriter<ChildStdin>> {
-    pub fn new_buffered(stdin: ChildStdin, buf_size: Option<usize>) -> Self {
-        let buf_writer = match buf_size {
-            Some(n) => BufWriter::with_capacity(n, stdin),
-            None => BufWriter::new(stdin),
-        };
-
-        Self(Closable::new(buf_writer))
-    }
-}
-
-impl<T: MaybeBuffered<ChildStdin>> TryIntoStdio for LuaChildStdin<T> {
+impl TryIntoStdio for LuaChildStdin {
     async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let stdin: ChildStdin = self.0.into_inner()?.into_inner();
+        let stdin: ChildStdin = self.0.into_inner()?;
         Ok(stdin.try_into()?)
     }
 }
 
-// LuaChildStdin<T> implements io.WriteCloser and os.TryIntoStdio.
-impl<T: MaybeBuffered<ChildStdin> + AsyncWriteExt + Unpin + 'static> LuaInterface
-    for LuaChildStdin<T>
-{
+// LuaChildStdin<ChildStdin> implements io.WriteCloser and os.TryIntoStdio.
+impl LuaInterface for LuaChildStdin {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_write_close_methods(methods);
         add_os_try_into_stdio_methods(methods);
     }
 }
 
-impl<T: MaybeBuffered<ChildStdin>> AsRef<Closable<T>> for LuaChildStdin<T> {
-    fn as_ref(&self) -> &Closable<T> {
+impl AsRef<Closable<ChildStdin>> for LuaChildStdin {
+    fn as_ref(&self) -> &Closable<ChildStdin> {
         &self.0
     }
 }
 
-impl<T: MaybeBuffered<ChildStdin>> AsMut<Closable<T>> for LuaChildStdin<T> {
-    fn as_mut(&mut self) -> &mut Closable<T> {
+impl AsMut<Closable<ChildStdin>> for LuaChildStdin {
+    fn as_mut(&mut self) -> &mut Closable<ChildStdin> {
         &mut self.0
     }
 }
 
-impl<T: MaybeBuffered<ChildStdin> + 'static> UserData for LuaChildStdin<T>
+impl UserData for LuaChildStdin
 where
     Self: LuaInterface,
 {

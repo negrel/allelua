@@ -61,7 +61,7 @@ return function(M)
 	end
 
 	function M.read_to_end(self)
-		local buf_size = 8 * 1024 -- 8 KiB
+		local buf_size = M.default_buffer_size
 		local free_buf_size = buf_size
 		local buf = buffer.new(buf_size)
 
