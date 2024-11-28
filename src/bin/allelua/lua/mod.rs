@@ -24,12 +24,6 @@ mod table;
 mod test;
 mod time;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum RuntimeSafetyLevel {
-    Unsafe,
-    Safe,
-}
-
 /// Runtime define ready to use Lua VM with the allelua std lib loaded.
 pub struct Runtime(Lua);
 
@@ -52,18 +46,17 @@ impl Deref for Runtime {
 }
 
 impl Runtime {
-    pub fn new(fpath: &Path, run_args: Vec<OsString>, safety: RuntimeSafetyLevel) -> Self {
-        let mut stdlib = StdLib::NONE
+    pub fn new(fpath: &Path, run_args: Vec<OsString>) -> Self {
+        let stdlib = StdLib::NONE
             | StdLib::MATH
             | StdLib::TABLE
             | StdLib::PACKAGE
             | StdLib::BIT
             | StdLib::STRING
-            | StdLib::DEBUG;
-
-        if safety == RuntimeSafetyLevel::Unsafe {
-            stdlib = stdlib | StdLib::FFI | StdLib::JIT;
-        }
+            | StdLib::JIT
+            // Unsafe
+            | StdLib::DEBUG
+            | StdLib::FFI;
 
         let vm = unsafe { Lua::unsafe_new_with(stdlib, LuaOptions::new()) };
 
@@ -71,7 +64,7 @@ impl Runtime {
             panic!("convert path to absolute before creating runtime");
         }
 
-        prepare_runtime(vm.clone(), fpath, run_args, safety);
+        prepare_runtime(vm.clone(), fpath, run_args);
 
         Runtime(vm)
     }
@@ -94,7 +87,7 @@ fn handle_result<T, E: Display>(result: Result<T, E>) {
     }
 }
 
-fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: RuntimeSafetyLevel) {
+fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
     // Load libraries.
     handle_result(load_path(&lua));
     handle_result(load_os(&lua, run_args));
@@ -108,10 +101,7 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
     handle_result(load_time(&lua));
     handle_result(load_json(&lua));
     handle_result(register_globals(&lua));
-
-    if safety == RuntimeSafetyLevel::Unsafe {
-        handle_result(load_test(lua.clone()));
-    }
+    handle_result(load_test(lua.clone()));
 
     // overwrite require.
     handle_result(load_package(lua.clone(), fpath));
@@ -121,9 +111,11 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>, safety: Runt
             local package = require("package")
             local table = require("table")
 
-            // Hide debug module.
+            // Hide unsafe modules (debug, ffi).
             _G.debug = nil
             package.loaded.debug = nil
+            _G.ffi = nil
+            package.loaded.ffi = nil
 
             // Freeze modules.
             table.map(package.loaded, function(_k, v)
@@ -214,6 +206,7 @@ macro_rules! lua_obj_do {
     };
 }
 
+#[allow(dead_code)]
 impl LuaObject {
     pub fn get<V: FromLua>(&self, key: impl IntoLua) -> mlua::Result<V> {
         lua_obj_do!(self, obj => { obj.get(key) })

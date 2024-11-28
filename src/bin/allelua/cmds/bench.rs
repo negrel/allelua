@@ -6,7 +6,7 @@ use std::{
 };
 use walkdir::WalkDir;
 
-use crate::lua::{Runtime, RuntimeSafetyLevel};
+use crate::lua::Runtime;
 
 fn is_dir_or_bench_file(entry: &walkdir::DirEntry) -> bool {
     entry.file_type().is_dir()
@@ -45,7 +45,7 @@ pub fn bench(paths: Vec<PathBuf>) -> anyhow::Result<()> {
             }
 
             let fpath = path::absolute(entry.into_path())?;
-            let runtime = Runtime::new(&fpath, vec![], RuntimeSafetyLevel::Unsafe);
+            let runtime = Runtime::new(&fpath, vec![]);
 
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()

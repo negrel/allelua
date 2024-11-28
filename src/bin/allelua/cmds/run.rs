@@ -5,7 +5,7 @@ use std::{
 
 use mlua::ErrorContext;
 
-use crate::lua::{Runtime, RuntimeSafetyLevel};
+use crate::lua::Runtime;
 
 pub fn run(fpath: PathBuf, run_args: Vec<OsString>) -> anyhow::Result<()> {
     tokio::runtime::Builder::new_current_thread()
@@ -14,7 +14,7 @@ pub fn run(fpath: PathBuf, run_args: Vec<OsString>) -> anyhow::Result<()> {
         .expect("Failed building the tokio Runtime")
         .block_on(async {
             let fpath = path::absolute(&fpath)?;
-            let runtime = Runtime::new(&fpath, run_args, RuntimeSafetyLevel::Safe);
+            let runtime = Runtime::new(&fpath, run_args);
 
             // Execute code.
             runtime
