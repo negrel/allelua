@@ -14,60 +14,30 @@ return function(M, byte_search)
 		return copied
 	end
 
-	M.copy = function(reader, writer, opts)
-		opts = opts or {}
-		opts.flush = opts.flush or false
-		opts.close = opts.close or false
-
+	M.copy = function(reader, writer, buf)
 		if not reader then error("reader is nil") end
 		if not writer then error("writer is nil") end
 
-		local total = 0
-
 		if rawtype(reader.write_to) == "function" then
-			local ok, write = pcall(reader.write_to, reader, writer)
-			if not ok then
-				local err = write
-				if not err:is(M.errors.closed) then error(err) end
-			end
-
-			if opts.flush then writer:flush() end
-			total = write
+			return reader:write_to(writer)
+		elseif rawtype(writer.read_from) == "function" then
+			return writer:read_from(reader)
 		else
-			local buf = libbuf.new()
+			local total = 0
+			buf = buf or libbuf.new(M.default_buffer_size)
 			while true do
-				-- Read into buffer.
-				local ok, read = pcall(reader.read, reader, buf, 4096)
-				if not ok then
-					local err = read
-					if err:is(M.errors.closed) then break end
-					error(err)
+				local read = reader:read(buf)
+				if read == 0 then return total end
+				while read > 0 do
+					local write = writer:write(buf)
+					if write == 0 then return total end
+					total = total + write
+					buf:skip(write)
+					read = read - write
 				end
-				if read == 0 then break end
-
-				-- Write from buffer.
-				local ok, write = pcall(writer.write_all, writer, buf)
-				if not ok then
-					local err = write
-					if err:is(M.errors.closed) then break end
-					error(err)
-				end
-
-				if opts.flush then writer:flush() end
-				total = total + write
+				buf:reset()
 			end
 		end
-
-		if opts.close then
-			if rawtype(reader.close) == "function" then
-				pcall(reader.close, reader)
-			end
-			if rawtype(writer.close) == "function" then
-				pcall(writer.close, writer)
-			end
-		end
-
-		return total
 	end
 
 	function M.lines(reader)
@@ -301,6 +271,21 @@ return function(M, byte_search)
 		return copied + copied2
 	end
 
+	function M.BufReader:write_to(writer)
+		local total = 0
+		while true do
+			while #self.buffer > 0 do
+				local write = writer:write(self.buffer)
+				if write == 0 then return total end
+				total = total + write
+			end
+			self.buffer:reset()
+
+			local read = self.reader:read(self.buffer)
+			if read == 0 then return total end
+		end
+	end
+
 	function M.BufReader:read_to_end()
 		while true do
 			if self:available() == 0 then
@@ -392,10 +377,29 @@ return function(M, byte_search)
 	end
 
 	function M.BufWriter:flush()
+		local total = 0
 		while #self.buffer > 0 do
 			local write = self.writer:write(self.buffer)
+			if write == 0 then break end
 			self.buffer:skip(write)
+			total = total + write
 		end
 		self.buffer:reset()
+		return total
+	end
+
+	function M.BufWriter:read_from(reader)
+		local total = 0
+		while true do
+			local write = self:flush()
+			if write == 0 then break end
+
+			total = total + write
+
+			local read = reader:read(self.buffer)
+			if read == 0 then break end
+		end
+
+		return total
 	end
 end
