@@ -166,7 +166,7 @@ pub fn load_error(lua: &Lua) -> mlua::Result<mlua::Table> {
                             .transpose()?
                             .flatten()
                             .map(|t| t.to_string_lossy())
-                            .unwrap_or_else(|| "RuntimeError".to_owned());
+                            .unwrap_or_else(|| "error".to_owned());
 
                         let kind = options
                             .as_ref()
