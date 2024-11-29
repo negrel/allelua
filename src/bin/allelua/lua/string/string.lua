@@ -1,4 +1,4 @@
-return function(Regex, extra)
+return function(Regex, Big, extra)
 	local buffer = require("string.buffer")
 	local io = require("io")
 	local math = require("math")
@@ -7,6 +7,7 @@ return function(Regex, extra)
 
 	M.buffer = buffer
 	M.Regex = Regex
+	M.Big = Big
 
 	-- Rename sub to slice.
 	M.slice = M.sub
