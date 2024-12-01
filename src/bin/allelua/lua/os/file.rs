@@ -1,4 +1,7 @@
-use std::process::Stdio;
+use std::{
+    os::fd::{FromRawFd, IntoRawFd},
+    process::Stdio,
+};
 
 use mlua::{IntoLua, Lua, MetaMethod, UserData};
 use tokio::fs::{File, OpenOptions};
@@ -22,6 +25,24 @@ pub(super) struct LuaFile(io::Closable<File>);
 impl LuaFile {
     pub fn new(f: File) -> Self {
         Self(io::Closable::new(f))
+    }
+
+    pub fn stdin() -> mlua::Result<Self> {
+        let stdin = os_pipe::dup_stdin().map_err(io::LuaError)?;
+        let f = unsafe { File::from_raw_fd(stdin.into_raw_fd()) };
+        Ok(Self(io::Closable::new(f)))
+    }
+
+    pub fn stdout() -> mlua::Result<Self> {
+        let stdout = os_pipe::dup_stdout().map_err(io::LuaError)?;
+        let f = unsafe { File::from_raw_fd(stdout.into_raw_fd()) };
+        Ok(Self(io::Closable::new(f)))
+    }
+
+    pub fn stderr() -> mlua::Result<Self> {
+        let stderr = os_pipe::dup_stderr().map_err(io::LuaError)?;
+        let f = unsafe { File::from_raw_fd(stderr.into_raw_fd()) };
+        Ok(Self(io::Closable::new(f)))
     }
 }
 

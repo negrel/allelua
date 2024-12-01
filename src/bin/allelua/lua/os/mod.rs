@@ -1,6 +1,6 @@
 use std::{env, ffi::OsString, os::unix::ffi::OsStrExt, process::exit};
 
-use mlua::Lua;
+use mlua::{IntoLua, Lua};
 use tokio::fs;
 
 mod args;
@@ -25,6 +25,20 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
         lua.create_function(move |lua, ()| {
             let os = lua.create_table()?;
             lua.globals().set("os", os.clone())?;
+
+            let os_mt = lua.create_table()?;
+            os_mt.set(
+                "__index",
+                lua.create_function(|lua, (_, key): (mlua::Value, mlua::String)| {
+                    match key.as_bytes().as_ref() {
+                        b"stdin" => LuaFile::stdin().map(|f| f.into_lua(lua))?,
+                        b"stdout" => LuaFile::stdout().map(|f| f.into_lua(lua))?,
+                        b"stderr" => LuaFile::stderr().map(|f| f.into_lua(lua))?,
+                        _ => Ok(mlua::Value::Nil),
+                    }
+                })?,
+            )?;
+            os.set_metatable(Some(os_mt));
 
             let file_constructors = lua.create_table()?;
             file_constructors.set("open", lua.create_async_function(open_file)?)?;
