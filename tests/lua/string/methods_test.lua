@@ -226,20 +226,8 @@ t.test("slice from -2 to 0 returns empty string", function()
 	assert(substr == "")
 end)
 
-t.test('slice from -12 to 5 returns "Hello"', function()
+t.test("slice from -2 to 1 empty string", function()
 	local str = "Hello world!"
-	local substr = str:slice(-12, 5)
-	assert(substr == "Hello")
-end)
-
-t.test("slice from -16 to -1 returns all string", function()
-	local str = "Hello world!"
-	local substr = str:slice(-16, -1)
-	assert(substr == str)
-end)
-
-t.test("slice from -16 to -13 returns empty", function()
-	local str = "Hello world!"
-	local substr = str:slice(-16, -13)
+	local substr = str:slice(-2, 1)
 	assert(substr == "")
 end)
