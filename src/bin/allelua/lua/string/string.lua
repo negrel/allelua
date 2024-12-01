@@ -1,4 +1,5 @@
 return function(Regex, Big, extra)
+	local debug = require("debug")
 	local buffer = require("string.buffer")
 	local io = require("io")
 	local math = require("math")
@@ -45,8 +46,8 @@ return function(Regex, Big, extra)
 		return string.slice(str, -#suffix) == suffix
 	end
 
-	M.toregex = function(str, escaped)
-		if escaped then
+	M.toregex = function(str, escape)
+		if escape then
 			return Regex.new(Regex.escape(str))
 		else
 			return Regex.new(str)
@@ -144,23 +145,16 @@ return function(Regex, Big, extra)
 	end
 
 	function M.Buffer:flush() end
-	function M.Buffer:shutdown() end
 
 	M.Buffer.write_string = io.write_string
 	M.Buffer.write_all = io.write_all
-	M.Buffer.write_buf = io.write_buf
 
 	function M.Buffer:read_from(reader)
-		local chunk_size = math.max(self:available(), 4096)
+		local chunk_size = math.max(self:available(), io.default_buffer_size)
 
 		while true do
 			self.inner:reserve(chunk_size)
-			local ok, read = pcall(reader.read, reader, self.inner)
-			if not ok then
-				local err = read
-				if err:is(io.errors.closed) then break end
-				error(err)
-			end
+			local read = reader:read(self.inner)
 			if read == 0 then break end
 		end
 	end
@@ -189,5 +183,6 @@ return function(Regex, Big, extra)
 
 	return {
 		__index = M,
+		__metatable = "string",
 	}
 end

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use mlua::{BorrowedBytes, FromLua, IntoLua, Lua};
+use mlua::{chunk, BorrowedBytes, FromLua, IntoLua, Lua};
 
 use crate::include_lua;
 
@@ -12,90 +12,69 @@ pub use regex::*;
 
 pub fn load_string(lua: &Lua) -> mlua::Result<()> {
     let string_extra = lua.create_table()?;
-    string_extra.set(
-        "split",
-        lua.create_function(lua_string_split::<mlua::String>)?,
-    )?;
+
+    let slice = lua
+        .load(chunk! {
+            return require("string").sub
+        })
+        .eval::<mlua::Function>()?;
+
+    string_extra.set("split", lua.create_function(lua_string_split::<MaybeBig>)?)?;
     string_extra.set(
         "splitn",
-        lua.create_function(lua_string_splitn::<mlua::String>)?,
+        lua.create_function(lua_string_splitn::<MaybeBig>)?,
     )?;
-    string_extra.set(
-        "find",
-        lua.create_function(lua_string_find::<mlua::String>)?,
-    )?;
+    {
+        let slice = slice.clone();
+        string_extra.set(
+            "find",
+            lua.create_function(
+                move |lua, (str, pattern, at): (MaybeBig, LuaRegex, Option<usize>)| match str {
+                    MaybeBig::Lua(str) => {
+                        lua_string_find(lua, str, pattern, at, |str, start, end| {
+                            slice.call((str, start, end))
+                        })
+                    }
+                    MaybeBig::Big(big) => {
+                        lua_string_find(lua, big, pattern, at, |big, start, end| {
+                            Ok(big.slice(start..end))
+                        })
+                    }
+                },
+            )?,
+        )?;
+    }
     string_extra.set(
         "replace",
-        lua.create_function(lua_string_replace::<mlua::String>)?,
+        lua.create_function(lua_string_replace::<MaybeBig>)?,
     )?;
     string_extra.set(
         "replace_all",
-        lua.create_function(lua_string_replace_all::<mlua::String>)?,
+        lua.create_function(lua_string_replace_all::<MaybeBig>)?,
     )?;
 
-    // {
-    //     let slice = slice.clone();
-    //     string_extra.set(
-    //         "captures",
-    //         lua.create_function(
-    //             move |lua,
-    //                   (str, pattern, at): (
-    //                 mlua::String,
-    //                 Either<mlua::String, Regex>,
-    //                 Option<usize>,
-    //             )| {
-    //                 let pattern = regex_or_escaped_regex(pattern)?;
-    //
-    //                 match pattern.captures_at(&str.as_bytes(), at.unwrap_or(0)) {
-    //                     Some(capture) => {
-    //                         let result = lua.create_table()?;
-    //                         let mut iter = pattern.capture_names().enumerate();
-    //                         iter.next();
-    //
-    //                         for (i, name) in iter {
-    //                             let m = match name {
-    //                                 Some(name) => capture.name(name),
-    //                                 None => capture.get(i),
-    //                             };
-    //
-    //                             if let Some(m) = m {
-    //                                 let start = m.start() + 1;
-    //                                 let end = m.end();
-    //                                 let substr = slice.call::<mlua::Value>((
-    //                                     &str,
-    //                                     m.start() + 1,
-    //                                     m.end(),
-    //                                 ))?;
-    //
-    //                                 let tab = lua.create_table()?;
-    //                                 tab.push(&substr)?;
-    //                                 tab.push(start)?;
-    //                                 tab.push(end)?;
-    //                                 tab.push(name)?;
-    //
-    //                                 tab.set("match", substr)?;
-    //                                 tab.set("start", start)?;
-    //                                 tab.set("end", end)?;
-    //                                 tab.set("name", name)?;
-    //
-    //                                 result.push(&tab)?;
-    //                                 result.set(name, tab)?;
-    //                             }
-    //                         }
-    //
-    //                         result.into_lua(lua)
-    //                     }
-    //                     None => Ok(mlua::Value::Nil),
-    //                 }
-    //             },
-    //         )?,
-    //     )?;
-    // }
+    string_extra.set(
+        "captures",
+        lua.create_function(
+            move |lua, (str, pattern, at): (MaybeBig, LuaRegex, Option<usize>)| {
+                lua_string_captures(lua, str, pattern, at, |str, start, end| {
+                    slice.call((str, start, end))
+                })
+            },
+        )?,
+    )?;
+
+    string_extra.set(
+        "eq",
+        lua.create_function(|_, (lhs, rhs): (MaybeBig, MaybeBig)| {
+            Ok(*lhs.as_bytes() == *rhs.as_bytes())
+        })?,
+    )?;
 
     let big_string_constructors = lua.create_table()?;
     big_string_constructors.set(
         "fromstring",
-        lua.create_function(|_lua, str: mlua::String| Ok(LuaBigString::from(str.as_bytes())))?,
+        lua.create_function(|_lua, str: MaybeBig| Ok(LuaBigString::from(str.as_bytes())))?,
     )?;
 
     let regex_constructors = lua.create_table()?;
@@ -121,14 +100,14 @@ pub fn load_string(lua: &Lua) -> mlua::Result<()> {
 }
 
 /// LuaString is a trait implemented by [LuaBigString] and [mlua::String] that
-/// can be used for generic methods. [MaybeBig] also implements it and forword
-/// calls to appropriate variant.
+/// can be used for generic methods. [MaybeBig] also implements it and forward
+/// calls to actual variant.
 trait LuaString<'a>: IntoLua {
     type Bytes: Deref<Target = [u8]>;
 
     fn as_bytes(&'a self) -> Self::Bytes;
 
-    fn create_string(lua: &Lua, bytes: &[u8]) -> mlua::Result<Self>;
+    fn create_string(&self, lua: &Lua, bytes: &[u8]) -> mlua::Result<Self>;
 }
 
 impl<'a> LuaString<'a> for mlua::String {
@@ -138,12 +117,12 @@ impl<'a> LuaString<'a> for mlua::String {
         self.as_bytes()
     }
 
-    fn create_string(lua: &Lua, bytes: &[u8]) -> mlua::Result<Self> {
+    fn create_string(&self, lua: &Lua, bytes: &[u8]) -> mlua::Result<Self> {
         lua.create_string(bytes)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MaybeBig {
     Lua(mlua::String),
     Big(LuaBigString),
@@ -159,8 +138,11 @@ impl<'a> LuaString<'a> for MaybeBig {
         }
     }
 
-    fn create_string(_lua: &Lua, _bytes: &[u8]) -> mlua::Result<Self> {
-        panic!()
+    fn create_string(&self, lua: &Lua, bytes: &[u8]) -> mlua::Result<Self> {
+        match self {
+            MaybeBig::Lua(s) => s.create_string(lua, bytes).map(MaybeBig::Lua),
+            MaybeBig::Big(b) => b.create_string(lua, bytes).map(MaybeBig::Big),
+        }
     }
 }
 
@@ -189,6 +171,15 @@ enum MaybeBigBytes<'a> {
     Big(&'a [u8]),
 }
 
+impl<'a> AsRef<[u8]> for MaybeBigBytes<'a> {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            MaybeBigBytes::Lua(l) => l.as_ref(),
+            MaybeBigBytes::Big(b) => b,
+        }
+    }
+}
+
 impl<'a> Deref for MaybeBigBytes<'a> {
     type Target = [u8];
 
@@ -209,7 +200,7 @@ where
 
     let bytes = str.as_bytes();
     for part in sep.split(&bytes) {
-        result.push(T::create_string(lua, part)?)?;
+        result.push(str.create_string(lua, part)?)?;
     }
 
     Ok(result)
@@ -223,7 +214,7 @@ where
     let result = lua.create_table()?;
 
     for part in sep.splitn(&str.as_bytes(), n) {
-        result.push(lua.create_string(part)?)?;
+        result.push(str.create_string(lua, part)?)?;
     }
 
     Ok(result)
@@ -232,14 +223,22 @@ where
 /// string:find(pattern, at) lua method.
 fn lua_string_find<T>(
     lua: &Lua,
-    (str, pattern, at): (T, LuaRegex, Option<usize>),
-) -> mlua::Result<(mlua::Value, mlua::Value)>
+    str: T,
+    pattern: LuaRegex,
+    at: Option<usize>,
+    slice: impl Fn(T, usize, usize) -> mlua::Result<T>,
+) -> mlua::Result<(mlua::Value, mlua::Value, mlua::Value)>
 where
-    T: for<'a> LuaString<'a>,
+    T: for<'a> LuaString<'a> + Clone,
 {
-    match pattern.find_at(&str.as_bytes(), at.unwrap_or(0)) {
-        Some(m) => Ok(((m.start() + 1).into_lua(lua)?, (m.end()).into_lua(lua)?)),
-        None => Ok((mlua::Value::Nil, mlua::Value::Nil)),
+    match pattern.find_at(&str.clone().as_bytes(), at.unwrap_or(1).saturating_sub(1)) {
+        Some(m) => Ok((
+            slice(str, m.start() + 1, m.end())?.into_lua(lua)?,
+            (m.start() + 1).into_lua(lua)?,
+            (m.end()).into_lua(lua)?,
+        )),
+
+        None => Ok((mlua::Value::Nil, mlua::Value::Nil, mlua::Value::Nil)),
     }
 }
 
@@ -251,7 +250,7 @@ where
     T: for<'a> LuaString<'a>,
 {
     let bytes: &[u8] = &replacement.as_bytes();
-    T::create_string(
+    str.create_string(
         lua,
         &pattern.replacen(&str.as_bytes(), n.unwrap_or(1), bytes),
     )
@@ -266,5 +265,54 @@ where
 {
     let replacement: &[u8] = &replacement.as_bytes();
 
-    T::create_string(lua, &pattern.replace_all(&str.as_bytes(), replacement))
+    str.create_string(lua, &pattern.replace_all(&str.as_bytes(), replacement))
+}
+
+fn lua_string_captures<T>(
+    lua: &Lua,
+    str: T,
+    pattern: LuaRegex,
+    at: Option<usize>,
+    slice: impl Fn(T, usize, usize) -> mlua::Result<T>,
+) -> mlua::Result<mlua::Value>
+where
+    T: for<'a> LuaString<'a> + Clone,
+{
+    match pattern.captures_at(&str.as_bytes(), at.unwrap_or(0)) {
+        Some(capture) => {
+            let result = lua.create_table()?;
+            let mut iter = pattern.capture_names().enumerate();
+            iter.next();
+
+            for (i, name) in iter {
+                let m = match name {
+                    Some(name) => capture.name(name),
+                    None => capture.get(i),
+                };
+
+                if let Some(m) = m {
+                    let start = m.start() + 1;
+                    let end = m.end();
+                    let substr = slice(str.clone(), start, end)?;
+
+                    let tab = lua.create_table()?;
+                    tab.push(substr.clone())?;
+                    tab.push(start)?;
+                    tab.push(end)?;
+                    tab.push(name)?;
+
+                    tab.set("match", substr)?;
+                    tab.set("start", start)?;
+                    tab.set("end", end)?;
+                    tab.set("name", name)?;
+
+                    result.push(&tab)?;
+                    result.set(name, tab)?;
+                }
+            }
+
+            result.into_lua(lua)
+        }
+        None => Ok(mlua::Value::Nil),
+    }
 }
