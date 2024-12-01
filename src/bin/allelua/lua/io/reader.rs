@@ -21,9 +21,10 @@ pub fn add_io_read_methods<
         },
     );
 
-    methods.add_async_method("read_to_end", |_, reader, buf: LuaJitBuffer| async move {
+    methods.add_async_method("read_to_end", |lua, reader, ()| async move {
         let mut reader = reader.as_ref().get().await?;
-        let mut bytes = buf.reserve_bytes(0)?;
+        let buf = LuaJitBuffer::new(lua)?;
+        let mut bytes = buf.reserve_bytes(DEFAULT_BUFFER_SIZE)?;
 
         loop {
             let read = reader.read(bytes).await?;

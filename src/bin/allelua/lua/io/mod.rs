@@ -1,6 +1,6 @@
 use std::slice;
 
-use mlua::{chunk, AnyUserData, FromLua, IntoLua, Lua, ObjectLike};
+use mlua::{AnyUserData, FromLua, IntoLua, Lua, ObjectLike};
 
 use crate::include_lua;
 
@@ -101,7 +101,6 @@ impl FromLua for LuaJitBuffer {
 }
 
 impl LuaJitBuffer {
-    #[allow(dead_code)]
     pub fn new(lua: Lua) -> mlua::Result<Self> {
         Self::new_with_capacity(lua, DEFAULT_BUFFER_SIZE)
     }
@@ -109,10 +108,10 @@ impl LuaJitBuffer {
     #[allow(dead_code)]
     pub fn new_with_capacity(lua: Lua, n: usize) -> mlua::Result<Self> {
         let udata = lua
-            .load(chunk! {
-                return require("string.buffer").new($n)
-            })
-            .eval::<mlua::AnyUserData>()?;
+            .globals()
+            .get::<mlua::Table>("string")?
+            .get::<mlua::Table>("buffer")?
+            .call_function::<AnyUserData>("new", n)?;
 
         Ok(Self { udata })
     }
