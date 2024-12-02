@@ -5,7 +5,7 @@ return function(run_until, go)
 	local M = coroutine
 
 	M.nursery = function(fn)
-		run_until(function()
+		return run_until(function()
 			local wg = sync.WaitGroup.new()
 			local tx, rx = sync.channel()
 
@@ -32,7 +32,12 @@ return function(run_until, go)
 			end)
 
 			local err = rx:recv()
-			if err then error("one of nursery coroutine failed", { cause = err }) end
+			if err then
+				error(
+					("nursery coroutine %d failed"):format(id),
+					{ kind = "coroutine.NurseryRoutineFailed", cause = err, id = id }
+				)
+			end
 		end)
 	end
 end
