@@ -63,7 +63,10 @@ local function tostring_impl()
 			if rawtype(v) == "string" then
 				table.push(kv, string.format("%q", v))
 			else
-				table.push(kv, tostring(v, inner_opts))
+				local v_str = tostring(v, inner_opts)
+				local v_type = type(v)
+				if not v_str:has_prefix(v_type) then table.push(kv, v_type) end
+				table.push(kv, v_str)
 			end
 
 			table.push(items, table.concat(kv))

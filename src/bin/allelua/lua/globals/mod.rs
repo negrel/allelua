@@ -134,8 +134,12 @@ pub fn register_globals(lua: &Lua) -> mlua::Result<()> {
         lua.create_async_function(move |lua, values: mlua::MultiValue| async move {
             let tostring = lua.globals().get::<mlua::Function>("tostring").unwrap();
             for v in values {
-                let str = tostring.call_async::<mlua::String>(v).await?;
-                print!("{} ", str.to_string_lossy());
+                let str = tostring
+                    .call_async::<mlua::String>(v)
+                    .await?
+                    .to_string_lossy();
+
+                print!("{} ", str);
             }
             println!();
             Ok(())
