@@ -104,11 +104,10 @@ where
 
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
-            if f.as_ref().is_closed() {
-                Ok(format!("File(state=close) 0x{address:x}"))
-            } else {
-                Ok(format!("File(state=open) 0x{address:x}"))
-            }
+            Ok(format!(
+                "File(closed={}) 0x{address:x}",
+                f.as_ref().is_closed()
+            ))
         });
     }
 }

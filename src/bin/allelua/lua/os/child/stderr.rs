@@ -52,6 +52,7 @@ where
 {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         fields.add_field("__type", "ChildStderr");
+        fields.add_field_method_get("closed", |_, stderr| Ok(stderr.as_ref().is_closed()))
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
@@ -59,7 +60,10 @@ where
 
         methods.add_meta_method(MetaMethod::ToString, |_lua, stderr, ()| {
             let address = stderr as *const _ as usize;
-            Ok(format!("ChildStderr 0x{address:x}"))
+            Ok(format!(
+                "ChildStderr(closed={}) 0x{address:x}",
+                stderr.as_ref().is_closed()
+            ))
         })
     }
 }

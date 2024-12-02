@@ -68,11 +68,10 @@ where
 
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
-            if f.as_ref().is_closed() {
-                Ok(format!("PipeWriter(state=close) 0x{address:x}"))
-            } else {
-                Ok(format!("PipeWriter(state=open) 0x{address:x}"))
-            }
+            Ok(format!(
+                "PipeWriter(closed={}) 0x{address:x}",
+                f.as_ref().is_closed()
+            ))
         });
     }
 }

@@ -5,7 +5,7 @@ use std::{
     process::{ExitStatus, Stdio},
 };
 
-use mlua::{ErrorContext, IntoLua, Lua, MetaMethod, UserData};
+use mlua::{Either, ErrorContext, IntoLua, Lua, MetaMethod, ObjectLike, UserData};
 use tokio::process::{self, Child};
 
 mod stderr;
@@ -15,6 +15,8 @@ mod stdout;
 use stderr::*;
 use stdin::*;
 use stdout::*;
+
+use super::LuaStdio;
 
 #[derive(Debug)]
 pub struct LuaChild {
@@ -89,6 +91,22 @@ fn lua_string_as_stdio(str: mlua::String) -> mlua::Result<Stdio> {
     }
 }
 
+async fn lua_object_as_stdio<T: ObjectLike + IntoLua>(obj: T) -> mlua::Result<Stdio> {
+    let stdio = obj
+        .call_async_method::<LuaStdio>("try_into_stdio", ())
+        .await?;
+    Ok(stdio.into())
+}
+
+async fn lua_str_or_obj_as_stdio(
+    value: Either<mlua::String, mlua::AnyUserData>,
+) -> mlua::Result<Stdio> {
+    match value {
+        Either::Left(str) => lua_string_as_stdio(str),
+        Either::Right(obj) => lua_object_as_stdio(obj).await,
+    }
+}
+
 pub async fn exec(
     lua: &Lua,
     (program, opts): (mlua::String, mlua::Table),
@@ -120,20 +138,32 @@ pub async fn exec(
     }
 
     // Handle stdin.
-    if let Some(stdin) = opts.get::<Option<mlua::String>>("stdin")? {
-        let stdin = lua_string_as_stdio(stdin).with_context(|_| "invalid stdin option:")?;
+    if let Some(stdin) =
+        opts.get::<Option<mlua::Either<mlua::String, mlua::AnyUserData>>>("stdin")?
+    {
+        let stdin = lua_str_or_obj_as_stdio(stdin)
+            .await
+            .with_context(|_| "invalid stdin option:")?;
         cmd.stdin(stdin);
     }
 
     // Handle stdout.
-    if let Some(stdout) = opts.get::<Option<mlua::String>>("stdout")? {
-        let stdout = lua_string_as_stdio(stdout).with_context(|_| "invalid stdout option:")?;
+    if let Some(stdout) =
+        opts.get::<Option<mlua::Either<mlua::String, mlua::AnyUserData>>>("stdout")?
+    {
+        let stdout = lua_str_or_obj_as_stdio(stdout)
+            .await
+            .with_context(|_| "invalid stdout option:")?;
         cmd.stdout(stdout);
     }
 
     // Handle stderr.
-    if let Some(stderr) = opts.get::<Option<mlua::String>>("stderr")? {
-        let stderr = lua_string_as_stdio(stderr).with_context(|_| "invalid stderr option")?;
+    if let Some(stderr) =
+        opts.get::<Option<mlua::Either<mlua::String, mlua::AnyUserData>>>("stderr")?
+    {
+        let stderr = lua_str_or_obj_as_stdio(stderr)
+            .await
+            .with_context(|_| "invalid stderr option")?;
         cmd.stderr(stderr);
     }
 
