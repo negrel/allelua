@@ -1,30 +1,51 @@
 return function(is_empty)
 	local table = require("table")
+	local math = require("math")
 	local M = table
 
 	-- LuaJIT extensions.
 	M.new = require("table.new")
 	M.clear = require("table.clear")
 
+	local sort = M.sort
+	M.sort = function(t, comp)
+		sort(t, comp)
+		return t
+	end
+
 	M.is_empty = is_empty
+
+	M.reverse = function(t)
+		local len = table.getn(t)
+		for i = 1, math.floor(len / 2) do
+			local a = t[i]
+			local b = t[len - i + 1]
+			t[i] = b
+			t[len - i + 1] = a
+		end
+		return t
+	end
 
 	M.push = function(t, ...)
 		local args = { ... }
 		for _, v in ipairs(args) do
 			M.insert(t, v)
 		end
-		return #t
+		return table.getn(t)
 	end
+
 	M.pop = function(t)
 		return M.remove(t)
 	end
+
 	M.unshift = function(t, ...)
 		local args = { ... }
 		for _, v in ipairs(args) do
 			M.insert(t, 1, v)
 		end
-		return #t
+		return table.getn(t)
 	end
+
 	M.shift = function(t)
 		return M.remove(t, 1)
 	end
