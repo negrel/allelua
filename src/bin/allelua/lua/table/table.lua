@@ -61,6 +61,26 @@ return function(is_empty)
 		return -1
 	end
 
+	M.slice = function(t, i, j)
+		local len = M.getn(t)
+		i = i or 1
+		j = j or len
+
+		if i < 0 then i = len + 1 + i end
+		if j < 0 then j = len + 1 + j end
+
+		if i <= 0 then i = 1 end
+		if j > len then j = len end
+
+		if j < i then return {} end
+		local slice = M.new(j + 1 - i, 0)
+		for index = i, j do
+			table.push(slice, t[index])
+		end
+
+		return slice
+	end
+
 	M.map = function(t, map_fn)
 		local result = {}
 		for k, v in pairs(t) do
