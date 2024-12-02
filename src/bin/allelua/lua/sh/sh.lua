@@ -6,6 +6,13 @@ return function()
 
 	local M = {}
 
+	local function copy_then_close(src, dst)
+		local copied = io.copy(src, dst)
+		src:close()
+		dst:close()
+		return copied
+	end
+
 	M.Error = { __type = "sh.CommandError" }
 
 	function M.Error:new(cmd, proc, status)
@@ -138,7 +145,7 @@ return function()
 			and type(self._stdin) ~= "sh.Command"
 			and stdin == "piped"
 		then
-			self._sh.go(io.copy, self._stdin, self._proc.stdin, { close = true })
+			self._sh.go(copy_then_close, self._stdin, self._proc.stdin)
 		end
 
 		-- copy stdout to configured writer.
@@ -147,7 +154,7 @@ return function()
 			and type(self._stdout) ~= "sh.Command"
 			and stdout == "piped"
 		then
-			self._sh.go(io.copy, self._proc.stdout, self._stdout, { close = true })
+			self._sh.go(copy_then_close, self._proc.stdout, self._stdout)
 		end
 
 		-- copy stderr to configured writer.
@@ -156,7 +163,7 @@ return function()
 			and type(self._stderr) ~= "sh.Command"
 			and stderr == "piped"
 		then
-			self._sh.go(io.copy, self._proc.stderr, self._stderr, { close = true })
+			self._sh.go(copy_then_close, self._proc.stderr, self._stderr)
 		end
 
 		return self._proc
