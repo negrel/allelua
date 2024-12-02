@@ -37,6 +37,8 @@ pub fn add_io_read_methods<
             bytes = buf.reserve_bytes(DEFAULT_BUFFER_SIZE)?;
         }
 
-        Ok(())
+        let lua_str = buf.to_lua_string()?;
+        buf.free()?;
+        Ok(lua_str)
     });
 }

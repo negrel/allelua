@@ -163,4 +163,12 @@ impl LuaJitBuffer {
 
         self.udata.call_method("commit", n)
     }
+
+    pub fn to_lua_string(&self) -> mlua::Result<mlua::String> {
+        self.udata.call_method("tostring", ())
+    }
+
+    pub fn free(&self) -> mlua::Result<()> {
+        self.udata.call_method("free", ())
+    }
 }
