@@ -109,8 +109,8 @@ t.test(
 			6,
 			"month",
 			match = "01",
-			start = 5,
-			["end"] = 6,
+			from = 5,
+			to = 6,
 			name = "month",
 		})
 		t.assert_eq(captures.month, {
@@ -119,8 +119,8 @@ t.test(
 			6,
 			"month",
 			match = "01",
-			start = 5,
-			["end"] = 6,
+			from = 5,
+			to = 6,
 			name = "month",
 		})
 	end
@@ -139,8 +139,8 @@ t.test(
 				6,
 				"month",
 				match = "01",
-				start = 5,
-				["end"] = 6,
+				from = 5,
+				to = 6,
 				name = "month",
 			},
 			{
@@ -149,8 +149,8 @@ t.test(
 				15,
 				"month",
 				match = "02",
-				start = 14,
-				["end"] = 15,
+				from = 14,
+				to = 15,
 				name = "month",
 			},
 		}
@@ -230,4 +230,64 @@ t.test("slice from -2 to 1 empty string", function()
 	local str = "Hello world!"
 	local substr = str:slice(-2, 1)
 	assert(substr == "")
+end)
+
+t.test("trim_start string with 1 space and one tab", function()
+	local str = " 	foo"
+	assert(str:trim_start() == "foo")
+end)
+
+t.test("trim_start string no whitespace", function()
+	local str = "foo"
+	assert(str:trim_start() == "foo")
+end)
+
+t.test("trim_start on empty string", function()
+	local str = ""
+	assert(str:trim_start() == "")
+end)
+
+t.test("trim_start on whitespace only string", function()
+	local str = "       	   "
+	assert(str:trim_start() == "")
+end)
+
+t.test("trim_end string with 1 space and one tab", function()
+	local str = "foo	 "
+	assert(str:trim_end() == "foo")
+end)
+
+t.test("trim_end string no whitespace", function()
+	local str = "foo"
+	assert(str:trim_end() == "foo")
+end)
+
+t.test("trim_end on empty string", function()
+	local str = ""
+	assert(str:trim_end() == "")
+end)
+
+t.test("trim_end on whitespace only string", function()
+	local str = "       	   "
+	assert(str:trim_end() == "")
+end)
+
+t.test("trim string with 1 space and one tab", function()
+	local str = " 	foo	 "
+	assert(str:trim() == "foo")
+end)
+
+t.test("trim string no whitespace", function()
+	local str = "foo"
+	assert(str:trim() == "foo")
+end)
+
+t.test("trim on empty string", function()
+	local str = ""
+	assert(str:trim() == "")
+end)
+
+t.test("trim on whitespace only string", function()
+	local str = "       	   "
+	assert(str:trim() == "")
 end)

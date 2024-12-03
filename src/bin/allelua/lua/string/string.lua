@@ -44,6 +44,25 @@ return function(Regex, extra)
 		return string.slice(str, -#suffix) == suffix
 	end
 
+	local trim_start_regex = Regex.new("^\\s*")
+	M.trim_start = function(str)
+		local _substr, _from, to = str:find(trim_start_regex)
+		return str:slice(to + 1)
+	end
+
+	local trim_end_regex = Regex.new("\\s*$")
+	M.trim_end = function(str)
+		local _substr, from, _to = str:find(trim_end_regex)
+		return str:slice(0, from - 1)
+	end
+
+	local trim_regex = Regex.new("[^\\s]+(\\s[^\\s]+)?")
+	M.trim = function(str)
+		local substr = str:find(trim_regex)
+		if substr then return substr end
+		return ""
+	end
+
 	M.toregex = function(str, escaped)
 		if escaped then
 			return Regex.new(Regex.escape(str))
@@ -78,7 +97,7 @@ return function(Regex, extra)
 		return function(str)
 			local captures = str:captures(re, captures_start)
 			if captures and #captures > 0 then
-				captures_start = captures[#captures]["end"]
+				captures_start = captures[#captures].to
 			end
 			return captures
 		end,

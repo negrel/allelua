@@ -106,23 +106,19 @@ pub fn load_string(lua: &Lua) -> mlua::Result<()> {
                                 };
 
                                 if let Some(m) = m {
-                                    let start = m.start() + 1;
-                                    let end = m.end();
-                                    let substr = slice.call::<mlua::Value>((
-                                        &str,
-                                        m.start() + 1,
-                                        m.end(),
-                                    ))?;
+                                    let from = m.start() + 1;
+                                    let to = m.end();
+                                    let substr = slice.call::<mlua::Value>((&str, from, to))?;
 
                                     let tab = lua.create_table()?;
                                     tab.push(&substr)?;
-                                    tab.push(start)?;
-                                    tab.push(end)?;
+                                    tab.push(from)?;
+                                    tab.push(to)?;
                                     tab.push(name)?;
 
                                     tab.set("match", substr)?;
-                                    tab.set("start", start)?;
-                                    tab.set("end", end)?;
+                                    tab.set("from", from)?;
+                                    tab.set("to", to)?;
                                     tab.set("name", name)?;
 
                                     result.push(&tab)?;
