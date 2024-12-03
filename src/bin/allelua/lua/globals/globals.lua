@@ -374,7 +374,7 @@ local function breakpoint_impl()
 		})
 
 		_G.debug = debug
-		debug.debug()
+		__repl()
 		_G.debug = nil
 
 		debug.variables = nil
