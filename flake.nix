@@ -28,8 +28,8 @@
             cargoLock = {
               lockFile = ./Cargo.lock;
               outputHashes = {
-                "mlua-0.10.0-beta.2" =
-                  "sha256-KecI1oiwtMOAuClUmXBoyrb+Ap1JQ/pPJjEvxOjXj9I=";
+                "selene-lib-0.27.1" =
+                  "sha256-BcoQqim4yeEnZAgTwsFMj2AtH93tO218Z/2arhFAi9I=";
               };
             };
             nativeBuildInputs = with pkgs; [ pkg-config ];
