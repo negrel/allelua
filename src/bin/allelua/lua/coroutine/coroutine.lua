@@ -10,7 +10,7 @@ return function(run_until, go)
 			local tx, rx = sync.channel()
 
 			local id = 0
-			fn(function(...)
+			go(fn, function(...)
 				id = id + 1
 				local args = { ... }
 				wg:add(1)
@@ -33,10 +33,12 @@ return function(run_until, go)
 
 			local err = rx:recv()
 			if err then
-				error(
-					("nursery coroutine %d failed"):format(id),
-					{ kind = "coroutine.NurseryRoutineFailed", cause = err, id = id }
-				)
+				error(("nursery coroutine %d failed"):format(id), {
+					type = "coroutine.NurseryError",
+					kind = "CoroutineError",
+					cause = err,
+					id = id,
+				})
 			end
 		end)
 	end
