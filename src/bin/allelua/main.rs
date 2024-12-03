@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 mod cmds;
 mod lua;
 
-/// Lua distribution blessed by the gods of programming.
+/// Lua distribution blessed by programming gods.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -57,6 +57,9 @@ enum Command {
         /// Path of lua files or directory containing lua files.
         path: Vec<PathBuf>,
     },
+
+    /// Read Eval Print Loop.
+    Repl,
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -70,6 +73,7 @@ pub fn main() -> anyhow::Result<()> {
         Command::Fmt { path, check } => cmds::fmt(path, check)?,
         Command::Lsp => cmds::lsp()?,
         Command::Lint { path } => cmds::lint(path)?,
+        Command::Repl => cmds::repl(),
     }
 
     Ok(())

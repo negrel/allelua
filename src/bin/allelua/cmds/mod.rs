@@ -2,6 +2,7 @@ mod bench;
 mod fmt;
 mod lint;
 mod lsp;
+mod repl;
 mod run;
 mod test;
 
@@ -9,6 +10,7 @@ pub use bench::*;
 pub use fmt::*;
 pub use lint::*;
 pub use lsp::*;
+pub use repl::*;
 pub use run::*;
 pub use test::*;
 
