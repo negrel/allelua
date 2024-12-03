@@ -65,7 +65,15 @@ local function tostring_impl()
 			else
 				local v_str = tostring(v, inner_opts)
 				local v_type = type(v)
-				if not v_str:has_prefix(v_type) then table.push(kv, v_type) end
+				if
+					v_type ~= "number"
+					and v_type ~= "integer"
+					and v_type ~= "boolean"
+					and v_type ~= "string"
+					and not v_str:has_prefix(v_type)
+				then
+					table.push(kv, v_type, " ")
+				end
 				table.push(kv, v_str)
 			end
 
@@ -294,6 +302,84 @@ local function freeze_impl()
 	return freeze
 end
 
+local function breakpoint_impl()
+	local debug = require("debug")
+
+	return function()
+		local info = debug.getinfo(2, "fSul")
+		print(
+			"breakpoint reached at",
+			info.short_src .. ":" .. tostring(info.currentline)
+		)
+
+		debug.variables = {}
+		local variables = {}
+		for i = 2, 1024 do
+			if i > 2 and not debug.getinfo(i, "f") then break end
+
+			local j = 1
+			while true do
+				local name, value = debug.getlocal(i, j)
+				if not name then break end
+				variables[name] = value
+				j = j + 1
+			end
+
+			j = 1
+		end
+		for i = 1, 1024 do
+			local name, value = debug.getupvalue(info.func, i)
+			if not name then break end
+			-- Upvalue is not shadowed by local variable.
+			if not variables[name] then variables[name] = value end
+		end
+
+		setmetatable(debug.variables, {
+			__index = function(_, k)
+				return variables[k]
+			end,
+			__newindex = function(_, k, v)
+				for i = 4, 1024 do
+					if not debug.getinfo(i, "f") then break end
+
+					for j = 1, 512 do
+						-- Try local first.
+						local name, value = debug.getlocal(i, j)
+						if not name then break end
+						if name == k and value ~= v then
+							variables[k] = v
+							debug.setlocal(i, j, v)
+						end
+
+						-- Upvalues are tied to function and not stack level.
+						-- There is no need to run this if it failed at first level (i == 4).
+						if i == 4 then
+							-- Then try upvalue
+							name, value = debug.getupvalue(info.func, j)
+							if not name then break end
+							if name == k and value ~= v then
+								variables[k] = v
+								debug.setupvalue(info.func, j, v)
+							end
+						end
+					end
+				end
+
+				return nil
+			end,
+			__pairs = function(_)
+				return pairs(variables)
+			end,
+		})
+
+		_G.debug = debug
+		debug.debug()
+		_G.debug = nil
+
+		debug.variables = nil
+	end
+end
+
 return function(M)
 	M.pcall = pcall_impl()
 	M.xpcall = xpcall_impl()
@@ -301,4 +387,5 @@ return function(M)
 	M.clone = clone_impl()
 	M.switch = switch_impl
 	M.freeze = freeze_impl()
+	M.breakpoint = breakpoint_impl()
 end
