@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use mlua::{FromLua, IntoLua, Lua, UserData};
+use mlua::{AnyUserData, Either, FromLua, IntoLua, Lua, UserData, UserDataRef};
 
 use crate::include_lua;
 
@@ -12,10 +12,6 @@ pub trait AlleluaError: std::error::Error + Send + Sync + 'static {
 
     fn cause(&self) -> Option<LuaError> {
         None
-    }
-
-    fn fields(&self) -> &'static [&'static str] {
-        &[]
     }
 
     fn field_getter(&self, _lua: &Lua, _key: mlua::String) -> mlua::Result<mlua::Value> {
@@ -51,15 +47,30 @@ impl AlleluaError for UserError {
 
 /// LuaError define a wrapper that implements [mlua::UserData] for the wrapped
 /// [AlleluaError] type.
-#[derive(thiserror::Error, Clone, FromLua)]
-#[error(
-    "{}(kind={} message={:?} properties=[{}])",
-    self.0.type_name(),
-    self.0.kind(),
-    self.0.to_string(),
-    self.0.fields().iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", "))
-]
+#[derive(thiserror::Error, Clone)]
+#[error(transparent)]
 pub struct LuaError(Arc<dyn AlleluaError>);
+
+impl FromLua for LuaError {
+    fn from_lua(value: mlua::Value, lua: &Lua) -> mlua::Result<Self> {
+        match Either::<UserDataRef<Self>, mlua::String>::from_lua(value, lua)? {
+            Either::Left(udata) => Ok(udata.to_owned()),
+            Either::Right(str) => Ok(Self::from(str)),
+        }
+    }
+}
+
+impl From<mlua::String> for LuaError {
+    fn from(value: mlua::String) -> Self {
+        UserError {
+            type_name: "error".to_string(),
+            kind: "Uncategorized".to_string(),
+            message: value.to_string_lossy(),
+            cause: None,
+        }
+        .into()
+    }
+}
 
 impl Deref for LuaError {
     type Target = dyn AlleluaError;
@@ -93,7 +104,6 @@ impl UserData for LuaError {
         fields.add_field_method_get("kind", |lua, err| lua.create_string(err.0.kind()));
         fields.add_field_method_get("message", |lua, err| lua.create_string(err.0.to_string()));
         fields.add_field_method_get("cause", |_, err| Ok(AlleluaError::cause(&**err)));
-        fields.add_field_method_get("properties", |_, err| Ok(AlleluaError::fields(&**err)));
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
