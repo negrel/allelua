@@ -94,7 +94,7 @@ impl UserData for LuaWaitGroup {
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, wg, ()| {
             let address = wg as *const _ as usize;
             Ok(format!(
-                "WaitGroup(counter={}) 0x{address:x}",
+                "sync.WaitGroup(counter={}) 0x{address:x}",
                 wg.counter.get()
             ))
         });
