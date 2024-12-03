@@ -307,6 +307,7 @@ local function breakpoint_impl()
 
 	return function()
 		local info = debug.getinfo(2, "fSul")
+		if not info then return end
 		print(
 			"breakpoint reached at",
 			info.short_src .. ":" .. tostring(info.currentline)

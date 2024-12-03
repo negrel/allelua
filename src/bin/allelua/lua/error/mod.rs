@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use mlua::{AnyUserData, Either, FromLua, IntoLua, Lua, UserData, UserDataRef};
+use mlua::{Either, FromLua, IntoLua, Lua, UserData, UserDataRef};
 
 use crate::include_lua;
 
@@ -223,7 +223,7 @@ pub fn load_error(lua: &Lua) -> mlua::Result<mlua::Table> {
 
             lua.load(include_lua!("./error.lua"))
                 .eval::<mlua::Function>()?
-                .call(error.clone())?;
+                .call::<()>(error.clone())?;
 
             Ok(error)
         })?,

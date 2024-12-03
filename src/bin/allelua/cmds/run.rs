@@ -18,7 +18,7 @@ pub fn run(fpath: PathBuf, run_args: Vec<OsString>) -> anyhow::Result<()> {
 
             // Execute code.
             runtime
-                .exec(fpath.clone())
+                .exec::<()>(fpath.clone())
                 .await
                 .with_context(|_| format!("failed to run lua file {:?}", fpath))?;
 
