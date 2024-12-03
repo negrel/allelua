@@ -54,8 +54,8 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
 
             os.set(
                 "exit",
-                lua.create_function(|_, code: i32| {
-                    exit(code);
+                lua.create_function(|_, code: Option<i32>| {
+                    exit(code.unwrap_or(0));
                     #[allow(unreachable_code)]
                     Ok(())
                 })?,
