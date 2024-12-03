@@ -1,5 +1,7 @@
 use mlua::{IntoLua, Lua, LuaSerdeExt};
 
+use crate::lua::error::AlleluaError;
+
 use super::error;
 
 pub fn load_json(lua: &Lua) -> mlua::Result<mlua::Table> {
@@ -116,7 +118,7 @@ fn json_value_to_lua_value(
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error(transparent)]
+#[error("json.Error(kind={} line={} column={})", self.kind(), self.0.line(), self.0.column())]
 struct LuaError(serde_json::Error);
 
 impl From<LuaError> for mlua::Error {
@@ -125,7 +127,7 @@ impl From<LuaError> for mlua::Error {
     }
 }
 
-impl error::AlleluaError for LuaError {
+impl AlleluaError for LuaError {
     fn type_name(&self) -> &str {
         "json.Error"
     }
@@ -149,10 +151,6 @@ impl error::AlleluaError for LuaError {
             b"column" => self.0.column().into_lua(lua),
             _ => Ok(mlua::Value::Nil),
         }
-    }
-
-    fn fields(&self) -> &'static [&'static str] {
-        &["line", "column"]
     }
 }
 

@@ -5,7 +5,7 @@ use thiserror::Error;
 use crate::lua::error::{self, AlleluaError};
 
 #[derive(Debug, Error)]
-#[error(transparent)]
+#[error("io.Error(kind={})", self.kind())]
 pub struct LuaError(#[from] pub io::Error);
 
 impl Deref for LuaError {
