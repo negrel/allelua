@@ -7,6 +7,11 @@ return function(is_empty)
 	M.new = require("table.new")
 	M.clear = require("table.clear")
 
+	M.for_each = M.foreach
+	M.foreach = nil
+	M.ifor_each = M.foreachi
+	M.foreachi = nil
+
 	local sort = M.sort
 	M.sort = function(t, comp)
 		sort(t, comp)

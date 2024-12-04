@@ -60,3 +60,14 @@ t.test("slice -2 to 64 returns last two elements of {1, 2, 3}", function()
 
 	t.assert_eq(slice, { 2, 3 })
 end)
+
+t.test("for_eachi calls function for each element in sequence", function()
+	-- selene: allow(mixed_table)
+	local tab = { 1, 2, 3, foo = "bar" }
+	local tab2 = {}
+	table.ifor_each(tab, function(_i, v)
+		table.push(tab2, v)
+	end)
+
+	t.assert_eq(tab2, { 1, 2, 3 })
+end)
