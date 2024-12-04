@@ -206,6 +206,19 @@ return function(Regex, extra)
 	M.Buffer.__tostring = M.Buffer.tostring
 
 	return {
-		__index = M,
+		__index = function(str, k)
+			if rawtype(k) == "number" then return str:slice(k, k) end
+			return M[k]
+		end,
+		__ipairs = function(str)
+			return function(_, n)
+				n = n + 1
+				local slice = str:slice(n, n)
+				if slice == "" then return end
+				return n, slice
+			end,
+				str,
+				0
+		end,
 	}
 end
