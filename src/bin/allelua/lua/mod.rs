@@ -1,6 +1,7 @@
 use std::{ffi::OsString, fmt::Display, ops::Deref, path::Path, process::exit};
 
 use error::load_error;
+use math::load_math;
 use mlua::{chunk, AsChunk, FromLua, FromLuaMulti, IntoLua, Lua, LuaOptions, ObjectLike, StdLib};
 
 use self::{
@@ -14,6 +15,7 @@ mod error;
 mod globals;
 mod io;
 mod json;
+mod math;
 mod os;
 mod package;
 mod path;
@@ -89,6 +91,7 @@ fn handle_result<T, E: Display>(result: Result<T, E>) {
 
 fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
     // Load libraries.
+    handle_result(load_math(&lua));
     handle_result(load_path(&lua));
     handle_result(load_os(&lua, run_args));
     handle_result(load_error(&lua));
