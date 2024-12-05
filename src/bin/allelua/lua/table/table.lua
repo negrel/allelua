@@ -21,7 +21,7 @@ return function(is_empty)
 	M.is_empty = is_empty
 
 	M.reverse = function(t)
-		local len = table.getn(t)
+		local len = M.getn(t)
 		for i = 1, math.floor(len / 2) do
 			local a = t[i]
 			local b = t[len - i + 1]
@@ -31,12 +31,31 @@ return function(is_empty)
 		return t
 	end
 
+	M.binary_search = function(t, elem)
+		local left = 1
+		local right = M.getn(t)
+
+		while left <= right do
+			local mid = left + math.round((right - left) / 2)
+
+			if t[mid] == elem then
+				return mid
+			elseif t[mid] < elem then
+				left = mid + 1
+			else
+				right = mid - 1
+			end
+		end
+
+		return nil
+	end
+
 	M.push = function(t, ...)
 		local args = { ... }
 		for _, v in ipairs(args) do
 			M.insert(t, v)
 		end
-		return table.getn(t)
+		return M.getn(t)
 	end
 
 	M.pop = function(t)
@@ -48,7 +67,7 @@ return function(is_empty)
 		for _, v in ipairs(args) do
 			M.insert(t, 1, v)
 		end
-		return table.getn(t)
+		return M.getn(t)
 	end
 
 	M.shift = function(t)
@@ -148,8 +167,8 @@ return function(is_empty)
 	M.collect = function(iterator, state, initial_value)
 		local result = {}
 		while true do
-			local item = table.pack(iterator(state, initial_value))
-			table.push(result, item)
+			initial_value = table.pack(iterator(state, initial_value))
+			table.push(result, initial_value)
 		end
 
 		return result
