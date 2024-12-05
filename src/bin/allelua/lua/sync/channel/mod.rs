@@ -42,7 +42,7 @@ pub struct LuaChannelSender<T: Queue>(Rc<T>);
 
 impl<T: Queue + 'static> UserData for LuaChannelSender<T> {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "ChannelSender")
+        fields.add_field("__type", "os.ChannelSender")
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
@@ -81,7 +81,7 @@ impl<T: Queue + 'static> LuaChannelReceiver<T> {
 
 impl<T: Queue + 'static> UserData for LuaChannelReceiver<T> {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "ChannelReceiver")
+        fields.add_field("__type", "sync.ChannelReceiver")
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
