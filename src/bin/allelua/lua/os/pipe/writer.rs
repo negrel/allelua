@@ -8,8 +8,8 @@ use os_pipe::PipeWriter;
 use tokio::fs::File;
 
 use crate::lua::{
-    io::{add_io_write_close_methods, Closable},
-    os::{add_os_try_into_stdio_methods, TryIntoStdio},
+    io::{self, add_io_write_close_methods, Closable},
+    os::{add_os_try_as_stdio_methods, TryAsStdio},
     LuaInterface,
 };
 
@@ -27,9 +27,15 @@ impl LuaPipeWriter {
     }
 }
 
-impl TryIntoStdio for LuaPipeWriter {
-    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let file: File = self.0.into_inner()?;
+impl TryAsStdio for LuaPipeWriter {
+    async fn try_as_stdio(&self) -> mlua::Result<Stdio> {
+        let file = self
+            .0
+            .get()
+            .await?
+            .try_clone()
+            .await
+            .map_err(io::LuaError::from)?;
         let std_file = file.into_std().await;
         Ok(std_file.into())
     }
@@ -51,7 +57,7 @@ impl AsMut<Closable<File>> for LuaPipeWriter {
 impl LuaInterface for LuaPipeWriter {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_write_close_methods(methods);
-        add_os_try_into_stdio_methods(methods);
+        add_os_try_as_stdio_methods(methods);
     }
 }
 

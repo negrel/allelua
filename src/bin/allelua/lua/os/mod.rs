@@ -1,6 +1,6 @@
 use std::{env, ffi::OsString, os::unix::ffi::OsStrExt, process::exit};
 
-use mlua::{IntoLua, Lua};
+use mlua::Lua;
 use tokio::fs;
 
 mod args;
@@ -13,7 +13,7 @@ mod stdio;
 use args::*;
 use child::*;
 use env_vars::*;
-use file::*;
+pub use file::*;
 use pipe::*;
 use stdio::*;
 

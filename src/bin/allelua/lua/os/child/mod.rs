@@ -172,17 +172,23 @@ pub async fn exec(
     let stdin = child
         .stdin
         .take()
-        .map(|stdin| LuaChildStdin::new(stdin).into_lua(lua))
+        .map(LuaChildStdin::new)
+        .transpose()?
+        .map(|stdin| stdin.into_lua(lua))
         .unwrap_or(Ok(mlua::Value::Nil))?;
     let stdout = child
         .stdout
         .take()
-        .map(|stdout| LuaChildStdout::new(stdout).into_lua(lua))
+        .map(LuaChildStdout::new)
+        .transpose()?
+        .map(|stdout| stdout.into_lua(lua))
         .unwrap_or(Ok(mlua::Value::Nil))?;
     let stderr = child
         .stderr
         .take()
-        .map(|stderr| LuaChildStderr::new(stderr).into_lua(lua))
+        .map(LuaChildStderr::new)
+        .transpose()?
+        .map(|stderr| stderr.into_lua(lua))
         .unwrap_or(Ok(mlua::Value::Nil))?;
 
     let child = LuaChild::new(child, stdin, stdout, stderr);

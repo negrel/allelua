@@ -1,27 +1,35 @@
 use std::process::Stdio;
 
 use mlua::{MetaMethod, UserData};
-use tokio::process::ChildStderr;
+use tokio::{fs::File, process::ChildStderr};
 
 use crate::lua::{
-    io::{add_io_close_methods, add_io_read_methods, Closable},
-    os::{add_os_try_into_stdio_methods, TryIntoStdio},
+    io::{self, add_io_close_methods, add_io_read_methods, Closable},
+    os::{add_os_try_as_stdio_methods, TryAsStdio},
     LuaInterface,
 };
 
 #[derive(Debug)]
-pub struct LuaChildStderr(Closable<ChildStderr>);
+pub struct LuaChildStderr(Closable<File>);
 
 impl LuaChildStderr {
-    pub fn new(stderr: ChildStderr) -> Self {
-        Self(Closable::new(stderr))
+    pub fn new(stderr: ChildStderr) -> mlua::Result<Self> {
+        let fd = stderr.into_owned_fd().map_err(io::LuaError)?;
+        Ok(Self(Closable::new(File::from(std::fs::File::from(fd)))))
     }
 }
 
-impl TryIntoStdio for LuaChildStderr {
-    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let stderr: ChildStderr = self.0.into_inner()?;
-        Ok(stderr.try_into()?)
+impl TryAsStdio for LuaChildStderr {
+    async fn try_as_stdio(&self) -> mlua::Result<Stdio> {
+        let file = self
+            .0
+            .get()
+            .await?
+            .try_clone()
+            .await
+            .map_err(io::LuaError::from)?;
+        let std_file = file.into_std().await;
+        Ok(std_file.into())
     }
 }
 
@@ -30,18 +38,18 @@ impl LuaInterface for LuaChildStderr {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_read_methods(methods);
         add_io_close_methods(methods);
-        add_os_try_into_stdio_methods(methods);
+        add_os_try_as_stdio_methods(methods);
     }
 }
 
-impl AsRef<Closable<ChildStderr>> for LuaChildStderr {
-    fn as_ref(&self) -> &Closable<ChildStderr> {
+impl AsRef<Closable<File>> for LuaChildStderr {
+    fn as_ref(&self) -> &Closable<File> {
         &self.0
     }
 }
 
-impl AsMut<Closable<ChildStderr>> for LuaChildStderr {
-    fn as_mut(&mut self) -> &mut Closable<ChildStderr> {
+impl AsMut<Closable<File>> for LuaChildStderr {
+    fn as_mut(&mut self) -> &mut Closable<File> {
         &mut self.0
     }
 }

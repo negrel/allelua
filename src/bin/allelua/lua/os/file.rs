@@ -3,6 +3,7 @@ use std::{
     process::Stdio,
 };
 
+use crossterm::tty::IsTty;
 use mlua::{IntoLua, Lua, MetaMethod, UserData};
 use tokio::fs::{File, OpenOptions};
 
@@ -17,15 +18,18 @@ use crate::{
     lua_string_as_path,
 };
 
-use super::{add_os_try_into_stdio_methods, TryIntoStdio};
+use super::{add_os_try_as_stdio_methods, TryAsStdio};
 
 #[derive(Debug)]
-pub(super) struct LuaFile(io::Closable<File>);
+pub struct LuaFile(io::Closable<File>);
 
 impl LuaFile {
     pub fn new(f: File) -> Self {
         Self(io::Closable::new(f))
     }
+
+    // We duplicate stdin, stdout and stderr before creating LuaFile because
+    // it interfere with rust stdin, stdout and stderr otherwise.
 
     pub fn stdin() -> mlua::Result<Self> {
         let stdin = os_pipe::dup_stdin().map_err(io::LuaError)?;
@@ -58,9 +62,15 @@ impl AsMut<Closable<File>> for LuaFile {
     }
 }
 
-impl TryIntoStdio for LuaFile {
-    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let file: File = self.0.into_inner()?;
+impl TryAsStdio for LuaFile {
+    async fn try_as_stdio(&self) -> mlua::Result<Stdio> {
+        let file = self
+            .0
+            .get()
+            .await?
+            .try_clone()
+            .await
+            .map_err(io::LuaError::from)?;
         let std_file = file.into_std().await;
         Ok(std_file.into())
     }
@@ -73,7 +83,7 @@ impl LuaInterface for LuaFile {
         add_io_read_methods(methods);
         add_io_seek_methods(methods);
         add_io_write_close_methods(methods);
-        add_os_try_into_stdio_methods(methods);
+        add_os_try_as_stdio_methods(methods);
     }
 }
 
@@ -87,6 +97,11 @@ where
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         Self::add_interface_methods(methods);
+
+        methods.add_async_method("is_tty", |_, file, ()| async move {
+            let file = file.as_ref().get().await?;
+            Ok(file.is_tty())
+        });
 
         methods.add_async_method("metadata", |_lua, file, ()| async move {
             let file = file.as_ref().get().await?;

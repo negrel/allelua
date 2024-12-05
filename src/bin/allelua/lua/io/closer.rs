@@ -2,11 +2,12 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use crate::lua::error::{AlleluaError, LuaError};
 
-/// Closes previously opened resource asynchronously.
+/// Closes previously opened resource.
 pub trait Close {
     fn close(&mut self) -> Result<(), LuaError>;
 }
 
+/// IO resource is closed. This error is returned by [Closable].
 #[derive(Debug, thiserror::Error)]
 #[error("io.Error(kind={})", self.kind())]
 pub struct LuaIoClosedError;
@@ -43,7 +44,6 @@ impl<T> Closable<T> {
         Self(Some(Mutex::new(inner)))
     }
 
-    /// Yield until inner T is exclusively available or closed.
     pub async fn get(&self) -> Result<MutexGuard<T>, LuaIoClosedError> {
         match &self.0 {
             Some(mutex) => {
@@ -56,13 +56,6 @@ impl<T> Closable<T> {
 
     pub fn is_closed(&self) -> bool {
         self.0.is_none()
-    }
-
-    pub fn into_inner(mut self) -> Result<T, LuaIoClosedError> {
-        match self.0.take() {
-            Some(inner) => Ok(inner.into_inner()),
-            None => Err(LuaIoClosedError),
-        }
     }
 }
 

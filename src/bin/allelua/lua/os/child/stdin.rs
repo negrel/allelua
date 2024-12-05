@@ -1,27 +1,35 @@
 use std::process::Stdio;
 
 use mlua::{MetaMethod, UserData};
-use tokio::process::ChildStdin;
+use tokio::{fs::File, process::ChildStdin};
 
 use crate::lua::{
-    io::{add_io_write_close_methods, Closable},
-    os::{add_os_try_into_stdio_methods, TryIntoStdio},
+    io::{self, add_io_write_close_methods, Closable},
+    os::{add_os_try_as_stdio_methods, TryAsStdio},
     LuaInterface,
 };
 
 #[derive(Debug)]
-pub struct LuaChildStdin(Closable<ChildStdin>);
+pub struct LuaChildStdin(Closable<File>);
 
 impl LuaChildStdin {
-    pub fn new(stdin: ChildStdin) -> Self {
-        Self(Closable::new(stdin))
+    pub fn new(stdin: ChildStdin) -> mlua::Result<Self> {
+        let fd = stdin.into_owned_fd().map_err(io::LuaError)?;
+        Ok(Self(Closable::new(File::from(std::fs::File::from(fd)))))
     }
 }
 
-impl TryIntoStdio for LuaChildStdin {
-    async fn try_into_stdio(self) -> mlua::Result<Stdio> {
-        let stdin: ChildStdin = self.0.into_inner()?;
-        Ok(stdin.try_into()?)
+impl TryAsStdio for LuaChildStdin {
+    async fn try_as_stdio(&self) -> mlua::Result<Stdio> {
+        let file = self
+            .0
+            .get()
+            .await?
+            .try_clone()
+            .await
+            .map_err(io::LuaError::from)?;
+        let std_file = file.into_std().await;
+        Ok(std_file.into())
     }
 }
 
@@ -29,18 +37,18 @@ impl TryIntoStdio for LuaChildStdin {
 impl LuaInterface for LuaChildStdin {
     fn add_interface_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         add_io_write_close_methods(methods);
-        add_os_try_into_stdio_methods(methods);
+        add_os_try_as_stdio_methods(methods);
     }
 }
 
-impl AsRef<Closable<ChildStdin>> for LuaChildStdin {
-    fn as_ref(&self) -> &Closable<ChildStdin> {
+impl AsRef<Closable<File>> for LuaChildStdin {
+    fn as_ref(&self) -> &Closable<File> {
         &self.0
     }
 }
 
-impl AsMut<Closable<ChildStdin>> for LuaChildStdin {
-    fn as_mut(&mut self) -> &mut Closable<ChildStdin> {
+impl AsMut<Closable<File>> for LuaChildStdin {
+    fn as_mut(&mut self) -> &mut Closable<File> {
         &mut self.0
     }
 }

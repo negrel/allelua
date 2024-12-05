@@ -2,15 +2,15 @@ use mlua::{AnyUserData, FromLua, MetaMethod, UserData};
 
 /// TryIntoStdio is a trait implemented by [UserData] that can be converted to a
 /// [std::process::Stdio].
-pub trait TryIntoStdio {
-    async fn try_into_stdio(self) -> mlua::Result<std::process::Stdio>;
+pub trait TryAsStdio {
+    async fn try_as_stdio(&self) -> mlua::Result<std::process::Stdio>;
 }
 
-pub fn add_os_try_into_stdio_methods<R: TryIntoStdio + 'static, M: mlua::UserDataMethods<R>>(
+pub fn add_os_try_as_stdio_methods<R: TryAsStdio + 'static, M: mlua::UserDataMethods<R>>(
     methods: &mut M,
 ) {
     methods.add_async_function("try_into_stdio", |_lua, into: AnyUserData| async move {
-        let stdio = into.take::<R>()?.try_into_stdio().await?;
+        let stdio = into.take::<R>()?.try_as_stdio().await?;
         Ok(LuaStdio(stdio))
     });
 }
