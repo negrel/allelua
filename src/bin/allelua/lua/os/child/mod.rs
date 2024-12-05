@@ -53,7 +53,7 @@ impl LuaChild {
 
 impl UserData for LuaChild {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "Child");
+        fields.add_field("__type", "os.Child");
         fields.add_field_method_get("id", |_lua, child| Ok(child.id()));
 
         fields.add_field_method_get("stdin", |_lua, child| Ok(child.stdin.to_owned()));
@@ -195,7 +195,7 @@ pub struct LuaExitStatus(ExitStatus);
 
 impl UserData for LuaExitStatus {
     fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "ExitStatus");
+        fields.add_field("__type", "os.ExitStatus");
         fields.add_field_method_get("code", |_lua, status| Ok(status.0.code()));
         fields.add_field_method_get("success", |_lua, status| Ok(status.0.success()));
     }

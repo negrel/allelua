@@ -61,7 +61,7 @@ where
     Self: LuaInterface,
 {
     fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "PipeReader");
+        fields.add_field("__type", "os.PipeReader");
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
@@ -70,7 +70,7 @@ where
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
             Ok(format!(
-                "PipeReader(closed={}) 0x{address:x}",
+                "os.PipeReader(closed={}) 0x{address:x}",
                 f.as_ref().is_closed()
             ))
         });

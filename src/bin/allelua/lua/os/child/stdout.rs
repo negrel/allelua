@@ -50,7 +50,7 @@ where
     Self: LuaInterface,
 {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "ChildStdout");
+        fields.add_field("__type", "os.ChildStdout");
         fields.add_field_method_get("closed", |_, stdout| Ok(stdout.as_ref().is_closed()))
     }
 
@@ -60,7 +60,7 @@ where
         methods.add_meta_method(MetaMethod::ToString, |_lua, stdout, ()| {
             let address = stdout as *const _ as usize;
             Ok(format!(
-                "ChildStdout(closed={}) 0x{address:x}",
+                "os.ChildStdout(closed={}) 0x{address:x}",
                 stdout.as_ref().is_closed()
             ))
         })

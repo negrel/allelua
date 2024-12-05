@@ -3,11 +3,11 @@ use std::{cell::RefCell, env, ffi::OsStr, os::unix::ffi::OsStrExt};
 use mlua::{FromLua, MetaMethod, UserData};
 
 #[derive(Debug, Default)]
-pub(super) struct EnvVars();
+pub(super) struct EnvVars;
 
 impl UserData for EnvVars {
     fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "EnvVars")
+        fields.add_field("__type", "os.EnvVars")
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
@@ -40,16 +40,34 @@ impl UserData for EnvVars {
             },
         );
 
-        methods.add_meta_method(MetaMethod::ToString, |lua, _, opts: mlua::Value| {
-            let table = lua.create_table()?;
-            for (varname, varvalue) in env::vars_os() {
-                table.set(
-                    lua.create_string(varname.as_bytes())?,
-                    lua.create_string(varvalue.as_bytes())?,
-                )?;
-            }
-            let tostring = lua.globals().get::<mlua::Function>("tostring")?;
-            tostring.call::<mlua::String>((table, opts))
+        methods.add_meta_method(MetaMethod::ToString, |_, _, opts: Option<mlua::Table>| {
+            let nspace = opts
+                .clone()
+                .map(|t| t.get::<mlua::Integer>("space"))
+                .unwrap_or(Ok(2))?;
+            let depth = opts
+                .map(|t| t.get::<mlua::Integer>("depth"))
+                .unwrap_or(Ok(1))?;
+
+            let space = if nspace <= 0 {
+                ""
+            } else {
+                &" ".repeat((depth * nspace) as usize)
+            };
+            let close = if nspace <= 0 {
+                " }"
+            } else {
+                &("\n".to_owned() + &" ".repeat(((depth - 1) * nspace) as usize))
+            };
+
+            Ok(format!(
+                "os.EnvVars{{\n{}{}}}",
+                env::vars_os()
+                    .map(|(name, value)| format!("{}{name:?} = {value:?}", space))
+                    .collect::<Vec<_>>()
+                    .join(",\n"),
+                close
+            ))
         });
 
         methods.add_meta_method(MetaMethod::Pairs, |lua, _, ()| {

@@ -26,19 +26,9 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
             let os = lua.create_table()?;
             lua.globals().set("os", os.clone())?;
 
-            let os_mt = lua.create_table()?;
-            os_mt.set(
-                "__index",
-                lua.create_function(|lua, (_, key): (mlua::Value, mlua::String)| {
-                    match key.as_bytes().as_ref() {
-                        b"stdin" => LuaFile::stdin().map(|f| f.into_lua(lua))?,
-                        b"stdout" => LuaFile::stdout().map(|f| f.into_lua(lua))?,
-                        b"stderr" => LuaFile::stderr().map(|f| f.into_lua(lua))?,
-                        _ => Ok(mlua::Value::Nil),
-                    }
-                })?,
-            )?;
-            os.set_metatable(Some(os_mt));
+            os.set("stdin", LuaFile::stdin()?)?;
+            os.set("stdout", LuaFile::stdout()?)?;
+            os.set("stderr", LuaFile::stderr()?)?;
 
             let file_constructors = lua.create_table()?;
             file_constructors.set("open", lua.create_async_function(open_file)?)?;
@@ -159,7 +149,7 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
 
             // Process environment.
             os.set("env_vars", EnvVars::default())?;
-            os.set("args", Args::new(lua, args.clone())?)?;
+            os.set("args", LuaArgs::new(lua, args.clone())?)?;
 
             // Constants.
             os.set("family", lua.create_string(std::env::consts::FAMILY)?)?;

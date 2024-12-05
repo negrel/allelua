@@ -82,7 +82,7 @@ where
     Self: LuaInterface,
 {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "File")
+        fields.add_field("__type", "os.File")
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
@@ -105,7 +105,7 @@ where
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
             Ok(format!(
-                "File(closed={}) 0x{address:x}",
+                "os.File(closed={}) 0x{address:x}",
                 f.as_ref().is_closed()
             ))
         });

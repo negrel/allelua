@@ -69,7 +69,7 @@ where
         methods.add_meta_method(MetaMethod::ToString, |_, f, ()| {
             let address = f as *const _ as usize;
             Ok(format!(
-                "PipeWriter(closed={}) 0x{address:x}",
+                "os.PipeWriter(closed={}) 0x{address:x}",
                 f.as_ref().is_closed()
             ))
         });

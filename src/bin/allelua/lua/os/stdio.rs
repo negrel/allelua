@@ -21,13 +21,13 @@ pub struct LuaStdio(std::process::Stdio);
 
 impl UserData for LuaStdio {
     fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("__type", "Stdio");
+        fields.add_field("__type", "os.Stdio");
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::ToString, |_, stdio, ()| {
             let address = stdio as *const _ as usize;
-            Ok(format!("Stdio 0x{address:x}"))
+            Ok(format!("os.Stdio 0x{address:x}"))
         })
     }
 }
