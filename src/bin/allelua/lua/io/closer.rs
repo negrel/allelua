@@ -8,7 +8,7 @@ pub trait Close {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("resource closed")]
+#[error("io.Error(kind={})", self.kind())]
 pub struct LuaIoClosedError;
 
 impl AlleluaError for LuaIoClosedError {
@@ -17,7 +17,7 @@ impl AlleluaError for LuaIoClosedError {
     }
 
     fn kind(&self) -> &'static str {
-        "Closed"
+        "closed"
     }
 }
 

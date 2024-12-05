@@ -134,10 +134,10 @@ impl AlleluaError for LuaError {
 
     fn kind(&self) -> &str {
         match self.0.classify() {
-            serde_json::error::Category::Io => "Io",
-            serde_json::error::Category::Syntax => "Syntax",
-            serde_json::error::Category::Data => "Data",
-            serde_json::error::Category::Eof => "Eof",
+            serde_json::error::Category::Io => "io",
+            serde_json::error::Category::Syntax => "syntax",
+            serde_json::error::Category::Data => "data",
+            serde_json::error::Category::Eof => "eof",
         }
     }
 

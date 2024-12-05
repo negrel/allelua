@@ -269,48 +269,56 @@ impl UserData for LuaMetadata {
 
         if cfg!(unix) {
             fields.add_field_method_get("is_block_device", |_, metadata| {
-                Ok(metadata.file_type().is_block_device())
+                Ok(metadata.0.file_type().is_block_device())
             });
             fields.add_field_method_get("is_char_device", |_, metadata| {
-                Ok(metadata.file_type().is_char_device())
+                Ok(metadata.0.file_type().is_char_device())
             });
             fields.add_field_method_get("is_socket", |_, metadata| {
-                Ok(metadata.file_type().is_socket())
+                Ok(metadata.0.file_type().is_socket())
             });
-            fields
-                .add_field_method_get("is_fifo", |_, metadata| Ok(metadata.file_type().is_fifo()));
+            fields.add_field_method_get("is_fifo", |_, metadata| {
+                Ok(metadata.0.file_type().is_fifo())
+            });
         }
 
-        fields.add_field_method_get("file_type", |_, metadata| {
-            let ft = metadata.file_type();
-            if ft.is_file() {
-                Ok("file")
-            } else if ft.is_dir() {
-                Ok("dir")
-            } else if cfg!(unix) {
-                if ft.is_symlink() {
-                    Ok("symlink")
-                } else if ft.is_block_device() {
-                    Ok("block_device")
-                } else if ft.is_char_device() {
-                    Ok("char_device")
-                } else if ft.is_socket() {
-                    Ok("socket")
-                } else if ft.is_fifo() {
-                    Ok("fifo")
-                } else {
-                    Ok("unknown")
-                }
-            } else {
-                Ok("unknown")
-            }
-        });
+        fields.add_field_method_get("file_type", |_, metadata| Ok(metadata.file_type()));
     }
 
     fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::ToString, |_, metadata, ()| {
             let address = metadata as *const _ as usize;
-            Ok(format!("Metadata 0x{address:x}"))
+            Ok(format!(
+                "Metadata(file_type={}) 0x{address:x}",
+                metadata.file_type()
+            ))
         });
+    }
+}
+
+impl LuaMetadata {
+    fn file_type(&self) -> &'static str {
+        let ft = self.0.file_type();
+        if ft.is_file() {
+            "file"
+        } else if ft.is_dir() {
+            "dir"
+        } else if cfg!(unix) {
+            if ft.is_symlink() {
+                "symlink"
+            } else if ft.is_block_device() {
+                "block_device"
+            } else if ft.is_char_device() {
+                "char_device"
+            } else if ft.is_socket() {
+                "socket"
+            } else if ft.is_fifo() {
+                "fifo"
+            } else {
+                "unknown"
+            }
+        } else {
+            "unknown"
+        }
     }
 }
