@@ -26,6 +26,8 @@ impl UserData for LuaDuration {
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("tonumber", |_lua, dur, ()| Ok(dur.0.as_secs_f64()));
+
         methods.add_meta_method(mlua::MetaMethod::Eq, |_lua, dur1, dur2: LuaDuration| {
             Ok(dur1.0 == dur2.0)
         });

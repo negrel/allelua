@@ -6,8 +6,8 @@ use mlua::{chunk, AsChunk, FromLua, FromLuaMulti, IntoLua, Lua, LuaOptions, Obje
 
 use self::{
     coroutine::load_coroutine, globals::register_globals, io::load_io, json::load_json,
-    os::load_os, package::load_package, path::load_path, sh::load_sh, string::load_string,
-    sync::load_sync, table::load_table, test::load_test, time::load_time,
+    os::load_os, package::load_package, path::load_path, perf::load_perf, sh::load_sh,
+    string::load_string, sync::load_sync, table::load_table, test::load_test, time::load_time,
 };
 
 mod coroutine;
@@ -19,6 +19,7 @@ mod math;
 mod os;
 mod package;
 mod path;
+mod perf;
 mod sh;
 mod string;
 mod sync;
@@ -103,6 +104,7 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
     handle_result(load_sh(&lua));
     handle_result(load_time(&lua));
     handle_result(load_json(&lua));
+    handle_result(load_perf(&lua));
     handle_result(register_globals(&lua));
     handle_result(load_test(lua.clone()));
 
