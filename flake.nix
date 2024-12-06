@@ -56,6 +56,12 @@
               ++ (with self.packages.${system}; [ luajit ])
               ++ (with pkgs.fenix; [ stable.toolchain rust-analyzer ]);
             LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
+
+            # Statically link LuaJIT
+            # LUA_LIB =
+            #   "/nix/store/1fjp1a03kg4ndy69rqawag9az351gfj2-luajit-2.1.1713773202/lib";
+            # LUA_LIB_NAME = "luajit-5.1";
+            # LUA_LINK = "static";
           };
         };
       });
