@@ -1,6 +1,12 @@
 local t = require("test")
 local table = require("table")
 
+t.test("push 1, 2, 3 to { 3, 2, 1 } produces { 3, 2, 1, 1, 2, 3 }", function()
+	local tab = { 3, 2, 1 }
+	table.push(tab, 1, 2, 3)
+	t.assert_eq(tab, { 3, 2, 1, 1, 2, 3 })
+end)
+
 t.test("reverse {1, 2, 3} returns {3, 2, 1}", function()
 	local rev = table.reverse { 1, 2, 3 }
 	t.assert_eq(rev, { 3, 2, 1 })
@@ -71,3 +77,27 @@ t.test("for_eachi calls function for each element in sequence", function()
 
 	t.assert_eq(tab2, { 1, 2, 3 })
 end)
+
+t.test("binary search for 2 in { 1, 2, 3 } returns 2", function()
+	local tab = { 1, 2, 3 }
+	local i = table.binary_search(tab, 2)
+	assert(i == 2)
+end)
+
+t.test(
+	"binary search for 2 in { 0,1, 2, 3, 4, 5, 6, 7, 8, 9 } returns 3",
+	function()
+		local tab = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }
+		local i = table.binary_search(tab, 2)
+		assert(i == 3)
+	end
+)
+
+t.test(
+	"binary search for 100 in { 0,1, 2, 3, 4, 5, 6, 7, 8, 9 } returns nil",
+	function()
+		local tab = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }
+		local i = table.binary_search(tab, 100)
+		assert(i == nil)
+	end
+)
