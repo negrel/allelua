@@ -46,7 +46,12 @@ pub fn load_string(lua: &Lua) -> mlua::Result<()> {
             "find",
             lua.create_function(
                 move |lua, (str, pattern, at): (mlua::String, LuaRegex, Option<usize>)| {
-                    match pattern.find_at(&str.as_bytes(), at.unwrap_or(0)) {
+                    let at = at.unwrap_or(0);
+                    if at > str.as_bytes().len() {
+                        return Ok((mlua::Value::Nil, mlua::Value::Nil, mlua::Value::Nil));
+                    }
+
+                    match pattern.find_at(&str.as_bytes(), at) {
                         Some(m) => Ok((
                             slice.call::<mlua::Value>((&str, m.start() + 1, m.end()))?,
                             (m.start() + 1).into_lua(lua)?,
