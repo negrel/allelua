@@ -116,6 +116,29 @@ return function(Regex, extra)
 		return ("%q"):format(str)
 	end
 
+	M.insert = function(str, i, ...)
+		local args = nil
+
+		if rawtype(i) == "string" then
+			args = { i, ... }
+			i = #str + 1
+		else
+			args = { ... }
+			i = i or #str + 1
+		end
+
+		if #args == 0 then return str end
+
+		local buf = M.buffer.new(#str + #args)
+		buf:put(str:slice(1, i - 1))
+		for _, arg in ipairs(args) do
+			buf:put(arg)
+		end
+		buf:put(str:slice(i))
+
+		return buf:get()
+	end
+
 	for k, v in pairs(extra) do
 		M[k] = v
 	end

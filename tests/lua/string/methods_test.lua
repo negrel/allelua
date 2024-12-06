@@ -291,3 +291,39 @@ t.test("trim on whitespace only string", function()
 	local str = "       	   "
 	assert(str:trim() == "")
 end)
+
+t.test("insert empty string in string", function()
+	local str = "foo"
+	str = str:insert(1, "")
+	assert(str == "foo")
+end)
+
+t.test('insert "bar" at pos 1 in "foo" produces "barfoo"', function()
+	local str = "foo"
+	str = str:insert(1, "bar")
+	assert(str == "barfoo")
+end)
+
+t.test('insert "bar" at pos 4 in "foo" produces "foobar"', function()
+	local str = "foo"
+	str = str:insert(4, "bar")
+	assert(str == "foobar")
+end)
+
+t.test('insert "bar" at pos -1 in "foo" produces "fobaro"', function()
+	local str = "foo"
+	str = str:insert(-1, "bar")
+	assert(str == "fobaro")
+end)
+
+t.test('insert "bar" at unset pos in "foo" produces "foobar"', function()
+	local str = "foo"
+	str = str:insert("bar")
+	assert(str == "foobar")
+end)
+
+t.test('insert "bar" at unset pos in "foo" produces "foobar"', function()
+	local str = "foo"
+	str = str:insert("bar")
+	assert(str == "foobar")
+end)
