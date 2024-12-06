@@ -34,11 +34,12 @@ end
 local function tostring_impl()
 	local string = require("string")
 	local table = require("table")
-	local rawtostring = tostring
+	rawtostring = tostring
+	local rawtostring = rawtostring
 
 	local tostring = nil
 
-	local function tostring_pairs(value, opts)
+	local function tostring_pairs(value, buf, opts)
 		local space = opts.space <= 0 and ""
 			or "\n" .. string.rep(" ", opts.space * opts.depth)
 		local close = opts.space <= 0 and " }"
@@ -50,18 +51,18 @@ local function tostring_impl()
 			__stringified = opts.__stringified,
 		}
 
-		local items = {}
+		buf:put("{")
 		for k, v in pairs(value) do
-			local kv = { space }
+			buf:put(space)
 			if rawtype(k) == "string" or rawtype(k) == "number" then
-				table.push(kv, k)
+				buf:put(k)
 			else
-				table.push(kv, "[", tostring(k, inner_opts), "]")
+				buf:put("[", tostring(k, inner_opts), "]")
 			end
-			table.push(kv, " = ")
+			buf:put(" = ")
 
 			if rawtype(v) == "string" then
-				table.push(kv, string.format("%q", v))
+				buf:putf("%q", v)
 			else
 				local v_str = tostring(v, inner_opts)
 				local v_type = type(v)
@@ -72,48 +73,51 @@ local function tostring_impl()
 					and v_type ~= "string"
 					and not v_str:has_prefix(v_type)
 				then
-					table.push(kv, v_type, " ")
+					buf:put(v_type, " ")
 				end
-				table.push(kv, v_str)
+				buf:put(v_str)
 			end
 
-			table.push(items, table.concat(kv))
+			buf:put(", ")
 		end
-
-		-- empty table ?
-		if #items == 0 then return "{}" end
-
-		return "{ " .. table.concat(items, ", ") .. close
+		buf:put(close)
 	end
 
 	-- selene: allow(shadowing)
-	local function tostring_impl(value, opts)
+	local function tostring_impl(value, buf, opts)
 		-- Call metamethod if any.
 		local v_mt = rawgetmetatable(value)
 
 		if is_table_like(v_mt) then
 			if rawtype(v_mt.__tostring) == "function" then
-				return v_mt.__tostring(value, opts)
+				buf:put(v_mt.__tostring(value, opts))
+				return
 			end
 
 			-- Custom default tostring for __pairs.
 			if rawtype(v_mt.__pairs) == "function" then
-				return tostring_pairs(value, opts)
+				tostring_pairs(value, buf, opts)
+				return
 			end
 		end
 
 		-- Custom default tostring for table.
-		if rawtype(value) == "table" then return tostring_pairs(value, opts) end
+		if rawtype(value) == "table" then
+			tostring_pairs(value, buf, opts)
+			return
+		end
 
-		return rawtostring(value)
+		buf:put(rawtostring(value))
 	end
+
+	local buf = string.buffer.new()
 
 	-- A custom to string function that pretty format table and support
 	-- recursive values.
 	tostring = function(v, opts)
 		opts = opts or {}
-		opts.__stringified = opts.__stringified or {}
-		local stringified = opts.__stringified
+		opts._stringified = opts._stringified or {}
+		local stringified = opts._stringified
 
 		opts.space = opts.space or 2
 		opts.depth = opts.depth or 1
@@ -126,7 +130,16 @@ local function tostring_impl()
 		end
 		stringified[v] = 1
 
-		local result = tostring_impl(v, opts)
+		-- selene: allow(shadowing)
+		local buf = buf
+		if #buf > 0 then buf = string.buffer.new() end
+		tostring_impl(v, buf, opts)
+		local result = buf:get()
+		if #buf > 4096 then
+			buf:free()
+		else
+			buf:reset()
+		end
 
 		if stringified[v] ~= 1 then -- recursive value
 			-- prepend type and address to output so
