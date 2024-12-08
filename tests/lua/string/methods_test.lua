@@ -282,6 +282,21 @@ t.test("trim string no whitespace", function()
 	assert(str:trim() == "foo")
 end)
 
+t.test("trim string with inner whitespace", function()
+	local str = "foo bar"
+	assert(str:trim() == "foo bar")
+end)
+
+t.test("trim string with start and inner whitespace", function()
+	local str = " 81 40 27"
+	assert(str:trim() == "81 40 27")
+end)
+
+t.test("trim string with inner and end whitespace", function()
+	local str = "81 40 27 "
+	assert(str:trim() == "81 40 27")
+end)
+
 t.test("trim on empty string", function()
 	local str = ""
 	assert(str:trim() == "")

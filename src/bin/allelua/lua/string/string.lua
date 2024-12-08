@@ -56,7 +56,7 @@ return function(Regex, extra)
 		return str:slice(0, from - 1)
 	end
 
-	local trim_regex = Regex.new("[^\\s]+(\\s[^\\s]+)?")
+	local trim_regex = Regex.new("[^\\s]+(\\s[^\\s]+)*")
 	M.trim = function(str)
 		local substr = str:find(trim_regex)
 		if substr then return substr end
