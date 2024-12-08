@@ -230,7 +230,7 @@ return function(Regex, extra)
 
 	return {
 		__index = function(str, k)
-			if rawtype(k) == "number" then return str:slice(k, k) end
+			if rawtype(k) == "number" and k > 0 then return str:slice(k, k) end
 			return M[k]
 		end,
 		__ipairs = function(str)
