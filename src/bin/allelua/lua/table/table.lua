@@ -51,10 +51,7 @@ return function(is_empty)
 	end
 
 	M.push = function(t, ...)
-		local args = { ... }
-		for _, v in ipairs(args) do
-			M.insert(t, v)
-		end
+		M.insert(t, ...)
 		return M.getn(t)
 	end
 
@@ -63,10 +60,7 @@ return function(is_empty)
 	end
 
 	M.unshift = function(t, ...)
-		local args = { ... }
-		for _, v in ipairs(args) do
-			M.insert(t, 1, v)
-		end
+		M.insert(t, 1, ...)
 		return M.getn(t)
 	end
 
