@@ -101,3 +101,37 @@ t.test(
 		assert(i == nil)
 	end
 )
+
+t.test("flatten flat sequence returns a copy", function()
+	local tab = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }
+	local flat = table.flat(tab)
+	assert(tab ~= flat)
+	t.assert_eq(tab, flat)
+end)
+
+t.test(
+	"flatten { { 1, 2, 3 }, { 4, 5, 6 } } returns { 1, 2, 3, 4, 5, 6 }",
+	function()
+		local tab = { { 1, 2, 3 }, { 4, 5, 6 } }
+		local flat = table.flat(tab)
+		t.assert_eq(flat, { 1, 2, 3, 4, 5, 6 })
+	end
+)
+
+t.test(
+	"flatten { { { 1, 2, 3 }, { 4, 5, 6 } } } returns { { 1, 2, 3 }, { 4, 5, 6 } }",
+	function()
+		local tab = { { { 1, 2, 3 }, { 4, 5, 6 } } }
+		local flat = table.flat(tab)
+		t.assert_eq(flat, { { 1, 2, 3 }, { 4, 5, 6 } })
+	end
+)
+
+t.test(
+	"flatten with no max depth of 2 { { { 1, 2, 3 }, { 4, 5, 6 } } } returns { 1, 2, 3, 4, 5, 6 }",
+	function()
+		local tab = { { { 1, 2, 3 }, { 4, 5, 6 } } }
+		local flat = table.flat(tab, 2)
+		t.assert_eq(flat, { 1, 2, 3, 4, 5, 6 })
+	end
+)

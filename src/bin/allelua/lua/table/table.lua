@@ -105,6 +105,21 @@ return function(is_empty)
 		return slice
 	end
 
+	M.flat = function(t, depth, result)
+		depth = depth or 1
+		result = result or {}
+
+		for _, v in ipairs(t) do
+			if depth > 0 and rawtype(v) == "table" then
+				result = M.flat(v, depth - 1, result)
+			else
+				M.insert(result, v)
+			end
+		end
+
+		return result
+	end
+
 	M.map = function(t, map_fn)
 		local result = {}
 		for k, v in pairs(t) do
