@@ -41,6 +41,9 @@ impl UserData for LuaArgs {
 
             Ok((iter, args, 0))
         };
+
+        methods.add_meta_method(MetaMethod::Len, |_, args, ()| Ok(args.0.len()));
+
         methods.add_meta_function(MetaMethod::IPairs, ipairs);
         methods.add_meta_function(MetaMethod::Pairs, ipairs);
 
