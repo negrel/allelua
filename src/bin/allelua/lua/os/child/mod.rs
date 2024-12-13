@@ -65,7 +65,7 @@ impl UserData for LuaChild {
         methods.add_meta_method(MetaMethod::ToString, |_, child, ()| {
             let address = child as *const _ as usize;
             Ok(format!(
-                "Child(id={}) 0x{address:x}",
+                "os.Child(id={}) 0x{address:x}",
                 child.id().unwrap_or(0)
             ))
         });
@@ -204,5 +204,16 @@ impl UserData for LuaExitStatus {
         fields.add_field("__type", "os.ExitStatus");
         fields.add_field_method_get("code", |_lua, status| Ok(status.0.code()));
         fields.add_field_method_get("success", |_lua, status| Ok(status.0.success()));
+    }
+
+    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_meta_method(MetaMethod::ToString, |_, status, ()| {
+            let address = status as *const _ as usize;
+            Ok(format!(
+                "os.ExitStatus(code={:?} success={}) 0x{address:x}",
+                status.0.code(),
+                status.0.success(),
+            ))
+        });
     }
 }
