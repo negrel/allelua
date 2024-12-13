@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use mlua::{Either, FromLua, Lua, MetaMethod, UserData, UserDataRef};
-use num_bigint::BigInt;
+use num::BigInt;
 
 use crate::include_lua;
 
@@ -12,9 +12,17 @@ pub fn load_math(lua: &Lua) -> mlua::Result<()> {
         lua.create_function(|_, n: mlua::Integer| Ok(LuaBigInt(BigInt::from(n))))?,
     )?;
 
+    let lcm = lua
+        .create_function(|_, (x, y): (mlua::Integer, mlua::Integer)| Ok(num::integer::lcm(x, y)))?;
+    let gcd = lua
+        .create_function(|_, (x, y): (mlua::Integer, mlua::Integer)| Ok(num::integer::gcd(x, y)))?;
+    let gcd_lcm = lua.create_function(|_, (x, y): (mlua::Integer, mlua::Integer)| {
+        Ok(num::integer::gcd_lcm(x, y))
+    })?;
+
     lua.load(include_lua!("./math.lua"))
         .eval::<mlua::Function>()?
-        .call(big_int)
+        .call((big_int, lcm, gcd, gcd_lcm))
 }
 
 #[derive(Debug, Clone)]
