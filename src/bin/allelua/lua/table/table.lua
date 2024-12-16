@@ -50,6 +50,13 @@ return function(is_empty)
 		return nil
 	end
 
+	M.linear_search = function(t, elem)
+		for i, e in ipairs(t) do
+			if e == elem then return i end
+		end
+		return nil
+	end
+
 	M.push = function(t, ...)
 		local args = { ... }
 		for _, v in ipairs(args) do
