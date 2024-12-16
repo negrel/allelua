@@ -48,7 +48,7 @@ local function tostring_impl()
 		local inner_opts = {
 			space = opts.space,
 			depth = opts.depth + 1,
-			__stringified = opts.__stringified,
+			_stringified = opts._stringified,
 		}
 
 		buf:put("{")
