@@ -1,15 +1,16 @@
 use std::{ffi::OsString, fmt::Display, ops::Deref, path::Path, process::exit};
 
-use error::load_error;
-use math::load_math;
+use container::load_container;
 use mlua::{chunk, AsChunk, FromLua, FromLuaMulti, IntoLua, Lua, LuaOptions, ObjectLike, StdLib};
 
 use self::{
-    coroutine::load_coroutine, globals::register_globals, io::load_io, json::load_json,
-    os::load_os, package::load_package, path::load_path, perf::load_perf, sh::load_sh,
-    string::load_string, sync::load_sync, table::load_table, test::load_test, time::load_time,
+    coroutine::load_coroutine, error::load_error, globals::register_globals, io::load_io,
+    json::load_json, math::load_math, os::load_os, package::load_package, path::load_path,
+    perf::load_perf, sh::load_sh, string::load_string, sync::load_sync, table::load_table,
+    term::load_term, test::load_test, time::load_time,
 };
 
+mod container;
 mod coroutine;
 mod error;
 mod globals;
@@ -24,6 +25,7 @@ mod sh;
 mod string;
 mod sync;
 mod table;
+mod term;
 mod test;
 mod time;
 
@@ -105,6 +107,8 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
     handle_result(load_time(&lua));
     handle_result(load_json(&lua));
     handle_result(load_perf(&lua));
+    handle_result(load_term(&lua));
+    handle_result(load_container(&lua));
     handle_result(register_globals(&lua));
     handle_result(load_test(lua.clone()));
 
