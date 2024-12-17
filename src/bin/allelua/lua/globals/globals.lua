@@ -317,6 +317,76 @@ end
 
 local function breakpoint_impl()
 	local debug = require("debug")
+	local table = require("table")
+	local term = require("term")
+
+	local eval_incomplete = {}
+
+	local eval = nil
+	eval = function(code)
+		if code:has_prefix("local ") then
+			code = code:slice(#"local " + 1)
+		elseif not code:has_prefix("return ") then
+			local ok, v = eval("return " .. code)
+			if ok then
+				return true, v
+			elseif v == eval_incomplete then
+				return false, eval_incomplete
+			end
+		end
+
+		local f, err = load(code, "repl", "t", getfenv())
+
+		if not f then
+			if err:contains("<eof>") then return false, eval_incomplete end
+			return false, err
+		end
+
+		return pcall(f)
+	end
+
+	function __repl()
+		print("exit using ctrl+d, ctrl+c or close()")
+		local multiline = {}
+		local interrupted = false
+		local closed = {}
+
+		_G.close = function()
+			error(closed)
+		end
+		while true do
+			local ok, line = pcall(term.read_line, #multiline == 0 and "> " or ">> ")
+			if not ok then
+				local err = line
+				if err.kind == "eof" then break end
+				if err.kind == "interrupted" then
+					if interrupted then break end
+					print("press ctrl+c again to exit")
+					interrupted = true
+				end
+			else
+				table.push(multiline, line)
+
+				-- selene: allow(shadowing)
+				local ok, value = eval(table.concat(multiline, "\n"))
+				if not ok then
+					local err = value
+					if err == closed then
+						break
+					elseif err ~= eval_incomplete then
+						print("Error: ", err)
+						multiline = {}
+					end
+				else
+					multiline = {}
+					interrupted = false
+					print(value)
+				end
+			end
+
+			_G.close = nil
+		end
+	end
 
 	return function()
 		local info = debug.getinfo(2, "fSul")
@@ -387,6 +457,7 @@ local function breakpoint_impl()
 		})
 
 		_G.debug = debug
+		print(traceback())
 		__repl()
 		_G.debug = nil
 

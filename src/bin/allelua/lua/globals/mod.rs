@@ -14,10 +14,6 @@ use super::{
     sync::{BufferedQueue, ChannelReceiver, LuaChannelReceiver, UnbufferedQueue},
 };
 
-mod repl;
-
-pub use repl::*;
-
 async fn select(lua: Lua, table: mlua::Table) -> mlua::Result<()> {
     let default_callback = table.get::<Option<mlua::Function>>("default")?;
     let has_default_branch = default_callback.is_some();
@@ -114,10 +110,6 @@ pub fn register_globals(lua: &Lua) -> mlua::Result<()> {
     let debug = globals.get::<mlua::Table>("debug")?;
 
     globals.set("traceback", debug.get::<mlua::Function>("traceback")?)?;
-    globals.set(
-        "__repl",
-        lua.create_async_function(|lua, ()| async move { repl(&lua).await })?,
-    )?;
 
     globals.set("select", lua.create_async_function(select)?)?;
 

@@ -14,7 +14,6 @@ pub fn repl() {
             let runtime = Runtime::new(&fpath, vec![]);
 
             println!("allelua {}", crate_version!());
-            println!("exit using ctrl+d, ctrl+c or close()");
             runtime
                 .exec::<()>(mlua::chunk! {
                     __repl()
