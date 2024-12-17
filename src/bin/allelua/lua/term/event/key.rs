@@ -66,33 +66,33 @@ impl UserData for LuaKeyCode {
 impl fmt::Display for LuaKeyCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str = match self.0 {
-            crossterm::event::KeyCode::Backspace => "Backspace",
-            crossterm::event::KeyCode::Enter => "Enter",
-            crossterm::event::KeyCode::Left => "Left",
-            crossterm::event::KeyCode::Right => "Right",
-            crossterm::event::KeyCode::Up => "Up",
-            crossterm::event::KeyCode::Down => "Down",
-            crossterm::event::KeyCode::Home => "Home",
-            crossterm::event::KeyCode::End => "End",
-            crossterm::event::KeyCode::PageUp => "PageUp",
-            crossterm::event::KeyCode::PageDown => "PageDown",
-            crossterm::event::KeyCode::Tab => "Tab",
-            crossterm::event::KeyCode::BackTab => "BackTab",
-            crossterm::event::KeyCode::Delete => "Delete",
-            crossterm::event::KeyCode::Insert => "Insert",
+            crossterm::event::KeyCode::Backspace => "backspace",
+            crossterm::event::KeyCode::Enter => "enter",
+            crossterm::event::KeyCode::Left => "left",
+            crossterm::event::KeyCode::Right => "right",
+            crossterm::event::KeyCode::Up => "up",
+            crossterm::event::KeyCode::Down => "down",
+            crossterm::event::KeyCode::Home => "home",
+            crossterm::event::KeyCode::End => "end",
+            crossterm::event::KeyCode::PageUp => "page_up",
+            crossterm::event::KeyCode::PageDown => "page_down",
+            crossterm::event::KeyCode::Tab => "tab",
+            crossterm::event::KeyCode::BackTab => "back_tab",
+            crossterm::event::KeyCode::Delete => "delete",
+            crossterm::event::KeyCode::Insert => "insert",
             crossterm::event::KeyCode::F(n) => return write!(f, "F{n}"),
             crossterm::event::KeyCode::Char(c) => return write!(f, "{c}"),
-            crossterm::event::KeyCode::Null => "Null",
-            crossterm::event::KeyCode::Esc => "Esc",
-            crossterm::event::KeyCode::CapsLock => "CapsLock",
-            crossterm::event::KeyCode::ScrollLock => "ScrollLock",
-            crossterm::event::KeyCode::NumLock => "NumLock",
-            crossterm::event::KeyCode::PrintScreen => "PrintScreen",
-            crossterm::event::KeyCode::Pause => "Pause",
-            crossterm::event::KeyCode::Menu => "Menu",
-            crossterm::event::KeyCode::KeypadBegin => "KeypadBegin",
+            crossterm::event::KeyCode::Null => "null",
+            crossterm::event::KeyCode::Esc => "esc",
+            crossterm::event::KeyCode::CapsLock => "caps_lock",
+            crossterm::event::KeyCode::ScrollLock => "scroll_lock",
+            crossterm::event::KeyCode::NumLock => "num_lock",
+            crossterm::event::KeyCode::PrintScreen => "print_screen",
+            crossterm::event::KeyCode::Pause => "pause",
+            crossterm::event::KeyCode::Menu => "menu",
+            crossterm::event::KeyCode::KeypadBegin => "keypad_begin",
             crossterm::event::KeyCode::Media(m) => return LuaMediaKeyCode::from(m).fmt(f),
-            crossterm::event::KeyCode::Modifier(_) => "Modifier",
+            crossterm::event::KeyCode::Modifier(_) => "modifier",
         };
 
         f.write_str(str)
@@ -215,8 +215,8 @@ impl fmt::Display for LuaKeyModifiers {
         for modifier in self.0.iter() {
             if !first {
                 f.write_str("+")?;
-                first = false;
             }
+            first = false;
             match modifier {
                 crossterm::event::KeyModifiers::SHIFT => f.write_str("shift")?,
                 crossterm::event::KeyModifiers::CONTROL => f.write_str("ctrl")?,
