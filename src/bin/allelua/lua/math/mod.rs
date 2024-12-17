@@ -8,9 +8,10 @@ use crate::include_lua;
 pub fn load_math(lua: &Lua) -> mlua::Result<()> {
     let big_int = lua.create_table()?;
     big_int.set(
-        "fromnumber",
+        "frominteger",
         lua.create_function(|_, n: mlua::Integer| Ok(LuaBigInt(BigInt::from(n))))?,
     )?;
+    big_int.set("fromnumber", lua.create_function(|_, n: LuaBigInt| Ok(n))?)?;
 
     let lcm = lua
         .create_function(|_, (x, y): (mlua::Integer, mlua::Integer)| Ok(num::integer::lcm(x, y)))?;
@@ -64,6 +65,9 @@ impl UserData for LuaBigInt {
         });
         methods.add_meta_method(MetaMethod::Mul, |_, bigint, rhs: Self| {
             Ok(Self(bigint.0.clone() * rhs.0))
+        });
+        methods.add_meta_method(MetaMethod::Mod, |_, bigint, rhs: Self| {
+            Ok(Self(bigint.0.clone() % rhs.0))
         });
 
         methods.add_meta_method(MetaMethod::Lt, |_, bigint, rhs: Self| Ok(bigint.0 < rhs.0));
