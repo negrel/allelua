@@ -5,10 +5,11 @@ use std::{
 
 use crossterm::{
     cursor::{
-        DisableBlinking, EnableBlinking, Hide, MoveDown, MoveLeft, MoveRight, MoveTo,
+        DisableBlinking, EnableBlinking, Hide, MoveDown, MoveLeft, MoveRight, MoveTo, MoveToColumn,
         MoveToNextLine, MoveToPreviousLine, MoveToRow, RestorePosition, SavePosition,
         SetCursorStyle, Show,
     },
+    event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
     style::{Attribute, Print, SetAttribute, SetBackgroundColor, SetForegroundColor},
     terminal::{
         BeginSynchronizedUpdate, Clear, ClearType, DisableLineWrap, EnableLineWrap,
@@ -17,7 +18,7 @@ use crossterm::{
     },
     QueueableCommand,
 };
-use mlua::{IntoLua, MetaMethod, UserData};
+use mlua::{FromLua, IntoLua, MetaMethod, UserData};
 
 use crate::lua::{io, os::LuaFile};
 
@@ -105,11 +106,11 @@ impl UserData for LuaQueue {
         });
 
         methods.add_async_method("scroll_down", |lua, q, n: Option<u16>| async move {
-            q.queue(move || ScrollDown(n.unwrap_or(0))).await?;
+            q.queue(move || ScrollDown(n.unwrap_or(1))).await?;
             q.clone().into_lua(&lua)
         });
         methods.add_async_method("scroll_up", |lua, q, n: Option<u16>| async move {
-            q.queue(move || ScrollUp(n.unwrap_or(0))).await?;
+            q.queue(move || ScrollUp(n.unwrap_or(1))).await?;
             q.clone().into_lua(&lua)
         });
 
@@ -150,7 +151,8 @@ impl UserData for LuaQueue {
         });
 
         methods.add_async_method("cursor_to", |lua, q, (col, row): (u16, u16)| async move {
-            q.queue(move || MoveTo(col, row)).await?;
+            q.queue(move || MoveTo(col.saturating_sub(1), row.saturating_sub(1)))
+                .await?;
             q.clone().into_lua(&lua)
         });
         methods.add_async_method("cursor_down", |lua, q, n: Option<u16>| async move {
@@ -178,7 +180,13 @@ impl UserData for LuaQueue {
             q.clone().into_lua(&lua)
         });
         methods.add_async_method("cursor_row", |lua, q, n: Option<u16>| async move {
-            q.queue(move || MoveToRow(n.unwrap_or(1))).await?;
+            q.queue(move || MoveToRow(n.unwrap_or(1).saturating_sub(1)))
+                .await?;
+            q.clone().into_lua(&lua)
+        });
+        methods.add_async_method("cursor_col", |lua, q, n: Option<u16>| async move {
+            q.queue(move || MoveToColumn(n.unwrap_or(1).saturating_sub(1)))
+                .await?;
             q.clone().into_lua(&lua)
         });
 
@@ -327,6 +335,20 @@ impl UserData for LuaQueue {
             q.clone().into_lua(&lua)
         });
 
+        methods.add_async_method(
+            "push_keyboard_enhancement",
+            |lua, q, flags: LuaKeyboardEnhancementFlags| async move {
+                q.queue(|| PushKeyboardEnhancementFlags(flags.into()))
+                    .await?;
+                q.clone().into_lua(&lua)
+            },
+        );
+
+        methods.add_async_method("pop_keyboard_enhancement", |lua, q, ()| async move {
+            q.queue(|| PopKeyboardEnhancementFlags).await?;
+            q.clone().into_lua(&lua)
+        });
+
         methods.add_async_method("write", |lua, q, args: mlua::MultiValue| async move {
             let tostring = lua.globals().get::<mlua::Function>("tostring")?;
             for arg in args {
@@ -345,5 +367,37 @@ impl UserData for LuaQueue {
             let address = q as *const _ as usize;
             Ok(format!("term.Queue() 0x{address:x}"))
         });
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LuaKeyboardEnhancementFlags(KeyboardEnhancementFlags);
+
+impl FromLua for LuaKeyboardEnhancementFlags {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
+        let table = mlua::Table::from_lua(value, lua)?;
+
+        let mut flags = KeyboardEnhancementFlags::empty();
+
+        if matches!(table.get("report_event_kind")?, Some(true)) {
+            flags.insert(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
+        }
+        if matches!(table.get("disambiguate_escape_codes")?, Some(true)) {
+            flags.insert(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        }
+        if matches!(table.get("report_alternate_keys")?, Some(true)) {
+            flags.insert(KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS)
+        }
+        if matches!(table.get("report_all_keys_as_escape_codes")?, Some(true)) {
+            flags.insert(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES)
+        }
+
+        Ok(Self(flags))
+    }
+}
+
+impl From<LuaKeyboardEnhancementFlags> for KeyboardEnhancementFlags {
+    fn from(val: LuaKeyboardEnhancementFlags) -> Self {
+        val.0
     }
 }
