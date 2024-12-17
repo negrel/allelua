@@ -64,7 +64,7 @@ impl From<mlua::String> for LuaError {
     fn from(value: mlua::String) -> Self {
         UserError {
             type_name: "error".to_string(),
-            kind: "Uncategorized".to_string(),
+            kind: "uncategorized".to_string(),
             message: value.to_string_lossy(),
             cause: None,
         }
@@ -132,7 +132,7 @@ impl LuaError {
 
             if err.type_name() == target.type_name() && err.kind() == target.kind() {
                 // Handle uncategorized error.
-                if err.kind() == "Uncategorized" && err.to_string() == target.to_string() {
+                if err.kind() == "uncategorized" && err.to_string() == target.to_string() {
                     return true;
                 }
             }
@@ -184,7 +184,7 @@ pub fn load_error(lua: &Lua) -> mlua::Result<mlua::Table> {
                             .transpose()?
                             .flatten()
                             .map(|t| t.to_string_lossy())
-                            .unwrap_or_else(|| "Uncategorized".to_owned());
+                            .unwrap_or_else(|| "uncategorized".to_owned());
 
                         let cause = options
                             .as_ref()

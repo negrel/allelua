@@ -14,7 +14,7 @@ t.test("err:is(cause) returns true", function()
 end)
 
 t.test(
-	"error.is of two error with Uncategorized kind returns true when error message is the same",
+	'error.is of two error with "uncategorized" kind returns true when error message is the same',
 	function()
 		local _, foo1 = pcall(error, "foo")
 		local _, foo2 = pcall(error, "foo")
@@ -24,7 +24,7 @@ t.test(
 )
 
 t.test(
-	"error.is of two error with Uncategorized kind returns false when error message is different",
+	'error.is of two error with "uncategorized" kind returns false when error message is different',
 	function()
 		local _, foo = pcall(error, "foo")
 		local _, bar = pcall(error, "bar")
