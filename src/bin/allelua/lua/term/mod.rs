@@ -6,8 +6,13 @@ mod event;
 
 use cmds::*;
 use event::*;
+use rustyline::DefaultEditor;
 
-use super::{io, os::LuaFile};
+use super::{
+    error::{AlleluaError, LuaError},
+    io,
+    os::LuaFile,
+};
 
 pub fn load_term(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
@@ -80,8 +85,7 @@ pub fn load_term(lua: &Lua) -> mlua::Result<mlua::Table> {
 
             // crossterm::cursor
             {
-                let cursor = lua.create_table()?;
-                cursor.set(
+                term.set(
                     "position",
                     lua.create_async_function(|_lua, ()| async move {
                         tokio::task::spawn_blocking(|| {
@@ -89,9 +93,9 @@ pub fn load_term(lua: &Lua) -> mlua::Result<mlua::Table> {
                         })
                         .await
                         .map_err(mlua::Error::external)?
+                        .map(|(col, row)| (col + 1, row + 1))
                     })?,
                 )?;
-                term.set("cursor", cursor)?;
             }
 
             // crossterm::event
@@ -112,7 +116,62 @@ pub fn load_term(lua: &Lua) -> mlua::Result<mlua::Table> {
             )?;
             term.set("Queue", queue)?;
 
+            term.set(
+                "read_line",
+                lua.create_function(|_lua, prompt: Option<mlua::String>| {
+                    let cfg = rustyline::Config::builder().build();
+                    let mut ed = DefaultEditor::with_config(cfg)
+                        .map_err(LuaReadlineError::from)
+                        .map_err(LuaError::from)?;
+
+                    if let Some(prompt) = prompt {
+                        Ok(ed
+                            .readline(prompt.to_str()?.as_ref())
+                            .map_err(LuaReadlineError::from)
+                            .map_err(LuaError::from)?)
+                    } else {
+                        Ok(ed
+                            .readline("> ")
+                            .map_err(LuaReadlineError::from)
+                            .map_err(LuaError::from)?)
+                    }
+                })?,
+            )?;
+
             Ok(term)
         })?,
     )
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("term.ReadLineError(kind={})", self.kind())]
+pub struct LuaReadlineError(rustyline::error::ReadlineError);
+
+impl From<rustyline::error::ReadlineError> for LuaReadlineError {
+    fn from(value: rustyline::error::ReadlineError) -> Self {
+        Self(value)
+    }
+}
+
+impl From<LuaReadlineError> for mlua::Error {
+    fn from(val: LuaReadlineError) -> Self {
+        LuaError::from(val).into()
+    }
+}
+
+impl AlleluaError for LuaReadlineError {
+    fn type_name(&self) -> &str {
+        "term.ReadlineError"
+    }
+
+    fn kind(&self) -> &str {
+        match self.0 {
+            rustyline::error::ReadlineError::Io(_) => "io",
+            rustyline::error::ReadlineError::Eof => "eof",
+            rustyline::error::ReadlineError::Interrupted => "interrupted",
+            rustyline::error::ReadlineError::WindowResized => "window_resized",
+            rustyline::error::ReadlineError::Errno(_) => "uncategorized",
+            _ => "uncategorized",
+        }
+    }
 }
