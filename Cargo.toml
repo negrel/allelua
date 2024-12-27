@@ -22,6 +22,7 @@ clap = { version = "4", features = ["cargo", "derive"] }
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
+dirs = "5.0.1"
 full_moon = { version = "1.1.2", default-features = false, features = ["lua52"] }
 futures-util = "0.3.31"
 # console-subscriber = { version = "0.4.0" }

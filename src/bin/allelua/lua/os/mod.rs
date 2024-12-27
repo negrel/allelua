@@ -66,6 +66,94 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
             )?;
 
             os.set(
+                "home_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::home_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
+                "config_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::config_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
+                "config_local_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::config_local_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
+                "executable_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::executable_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
+                "data_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::data_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
+                "data_local_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::data_local_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
+                "desktop_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::desktop_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
+                "state_dir",
+                lua.create_function(|lua, ()| {
+                    if let Some(dir) = dirs::state_dir() {
+                        Ok(Some(lua.create_string(dir.as_os_str().as_bytes())?))
+                    } else {
+                        Ok(None)
+                    }
+                })?,
+            )?;
+
+            os.set(
                 "hard_link",
                 lua.create_async_function(
                     |_lua, (src_str, dst_str): (mlua::String, mlua::String)| async move {
