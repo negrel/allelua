@@ -34,6 +34,7 @@ end
 local function tostring_impl()
 	local string = require("string")
 	local table = require("table")
+	local path = require("path")
 	rawtostring = tostring
 	local rawtostring = rawtostring
 
@@ -164,7 +165,9 @@ local function clone_impl()
 		if mt then
 			if opts.metatable.skip then
 				mt_clone = nil
-			elseif not opts.metatable.shallow then
+			elseif
+				not opts.metatable.shallow and mt.__name == "LuaUserDataMetadataTable"
+			then
 				mt_clone = clone(mt, opts.metatable)
 			end
 		end
@@ -319,15 +322,20 @@ local function breakpoint_impl()
 	local debug = require("debug")
 	local table = require("table")
 	local term = require("term")
+	local path = require("path")
+	local os = require("os")
 
 	local eval_incomplete = {}
 
 	local eval = nil
-	eval = function(code)
+	-- Eval Lua code read from the REPL in the given environment.
+	eval = function(code, env)
 		if code:has_prefix("local ") then
+			-- REPL doesn't support local variables.
 			code = code:slice(#"local " + 1)
-		elseif not code:has_prefix("return ") then
-			local ok, v = eval("return " .. code)
+		elseif not code:has_prefix("return ") and not code:contains("=") then
+			-- Try to prefix "return " so loaded code returns its result.
+			local ok, v = eval("return " .. code, env)
 			if ok then
 				return true, v
 			elseif v == eval_incomplete then
@@ -335,27 +343,47 @@ local function breakpoint_impl()
 			end
 		end
 
-		local f, err = load(code, "repl", "t", getfenv())
+		-- Load Lua code.
+		local f, err = load(code, "repl", "t", env)
 
+		-- Failed to load Lua code.
 		if not f then
-			if err:contains("<eof>") then return false, eval_incomplete end
+			if err:contains("<eof>") then
+				-- Line is incomplete.
+				return false, eval_incomplete
+			end
 			return false, err
 		end
 
 		return pcall(f)
 	end
 
-	function __repl()
+	function __repl(env)
 		print("exit using ctrl+d, ctrl+c or close()")
 		local multiline = {}
 		local interrupted = false
 		local closed = {}
 
-		_G.close = function()
-			error(closed)
-		end
+		-- Add close function to stop REPL.
+		local eval_env = setmetatable({
+			close = function()
+				error(closed)
+			end,
+		}, {
+			__index = env,
+			__newindex = env,
+		})
+
+		-- Create readline editor.
+		local ed = term.ReadLine.new()
+		local history_path =
+			path.join(os.data_local_dir() or os.temp_dir(), "allelua", "history")
+		os.create_dir_all(path.parent(history_path))
+		pcall(ed.load_history, ed, history_path)
+
 		while true do
-			local ok, line = pcall(term.read_line, #multiline == 0 and "> " or ">> ")
+			local ok, line =
+				pcall(ed.read_line, ed, #multiline == 0 and "> " or ">> ")
 			if not ok then
 				local err = line
 				if err.kind == "eof" then break end
@@ -368,7 +396,7 @@ local function breakpoint_impl()
 				table.push(multiline, line)
 
 				-- selene: allow(shadowing)
-				local ok, value = eval(table.concat(multiline, "\n"))
+				local ok, value = eval(table.concat(multiline, "\n"), eval_env)
 				if not ok then
 					local err = value
 					if err == closed then
@@ -377,26 +405,32 @@ local function breakpoint_impl()
 						print("Error: ", err)
 						multiline = {}
 					end
+					interrupted = false
 				else
 					multiline = {}
 					interrupted = false
 					print(value)
 				end
 			end
-
-			_G.close = nil
 		end
+
+		-- Save history.
+		ed:save_history(history_path)
 	end
 
 	return function()
 		local info = debug.getinfo(2, "fSul")
 		if not info then return end
 		print(
-			"breakpoint reached at",
-			info.short_src .. ":" .. tostring(info.currentline)
+			traceback(
+				"breakpoint reached at "
+					.. info.short_src
+					.. ":"
+					.. tostring(info.currentline),
+				2
+			)
 		)
 
-		debug.variables = {}
 		local variables = {}
 		for i = 2, 1024 do
 			if i > 2 and not debug.getinfo(i, "f") then break end
@@ -405,7 +439,7 @@ local function breakpoint_impl()
 			while true do
 				local name, value = debug.getlocal(i, j)
 				if not name then break end
-				variables[name] = value
+				if not variables[name] then variables[name] = value end
 				j = j + 1
 			end
 
@@ -418,9 +452,10 @@ local function breakpoint_impl()
 			if not variables[name] then variables[name] = value end
 		end
 
-		setmetatable(debug.variables, {
+		local env = getfenv()
+		local repl_env = setmetatable({}, {
 			__index = function(_, k)
-				return variables[k]
+				return variables[k] or env[k]
 			end,
 			__newindex = function(_, k, v)
 				for i = 4, 1024 do
@@ -457,8 +492,7 @@ local function breakpoint_impl()
 		})
 
 		_G.debug = debug
-		print(traceback())
-		__repl()
+		__repl(repl_env)
 		_G.debug = nil
 
 		debug.variables = nil
