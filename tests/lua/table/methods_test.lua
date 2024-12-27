@@ -135,3 +135,49 @@ t.test(
 		t.assert_eq(flat, { 1, 2, 3, 4, 5, 6 })
 	end
 )
+
+t.test("delete from 1 to 1 in { 1, 2, 3 } produces { 2, 3 }", function()
+	local tab = { 1, 2, 3 }
+	local removed = table.delete(tab, 1)
+	t.assert_eq(tab, { 2, 3 })
+	t.assert_eq(removed, { 1 })
+end)
+
+t.test("delete from 1 to 2 in { 1, 2, 3 } produces { 3 }", function()
+	local tab = { 1, 2, 3 }
+	local removed = table.delete(tab, 1, 2)
+	t.assert_eq(tab, { 3 })
+	t.assert_eq(removed, { 1, 2 })
+end)
+
+t.test("delete from 1 to 3 in { 1, 2, 3 } produces { }", function()
+	local tab = { 1, 2, 3 }
+	local removed = table.delete(tab, 1, 3)
+	t.assert_eq(tab, {})
+	t.assert_eq(removed, { 1, 2, 3 })
+end)
+
+t.test("delete from 1 to -1 in { 1, 2, 3 } produces { }", function()
+	local tab = { 1, 2, 3 }
+	local removed = table.delete(tab, 1, -1)
+	t.assert_eq(tab, {})
+	t.assert_eq(removed, { 1, 2, 3 })
+end)
+
+t.test("dedup { 1, 2, 1 } produces { 1, 2, 1 }", function()
+	local tab = { 1, 2, 1 }
+	table.dedup(tab)
+	t.assert_eq(tab, { 1, 2, 1 })
+end)
+
+t.test("dedup { 1, 1, 1 } produces { 1 }", function()
+	local tab = { 1, 1, 1 }
+	table.dedup(tab)
+	t.assert_eq(tab, { 1 })
+end)
+
+t.test("dedup { 1, 1, 2, 1 } produces { 1, 2, 1 }", function()
+	local tab = { 1, 1, 2, 1 }
+	table.dedup(tab)
+	t.assert_eq(tab, { 1, 2, 1 })
+end)

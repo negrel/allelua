@@ -3,6 +3,20 @@ return function(is_empty)
 	local math = require("math")
 	local M = table
 
+	local function range_index(t, i, j)
+		local len = M.getn(t)
+		i = i or 1
+		j = j or len
+
+		if i < 0 then i = len + 1 + i end
+		if j < 0 then j = len + 1 + j end
+
+		if i <= 0 then i = 1 end
+		if j > len then j = len end
+
+		return i, j, len
+	end
+
 	-- LuaJIT extensions.
 	M.new = require("table.new")
 	M.clear = require("table.clear")
@@ -15,6 +29,26 @@ return function(is_empty)
 	local sort = M.sort
 	M.sort = function(t, comp)
 		sort(t, comp)
+		return t
+	end
+
+	M.dedup = function(t)
+		local n = 0
+		local prev = nil
+		local len = M.getn(t)
+
+		for i = len, 1, -1 do
+			if t[i] ~= prev then
+				if n >= 2 then M.delete(t, i + 1, i + n - 1) end
+				prev = t[i]
+				n = 1
+			else
+				n = n + 1
+			end
+		end
+
+		if n >= 2 then M.delete(t, 1, n - 1) end
+
 		return t
 	end
 
@@ -57,6 +91,23 @@ return function(is_empty)
 		return nil
 	end
 
+	M.delete = function(t, i, j)
+		local len = nil
+		i, j, len = range_index(t, i, j or i)
+
+		if i == j then
+			local v = t[i]
+			M.remove(t, i)
+			return { v }
+		end
+		local removed = {}
+
+		M.move(t, i, j, 1, removed)
+		M.move(t, j + 1, len, i)
+		M.move({}, 1, #removed, (len + 1) - #removed, t)
+		return removed
+	end
+
 	M.push = function(t, ...)
 		local args = { ... }
 		for _, v in ipairs(args) do
@@ -93,16 +144,7 @@ return function(is_empty)
 	end
 
 	M.slice = function(t, i, j)
-		local len = M.getn(t)
-		i = i or 1
-		j = j or len
-
-		if i < 0 then i = len + 1 + i end
-		if j < 0 then j = len + 1 + j end
-
-		if i <= 0 then i = 1 end
-		if j > len then j = len end
-
+		i, j = range_index(t, i, j)
 		if j < i then return {} end
 		local slice = M.new(j + 1 - i, 0)
 		for index = i, j do
@@ -117,7 +159,7 @@ return function(is_empty)
 		result = result or {}
 
 		for _, v in ipairs(t) do
-			if depth > 0 and rawtype(v) == "table" then
+			if depth > 0 and type(v) == "table" then
 				result = M.flat(v, depth - 1, result)
 			else
 				M.insert(result, v)
