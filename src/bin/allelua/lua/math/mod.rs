@@ -1,7 +1,7 @@
-use std::ops::Deref;
+use std::ops::{BitAnd, Deref};
 
 use mlua::{Either, FromLua, Lua, MetaMethod, UserData, UserDataRef};
-use num::BigInt;
+use num::{BigInt, ToPrimitive};
 
 use crate::include_lua;
 
@@ -12,6 +12,7 @@ pub fn load_math(lua: &Lua) -> mlua::Result<()> {
         lua.create_function(|_, n: mlua::Integer| Ok(LuaBigInt(BigInt::from(n))))?,
     )?;
     big_int.set("fromnumber", lua.create_function(|_, n: LuaBigInt| Ok(n))?)?;
+    big_int.set("zero", LuaBigInt(BigInt::ZERO))?;
 
     let lcm = lua
         .create_function(|_, (x, y): (mlua::Integer, mlua::Integer)| Ok(num::integer::lcm(x, y)))?;
@@ -53,6 +54,19 @@ impl UserData for LuaBigInt {
     }
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("tonumber", |_, bigint, ()| Ok(bigint.to_isize()));
+
+        methods.add_method("band", |_, bigint, n: usize| {
+            Ok(Self(bigint.0.clone().bitand(BigInt::from(n))))
+        });
+
+        methods.add_method("rshift", |_, bigint, n: usize| {
+            Ok(Self(bigint.0.clone() >> n))
+        });
+        methods.add_method("lshift", |_, bigint, n: usize| {
+            Ok(Self(bigint.0.clone() << n))
+        });
+
         methods.add_meta_method(MetaMethod::Unm, |_, bigint, ()| Ok(Self(-bigint.0.clone())));
         methods.add_meta_method(MetaMethod::Add, |_, bigint, rhs: Self| {
             Ok(Self(bigint.0.clone() + rhs.0))
