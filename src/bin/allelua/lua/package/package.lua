@@ -66,7 +66,7 @@ return function(main_path, path_canonicalize, list_files, caller_source)
 					if rawget(t, k) ~= nil then return rawget(t, k) end
 
 					-- Prevent package to modify global environment.
-					if k == "_G" then return nil end
+					if k == "_G" then return t end
 
 					return _G[k]
 				end,
