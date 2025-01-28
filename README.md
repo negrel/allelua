@@ -21,6 +21,7 @@ runtimes like Deno / NodeJS:
 * Easy concurrency:
     * No async/await
     * Write concurrent code like single threaded code using structured concurrency
+* Directory based packages
 * Secure by default (**planned**)
 * Batteries included:
     * Linter
@@ -59,15 +60,16 @@ coroutine.nursery(function(go)
 end)
 ```
 
-starts a new goroutine running
+starts a new coroutine running
 
 ```lua
 f(x, y, z)
 ```
 
-A goroutine is a lightweight thread managed by the `allelua` runtime. But unlike,
+A coroutine is a lightweight thread managed by the `allelua` runtime. But unlike,
 Go's goroutine, they can only be spawned in `coroutine.nursery()` function. Also
-when `coroutine.nursery()` returns, all goroutines have finished to execute.
+when `coroutine.nursery()` returns, all goroutines have finished to execute. This
+prevents leaking routine.
 
 Here is an example proving that goroutines runs concurrently:
 
@@ -101,9 +103,38 @@ goroutine 2 done 2.001s
 goroutine 3 done 3.001s
 ```
 
+### Packages
+
+`allelua` supports directory based packages. If you have the following file
+structure:
+
+```sh
+$ tree -d .
+.
+└── src/
+    ├── mypkg/
+    │   ├── foo.lua
+    │   └── bar.lua
+    └── main.lua
+```
+
+You can import `mypkg` package from main.lua:
+
+```lua
+-- import relative to current file
+import "./mypkg"
+-- import relative to current working directory
+import "@/src/mypkg"
+
+-- Print mypkg functions / variables.
+print(mypkg)
+```
+
+Packages are entirely isolated and can't alter global environment (`_G`).
+
 ### Shell scripts
 
-Allelua is legacy-free and breaks compatibility with standard Lua. We provide our
+`allelua` is legacy-free and breaks compatibility with standard Lua. We provide our
 own standard library with handy modules such as `sh` that provides a DSL for
 shell scripting:
 
