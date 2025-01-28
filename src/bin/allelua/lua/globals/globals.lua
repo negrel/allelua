@@ -499,6 +499,23 @@ local function breakpoint_impl()
 	end
 end
 
+function import_impl()
+	local debug = require("debug")
+	local path = require("path")
+
+	return function(pkgpath)
+		if pkgpath:has_prefix("./") then
+			local caller = debug.getinfo(2).short_src
+			pkgpath = path.join(path.parent(caller), pkgpath)
+		end
+		local pkgname = path.file_name(pkgpath)
+
+		local pkg = require(pkgpath)
+		_G[pkgname] = pkg
+		return pkg
+	end
+end
+
 return function(M)
 	M.pcall = pcall_impl()
 	M.xpcall = xpcall_impl()
@@ -507,4 +524,5 @@ return function(M)
 	M.switch = switch_impl
 	M.freeze = freeze_impl()
 	M.breakpoint = breakpoint_impl()
+	M.import = import_impl()
 end
