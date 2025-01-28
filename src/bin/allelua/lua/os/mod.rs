@@ -1,10 +1,12 @@
 use std::{env, ffi::OsString, os::unix::ffi::OsStrExt, process::exit};
 
-use mlua::Lua;
+use dir::LuaReadDir;
+use mlua::{IntoLua, Lua};
 use tokio::fs;
 
 mod args;
 mod child;
+mod dir;
 mod env_vars;
 mod file;
 mod pipe;
@@ -41,6 +43,17 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
                 })?,
             )?;
             os.set("File", file_constructors)?;
+
+            let dir = lua.create_table()?;
+            dir.set(
+                "iterator",
+                lua.create_async_function(|lua, path: mlua::String| async move {
+                    lua_string_as_path!(path = path);
+                    let rd = fs::read_dir(path).await?;
+                    Ok(LuaReadDir::from(rd).into_lua(&lua))
+                })?,
+            )?;
+            os.set("Dir", dir)?;
 
             os.set(
                 "exit",

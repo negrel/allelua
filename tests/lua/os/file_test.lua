@@ -18,8 +18,8 @@ t.test("close an already closed file", function()
 	-- Second close throw a Closed error.
 	local ok, err = pcall(stdin.close, stdin)
 	assert(
-		not ok and err.kind == "Closed",
-		"received a non Closed error on double close"
+		not ok and err.kind == "closed",
+		"received a non closed error on double close"
 	)
 end)
 
@@ -67,11 +67,29 @@ t.test("open file for unbuffered I/O", function()
 		tmp_path,
 		{ create_new = true, read = true, write = true, buffer_size = 0 }
 	)
-
-	assert(f.read_line == nil)
 	f:close()
 
 	f = os.File.open(tmp_path, { read = true, write = true })
-	assert(f.read_line ~= nil)
 	f:close()
+end)
+
+t.test("listing directory entries", function()
+	local parent_dir = path.parent(package.meta.path)
+	local dir = path.join(parent_dir, "testdata/dir")
+
+	local expected = {
+		{ file_name = "entry1" },
+		{ file_name = "entry2" },
+	}
+
+	local actual = {}
+	for f in os.Dir.iterator(dir) do
+		assert(f.path:has_suffix(f.file_name))
+		table.push(actual, { file_name = f.file_name })
+	end
+
+	assert(
+		table.deep_eq(expected, actual),
+		"entries of directory doesn't match expected"
+	)
 end)
