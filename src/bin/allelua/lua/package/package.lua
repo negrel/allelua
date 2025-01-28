@@ -1,7 +1,8 @@
-return function(main_path, path_canonicalize, caller_source)
+return function(main_path, resolve_path, list_files, caller_source)
 	local package = require("package")
 	local os = require("os")
 	local path = require("path")
+	local table = require("table")
 	local string = require("string")
 
 	local M = package
@@ -26,32 +27,71 @@ return function(main_path, path_canonicalize, caller_source)
 	package.path = ""
 	package.cpath = ""
 
-	local file_loaded = {} -- file_searcher loaded cache table.
-	local function file_searcher(modname)
-		local fpath = modname
-		if string.has_prefix(fpath, "@/") then -- relative to current working dir.
-			fpath = path.join(os.current_dir(), string.slice(fpath, 3))
-		elseif path.is_relative(fpath) then -- relative to current file.
-			fpath = path.join(path.parent(caller_source(2)), fpath)
+	-- Table of loaded files to avoid loading a file multiple times.
+	local file_loaded = {}
+	-- Table of loaded packages to avoid loading a package multiple times.
+	local pkg_loaded = {}
+
+	-- Load ith file in files using env.
+	function load_file(files, i, env)
+		local fpath = files[i]
+
+		-- Prevent multiple loading of file.
+		if file_loaded[fpath] then return env end
+		file_loaded[fpath] = true
+
+		-- Create package environment.
+		if not env then
+			env = {}
+			setmetatable(env, {
+				__index = function(t, k)
+					-- key not found in env, it may be global or it may be part of another
+					-- file. Let's try to load other files first.
+					local j = i + 1
+					while rawget(t, k) == nil and j <= #files do
+						load_file(files, j, env)
+						j = j + 1
+					end
+					if rawget(t, k) ~= nil then return rawget(t, k) end
+
+					return _G[k]
+				end,
+			})
 		end
 
-		local ok, fpath = pcall(path_canonicalize, fpath)
+		local chunk = loadfile(fpath, nil, env)
+		if not chunk then error(("failed to load file '%s'"):format(fpath)) end
+		chunk()
+
+		return env
+	end
+
+	local function file_searcher(pkgname)
+		local pkgpath = resolve_path(pkgname)
+
+		local ok, files = pcall(list_files, pkgpath)
 		if not ok then
-			local err = fpath
-			if type(err) == "io.Error" and err.kind == "NotFound" then
-				error("failed to find " .. modname, { cause = err })
+			local err = files
+			if type(err) == "io.Error" and err.kind == "not_found" then
+				error("failed to find " .. pkgname, { cause = err })
 			else
 				error(err)
 			end
 		end
 
 		return function()
-			if file_loaded[fpath] then return file_loaded[fpath] end
-			local result = dofile(fpath)
-			file_loaded[fpath] = result
-			return freeze(result)
+			if pkg_loaded[pkgpath] then return pkg_loaded[pkgpath] end
+
+			local env = nil
+			for i in ipairs(files) do
+				env = load_file(files, i, env)
+			end
+
+			pkg_loaded[pkgpath] = freeze(env)
+
+			return pkg_loaded[pkgpath]
 		end,
-			fpath
+			pkgpath
 	end
 
 	package.loaders = {
