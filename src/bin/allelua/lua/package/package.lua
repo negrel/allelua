@@ -54,6 +54,9 @@ return function(main_path, resolve_path, list_files, caller_source)
 					end
 					if rawget(t, k) ~= nil then return rawget(t, k) end
 
+					-- Prevent package to modify global environment.
+					if k == "_G" then return nil end
+
 					return _G[k]
 				end,
 			})
