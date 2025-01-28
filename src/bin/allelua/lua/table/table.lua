@@ -227,4 +227,26 @@ return function(is_empty)
 
 		return true
 	end
+
+	M.icollect = function(iter, state, initial)
+		local t = {}
+
+		for i, v in iter, state, initial do
+			if i and not v then v = i end
+			table.push(t, v)
+		end
+
+		return t
+	end
+
+	M.collect = function(iter, state, initial)
+		local t = {}
+
+		for k, v in iter, state, initial do
+			if k and not v then v = k end
+			t[k] = v
+		end
+
+		return t
+	end
 end

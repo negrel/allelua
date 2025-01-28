@@ -181,3 +181,75 @@ t.test("dedup { 1, 1, 2, 1 } produces { 1, 2, 1 }", function()
 	table.dedup(tab)
 	t.assert_eq(tab, { 1, 2, 1 })
 end)
+
+t.test("collect iterator thar returns 1 value", function()
+	local range = function(from, to)
+		local i = from
+		return function()
+			if i <= to then
+				local v = i
+				i = i + 1
+				return v
+			end
+		end
+	end
+
+	local tab = table.collect(range(1, 3))
+	assert(tab[1] == 1)
+	assert(tab[2] == 2)
+	assert(tab[3] == 3)
+end)
+
+t.test("collect iterator that returns 2 values", function()
+	local range = function(from, to)
+		local i = from
+		return function()
+			if i <= to then
+				local v = i
+				i = i + 1
+				return v, i
+			end
+		end
+	end
+
+	local tab = table.collect(range(3, 6))
+	assert(tab[3] == 4)
+	assert(tab[4] == 5)
+	assert(tab[5] == 6)
+end)
+
+t.test("icollect iterator that returns 1 value", function()
+	local range = function(from, to)
+		local i = from
+		return function()
+			if i <= to then
+				local v = i
+				i = i + 1
+				return v
+			end
+		end
+	end
+
+	local tab = table.icollect(range(1, 3))
+	assert(tab[1] == 1)
+	assert(tab[2] == 2)
+	assert(tab[3] == 3)
+end)
+
+t.test("icollect iterator that returns 2 value", function()
+	local range = function(from, to)
+		local i = from
+		return function()
+			if i <= to then
+				local v = i
+				i = i + 1
+				return v, i
+			end
+		end
+	end
+
+	local tab = table.icollect(range(2, 4))
+	assert(tab[1] == 3)
+	assert(tab[2] == 4)
+	assert(tab[3] == 5)
+end)
