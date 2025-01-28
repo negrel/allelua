@@ -105,14 +105,14 @@ where
 
         methods.add_async_method("metadata", |_lua, file, ()| async move {
             let file = file.as_ref().get().await?;
-            let metadata = file.metadata().await?;
+            let metadata = file.metadata().await.map_err(io::LuaError::from)?;
 
             Ok(LuaMetadata(metadata))
         });
 
         methods.add_async_method("sync", |_lua, file, ()| async move {
             let file = file.as_ref().get().await?;
-            file.sync_all().await?;
+            file.sync_all().await.map_err(io::LuaError::from)?;
 
             Ok(())
         });
