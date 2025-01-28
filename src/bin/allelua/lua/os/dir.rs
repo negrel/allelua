@@ -6,7 +6,7 @@ use tokio::{
     sync::Mutex,
 };
 
-use crate::lua::path::LuaMetadata;
+use crate::lua::{io, path::LuaMetadata};
 
 #[derive(Debug)]
 pub struct LuaReadDir(Mutex<ReadDir>);
@@ -34,7 +34,7 @@ impl UserData for LuaReadDir {
         methods.add_async_meta_method(MetaMethod::Call, |lua, d, ()| async move {
             let mut rd = d.lock().await;
 
-            if let Some(entry) = rd.next_entry().await? {
+            if let Some(entry) = rd.next_entry().await.map_err(io::LuaError::from)? {
                 Ok(LuaDirEntry::from(entry).into_lua(&lua)?)
             } else {
                 Ok(mlua::Value::Nil)
@@ -76,7 +76,7 @@ impl UserData for LuaDirEntry {
 
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         methods.add_async_method("metadata", |_, e, ()| async move {
-            Ok(LuaMetadata(e.metadata().await?))
+            Ok(LuaMetadata(e.metadata().await.map_err(io::LuaError::from)?))
         });
 
         methods.add_meta_method(MetaMethod::ToString, |_, e, ()| {
