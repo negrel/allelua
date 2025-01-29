@@ -516,6 +516,14 @@ function import_impl()
 	end
 end
 
+function printf_impl()
+	local os = require("os")
+
+	return function(str, ...)
+		os.stdout:write_string(str:format(...))
+	end
+end
+
 return function(M)
 	M.pcall = pcall_impl()
 	M.xpcall = xpcall_impl()
@@ -525,4 +533,5 @@ return function(M)
 	M.freeze = freeze_impl()
 	M.breakpoint = breakpoint_impl()
 	M.import = import_impl()
+	M.printf = printf_impl()
 end
