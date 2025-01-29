@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 
 mod cmds;
 mod lua;
+// mod luadoc;
 
 /// Lua distribution blessed by programming gods.
 #[derive(Parser, Debug)]
@@ -60,6 +61,10 @@ enum Command {
 
     /// Read Eval Print Loop.
     Repl,
+
+    /// Worker process.
+    #[command(hide = true)]
+    Worker { path: PathBuf },
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -74,6 +79,7 @@ pub fn main() -> anyhow::Result<()> {
         Command::Lsp => cmds::lsp()?,
         Command::Lint { path } => cmds::lint(path)?,
         Command::Repl => cmds::repl(),
+        Command::Worker { path } => cmds::worker(path),
     }
 
     Ok(())

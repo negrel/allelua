@@ -28,9 +28,17 @@ pub fn load_os(lua: &Lua, args: Vec<OsString>) -> mlua::Result<mlua::Table> {
             let os = lua.create_table()?;
             lua.globals().set("os", os.clone())?;
 
-            os.set("stdin", LuaFile::stdin()?)?;
             os.set("stdout", LuaFile::stdout()?)?;
-            os.set("stderr", LuaFile::stderr()?)?;
+
+            // Main process communicate with workers using stdin/stderr. When we're
+            // in a worker, we redirect stderr to stdout and we close stdin.
+            if let Ok(true) = lua.named_registry_value("worker") {
+                os.set("stdin", LuaFile::stdin(true)?)?;
+                os.set("stderr", LuaFile::stdout()?)?; // redirect to stdout
+            } else {
+                os.set("stdin", LuaFile::stdin(false)?)?;
+                os.set("stderr", LuaFile::stderr()?)?;
+            }
 
             let file_constructors = lua.create_table()?;
             file_constructors.set("open", lua.create_async_function(open_file)?)?;

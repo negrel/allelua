@@ -5,6 +5,7 @@ mod lsp;
 mod repl;
 mod run;
 mod test;
+mod worker;
 
 pub use bench::*;
 pub use fmt::*;
@@ -13,6 +14,7 @@ pub use lsp::*;
 pub use repl::*;
 pub use run::*;
 pub use test::*;
+pub use worker::*;
 
 fn is_dir_or_lua_file(entry: &walkdir::DirEntry) -> bool {
     entry.file_type().is_dir()

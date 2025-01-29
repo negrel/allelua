@@ -1,5 +1,5 @@
 use std::{
-    os::fd::{FromRawFd, IntoRawFd},
+    os::fd::{FromRawFd, IntoRawFd, RawFd},
     process::Stdio,
 };
 
@@ -11,6 +11,7 @@ use crate::{
     lua::{
         io::{
             self, add_io_read_methods, add_io_seek_methods, add_io_write_close_methods, Closable,
+            Close,
         },
         path::LuaMetadata,
         LuaInterface,
@@ -31,22 +32,31 @@ impl LuaFile {
     // We duplicate stdin, stdout and stderr before creating LuaFile because
     // it interfere with rust stdin, stdout and stderr otherwise.
 
-    pub fn stdin() -> mlua::Result<Self> {
+    pub fn stdin(closed: bool) -> mlua::Result<Self> {
         let stdin = os_pipe::dup_stdin().map_err(io::LuaError)?;
         let f = unsafe { File::from_raw_fd(stdin.into_raw_fd()) };
-        Ok(Self(io::Closable::new(f)))
+        let mut closable = io::Closable::new(f);
+        if closed {
+            closable.close()?;
+        }
+        Ok(Self(closable))
     }
 
     pub fn stdout() -> mlua::Result<Self> {
         let stdout = os_pipe::dup_stdout().map_err(io::LuaError)?;
-        let f = unsafe { File::from_raw_fd(stdout.into_raw_fd()) };
-        Ok(Self(io::Closable::new(f)))
+        unsafe { Ok(Self::from_raw_fd(stdout.into_raw_fd())) }
     }
 
     pub fn stderr() -> mlua::Result<Self> {
         let stderr = os_pipe::dup_stderr().map_err(io::LuaError)?;
-        let f = unsafe { File::from_raw_fd(stderr.into_raw_fd()) };
-        Ok(Self(io::Closable::new(f)))
+        unsafe { Ok(Self::from_raw_fd(stderr.into_raw_fd())) }
+    }
+}
+
+impl FromRawFd for LuaFile {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        let f = File::from_raw_fd(fd);
+        Self(io::Closable::new(f))
     }
 }
 

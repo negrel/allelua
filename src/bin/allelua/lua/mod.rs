@@ -6,8 +6,8 @@ use mlua::{chunk, AsChunk, FromLua, FromLuaMulti, IntoLua, Lua, LuaOptions, Obje
 use self::{
     coroutine::load_coroutine, error::load_error, globals::register_globals, io::load_io,
     json::load_json, math::load_math, os::load_os, package::load_package, path::load_path,
-    perf::load_perf, sh::load_sh, string::load_string, sync::load_sync, table::load_table,
-    term::load_term, test::load_test, time::load_time,
+    perf::load_perf, proc::load_proc, sh::load_sh, string::load_string, sync::load_sync,
+    table::load_table, term::load_term, test::load_test, time::load_time,
 };
 
 mod container;
@@ -21,6 +21,7 @@ mod os;
 mod package;
 mod path;
 mod perf;
+mod proc;
 mod sh;
 mod string;
 mod sync;
@@ -51,7 +52,7 @@ impl Deref for Runtime {
 }
 
 impl Runtime {
-    pub fn new(fpath: &Path, run_args: Vec<OsString>) -> Self {
+    fn new_vm() -> mlua::Lua {
         let stdlib = StdLib::NONE
             | StdLib::MATH
             | StdLib::TABLE
@@ -63,13 +64,30 @@ impl Runtime {
             | StdLib::DEBUG
             | StdLib::FFI;
 
-        let vm = unsafe { Lua::unsafe_new_with(stdlib, LuaOptions::new()) };
+        unsafe { Lua::unsafe_new_with(stdlib, LuaOptions::new()) }
+    }
+
+    pub fn new(fpath: &Path, run_args: Vec<OsString>) -> Self {
+        let vm = Self::new_vm();
 
         if fpath.is_relative() {
             panic!("convert path to absolute before creating runtime");
         }
 
         prepare_runtime(vm.clone(), fpath, run_args);
+
+        Runtime(vm)
+    }
+
+    pub fn new_worker(fpath: &Path) -> Self {
+        let vm = Self::new_vm();
+
+        if fpath.is_relative() {
+            panic!("convert path to absolute before creating runtime");
+        }
+
+        vm.set_named_registry_value("worker", true).unwrap();
+        prepare_runtime(vm.clone(), fpath, vec![]);
 
         Runtime(vm)
     }
@@ -114,6 +132,8 @@ fn prepare_runtime(lua: Lua, fpath: &Path, run_args: Vec<OsString>) {
 
     // overwrite require.
     handle_result(load_package(lua.clone(), fpath));
+
+    handle_result(load_proc(&lua));
 
     let result = lua
         .load(chunk! {
