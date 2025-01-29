@@ -1,4 +1,4 @@
-return function(run_until, go)
+return function(run_until, spawn)
 	local table = require("table")
 	local sync = require("sync")
 	local coroutine = require("coroutine")
@@ -9,12 +9,12 @@ return function(run_until, go)
 			local wg = sync.WaitGroup.new()
 			local tx, rx = sync.channel()
 
-			local id = 0
-			go(fn, function(...)
+			local id = -1
+			local go = function(...)
 				id = id + 1
 				local args = { ... }
 				wg:add(1)
-				local abort = go(function()
+				local abort = spawn(function()
 					local ok, err = pcall(table.unpack(args))
 					if not ok then tx:send(err) end
 					wg:done()
@@ -24,20 +24,21 @@ return function(run_until, go)
 					abort()
 					wg:done()
 				end
-			end)
+			end
 
-			go(function()
+			go(fn, go)
+
+			spawn(function()
 				wg:wait()
 				tx:close()
 			end)
 
 			local err = rx:recv()
 			if err then
-				error(("nursery coroutine %d failed"):format(id), {
+				error("nursery coroutine failed", {
 					type = "coroutine.NurseryError",
 					kind = "CoroutineError",
 					cause = err,
-					id = id,
 				})
 			end
 		end)
