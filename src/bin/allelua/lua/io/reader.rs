@@ -11,9 +11,14 @@ pub fn add_io_read_methods<
 ) {
     methods.add_async_method(
         "read",
-        |_, reader, (buf, reserve): (LuaJitBuffer, Option<usize>)| async move {
+        |_, reader, (buf, exact): (LuaJitBuffer, Option<usize>)| async move {
             let mut reader = reader.as_ref().get().await?;
-            let bytes = buf.reserve_bytes(reserve.unwrap_or(0))?;
+            let mut bytes = buf.reserve_bytes(exact.unwrap_or(0))?;
+            if let Some(n) = exact {
+                if n < bytes.len() {
+                    bytes = &mut bytes[..n];
+                }
+            }
             let read = reader.read(bytes).await?;
             buf.commit(read)?;
 
