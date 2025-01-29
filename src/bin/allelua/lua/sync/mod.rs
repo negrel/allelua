@@ -6,6 +6,9 @@ pub use channel::*;
 mod waitgroup;
 use waitgroup::*;
 
+mod mutex;
+use mutex::*;
+
 pub fn load_sync(lua: &Lua) -> mlua::Result<mlua::Table> {
     lua.load_from_function(
         "sync",
@@ -16,6 +19,13 @@ pub fn load_sync(lua: &Lua) -> mlua::Result<mlua::Table> {
             let wg_constructors = lua.create_table()?;
             wg_constructors.set("new", lua.create_function(|_, ()| Ok(LuaWaitGroup::new()))?)?;
             sync.set("WaitGroup", wg_constructors)?;
+
+            let mutex_constructors = lua.create_table()?;
+            mutex_constructors.set(
+                "new",
+                lua.create_function(|_, v: mlua::Value| Ok(LuaMutex::new(v)))?,
+            )?;
+            sync.set("Mutex", mutex_constructors)?;
 
             sync.set(
                 "channel",
