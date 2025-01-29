@@ -1,4 +1,4 @@
-return function(main_path, resolve_path, list_files, caller_source)
+return function(main_path, path_canonicalize, list_files, caller_source)
 	local package = require("package")
 	local os = require("os")
 	local path = require("path")
@@ -26,6 +26,17 @@ return function(main_path, resolve_path, list_files, caller_source)
 	-- Remove path and cpath in favor of homemade searchers.
 	package.path = ""
 	package.cpath = ""
+
+	-- Resolve package/file path to an absolute path.
+	M.resolve_path = function(fpath, lvl)
+		if string.has_prefix(fpath, "@/") then -- relative to current working dir.
+			fpath = path.join(os.current_dir(), string.slice(fpath, 3))
+		elseif path.is_relative(fpath) then -- relative to current file.
+			fpath = path.join(path.parent(caller_source(lvl)), fpath)
+		end
+
+		return fpath
+	end
 
 	-- Table of loaded files to avoid loading a file multiple times.
 	local file_loaded = {}
@@ -70,7 +81,7 @@ return function(main_path, resolve_path, list_files, caller_source)
 	end
 
 	local function file_searcher(pkgname)
-		local pkgpath = resolve_path(pkgname)
+		local pkgpath = M.resolve_path(pkgname, 3)
 
 		local ok, files = pcall(list_files, pkgpath)
 		if not ok then
