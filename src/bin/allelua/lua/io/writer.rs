@@ -10,14 +10,22 @@ pub fn add_io_write_methods<
 >(
     methods: &mut M,
 ) {
-    methods.add_async_method("write", |_, writer, buf: LuaJitBuffer| async move {
-        let mut writer = writer.as_ref().get().await?;
+    methods.add_async_method(
+        "write",
+        |_, writer, (buf, exact): (LuaJitBuffer, Option<usize>)| async move {
+            let mut writer = writer.as_ref().get().await?;
 
-        let bytes = buf.ref_bytes()?;
-        let write = writer.write(bytes).await?;
+            let mut bytes = buf.ref_bytes()?;
+            if let Some(n) = exact {
+                if n < bytes.len() {
+                    bytes = &bytes[..n];
+                }
+            }
+            let write = writer.write(bytes).await?;
 
-        Ok(write)
-    });
+            Ok(write)
+        },
+    );
 
     methods.add_async_method("write_all", |_, writer, buf: LuaJitBuffer| async move {
         let mut writer = writer.as_ref().get().await?;
