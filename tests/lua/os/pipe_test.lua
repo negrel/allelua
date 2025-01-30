@@ -25,6 +25,7 @@ t.test("closing writer unblock waiting reader", function()
 	local now = time.Instant.now()
 	local content = reader:read_to_end()
 	assert(now:elapsed() >= 10 * time.millisecond)
+	assert(content == nil)
 end)
 
 t.test("pipe are buffered by default", function()

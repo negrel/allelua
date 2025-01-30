@@ -12,7 +12,7 @@ setup() {
 }
 
 @test "allelua test fail_test.lua" {
-	run -1 $ALLELUA test "$DIR"/data/fail_test.lua
+	run -1 timeout 3 $ALLELUA test "$DIR"/data/fail_test.lua
 	grep "oops" <<< "$output"
 	grep "test that fail ... FAILED" <<< "$output"
 	grep "FAILED | 0 passed | 1 failed |" <<< "$output"
@@ -25,17 +25,17 @@ setup() {
 }
 
 @test "allelua test success_test.lua" {
-	run -0 $ALLELUA test "$DIR"/data/success_test.lua
+	run -0 timeout 3 $ALLELUA test "$DIR"/data/success_test.lua
 	grep "test that succeed ... ok" <<< "$output"
 }
 
 @test "allelua test notfound_test.lua" {
-	run -1 $ALLELUA test "$DIR"/data/notfound_test.lua
+	run -1 timeout 3 $ALLELUA test "$DIR"/data/notfound_test.lua
 	grep "notfound_test.lua: No such file or directory (os error 2)" <<< "$output"
 }
 
 @test "allelua test dir/" {
-	run -1 $ALLELUA test "$DIR"
+	run -1 timeout 3 $ALLELUA test "$DIR"
 	grep "oops" <<< "$output"
 	grep "test that fail ... FAILED" <<< "$output"
 	grep "FAILED | 0 passed | 1 failed |" <<< "$output"
