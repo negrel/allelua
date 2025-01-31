@@ -7,6 +7,7 @@ pub enum Type {
     Any(AnyType),
     Primitive(PrimitiveType),
     Literal(LiteralType),
+    Union(UnionType),
 }
 
 impl fmt::Display for Type {
@@ -16,6 +17,7 @@ impl fmt::Display for Type {
             Type::Any(_) => f.write_str("any"),
             Type::Primitive(prim) => fmt::Display::fmt(prim, f),
             Type::Literal(lit) => fmt::Display::fmt(lit, f),
+            Type::Union(u) => fmt::Display::fmt(u, f),
         }
     }
 }
@@ -36,6 +38,7 @@ impl Type {
             (Type::Literal(lhs), Type::Literal(rhs)) => lhs.can_assign(rhs),
             // Literal can be assigned to primitive of same type.
             (Type::Primitive(lhs), Type::Literal(rhs)) => *lhs == rhs.primitive,
+            (Type::Union(lhs), rhs) => lhs.can_assign(rhs),
             // Anything else is false.
             _ => false,
         }
@@ -49,11 +52,23 @@ impl Type {
 #[derive(Debug, Clone, Copy)]
 pub struct NeverType;
 
+impl From<NeverType> for Type {
+    fn from(value: NeverType) -> Self {
+        Type::Never(value)
+    }
+}
+
 /// AnyType define the `any` type in our type system.
 /// Everything can be assigned to the never type has it doesn't requires any
 /// properties.
 #[derive(Debug, Clone, Copy)]
 pub struct AnyType;
+
+impl From<AnyType> for Type {
+    fn from(value: AnyType) -> Self {
+        Type::Any(value)
+    }
+}
 
 /// PrimitiveType define a Lua primitive type. Lua primitives are `nil`, `boolean`,
 /// `number` and `string`.
@@ -63,6 +78,12 @@ pub enum PrimitiveType {
     Boolean,
     Number,
     String,
+}
+
+impl From<PrimitiveType> for Type {
+    fn from(value: PrimitiveType) -> Self {
+        Type::Primitive(value)
+    }
 }
 
 impl fmt::Display for PrimitiveType {
@@ -84,6 +105,12 @@ pub struct LiteralType {
     primitive: PrimitiveType,
 }
 
+impl From<LiteralType> for Type {
+    fn from(value: LiteralType) -> Self {
+        Type::Literal(value)
+    }
+}
+
 impl fmt::Display for LiteralType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.lit)
@@ -91,10 +118,74 @@ impl fmt::Display for LiteralType {
 }
 
 impl LiteralType {
-    pub fn can_assign(&self, rhs: &LiteralType) -> bool {
+    fn can_assign(&self, rhs: &LiteralType) -> bool {
         // TODO: fix lit comparison for float numbers as they're approximation
         // of numbers.
         self.lit == rhs.lit && self.primitive == rhs.primitive
+    }
+}
+
+/// UnionType define a union of types. All types that can be assigned to one of
+/// union's variant type can be assigned to the union.
+#[derive(Debug, Clone)]
+pub struct UnionType {
+    variants: Vec<Type>,
+}
+
+impl From<UnionType> for Type {
+    fn from(value: UnionType) -> Self {
+        Type::Union(value)
+    }
+}
+
+impl From<Type> for UnionType {
+    fn from(value: Type) -> Self {
+        Self::from(vec![value])
+    }
+}
+
+impl From<Vec<Type>> for UnionType {
+    fn from(value: Vec<Type>) -> Self {
+        Self { variants: value }
+    }
+}
+
+impl fmt::Display for UnionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(
+            &self
+                .variants
+                .clone()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" | "),
+        )
+    }
+}
+
+impl UnionType {
+    fn can_assign(&self, rhs: &Type) -> bool {
+        match rhs {
+            Type::Primitive(_) | Type::Literal(_) => {
+                for v in self.variants.iter() {
+                    if v.can_assign(rhs) {
+                        return true;
+                    }
+                }
+
+                false
+            }
+            Type::Union(u) => {
+                for v in u.variants.iter() {
+                    if !self.can_assign(v) {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -110,6 +201,7 @@ mod tests {
         let boolean = Type::Primitive(PrimitiveType::Boolean);
         let number = Type::Primitive(PrimitiveType::Number);
         let string = Type::Primitive(PrimitiveType::String);
+        let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
 
         assert!(never.can_assign(&never));
         assert!(!never.can_assign(&any));
@@ -117,6 +209,7 @@ mod tests {
         assert!(!never.can_assign(&boolean));
         assert!(!never.can_assign(&number));
         assert!(!never.can_assign(&string));
+        assert!(!never.can_assign(&union_num_str));
     }
 
     #[test]
@@ -127,6 +220,7 @@ mod tests {
         let boolean = Type::Primitive(PrimitiveType::Boolean);
         let number = Type::Primitive(PrimitiveType::Number);
         let string = Type::Primitive(PrimitiveType::String);
+        let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
 
         assert!(any.can_assign(&never));
         assert!(any.can_assign(&any));
@@ -134,6 +228,7 @@ mod tests {
         assert!(any.can_assign(&boolean));
         assert!(any.can_assign(&number));
         assert!(any.can_assign(&string));
+        assert!(any.can_assign(&union_num_str));
     }
 
     #[test]
@@ -145,6 +240,7 @@ mod tests {
 
         let any = Type::Any(AnyType);
         let never = Type::Never(NeverType);
+        let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
 
         for (i, lhs) in [nil.clone(), boolean.clone(), number.clone(), string.clone()]
             .iter()
@@ -163,9 +259,31 @@ mod tests {
                 }
             }
 
-            // any and never can't be assigned to a primitive type.
             assert!(!lhs.can_assign(&any));
             assert!(!lhs.can_assign(&never));
+            assert!(!lhs.can_assign(&union_num_str));
         }
+    }
+
+    #[test]
+    fn union_can_assign() {
+        let nil = Type::Primitive(PrimitiveType::Nil);
+        let boolean = Type::Primitive(PrimitiveType::Boolean);
+        let number = Type::Primitive(PrimitiveType::Number);
+        let string = Type::Primitive(PrimitiveType::String);
+
+        let any = Type::Any(AnyType);
+        let never = Type::Never(NeverType);
+
+        let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+
+        assert!(!union_num_str.can_assign(&nil));
+        assert!(!union_num_str.can_assign(&boolean));
+        assert!(!union_num_str.can_assign(&any));
+        assert!(!union_num_str.can_assign(&never));
+
+        assert!(union_num_str.can_assign(&number));
+        assert!(union_num_str.can_assign(&string));
+        assert!(union_num_str.can_assign(&union_num_str));
     }
 }
