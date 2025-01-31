@@ -5,7 +5,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-/// Ref define a reference counting pointer with recursive/cyclic types support.
+/// Ref define a reference counting pointer with cyclic types support.
 /// It is a simple wrapper around [Rc] and [Weak]. In order to prevent infinite
 /// loop, implementations of [Eq], [Ord] and [Hash] is applied on the underlying pointer
 /// and not the value it points to.
@@ -15,8 +15,8 @@ pub enum Ref<T> {
     Weak(Weak<T>),
 }
 
-// Ref implements Deref for T. Note that deref a Weak reference is considered
-// illegal and will panic!
+// Ref implements Deref for T. Note that deref a Weak reference is illegal and
+// will panic!
 impl<T> Deref for Ref<T> {
     type Target = T;
 
@@ -81,7 +81,31 @@ impl<T> From<T> for Ref<T> {
     }
 }
 
+impl<T> TryFrom<Ref<T>> for Rc<T> {
+    type Error = Ref<T>;
+
+    fn try_from(value: Ref<T>) -> Result<Self, Self::Error> {
+        match value.clone() {
+            Ref::Strong(rc) => Ok(rc.to_owned()),
+            Ref::Weak(w) => w.upgrade().map(Ok).unwrap_or(Err(value)),
+        }
+    }
+}
+
 impl<T> Ref<T> {
+    /// Creates a new cyclic reference while giving you a weak [Ref] to the
+    /// allocation, to allow you to construct a T which holds a weak pointer to
+    /// itself.
+    ///
+    /// Generally, a structure circularly referencing itself, either directly or
+    /// indirectly, should not hold a strong reference to itself to prevent a
+    /// memory leak. Using this function, you get access to the weak pointer
+    /// during the initialization of T, before the underlying Rc<T> is created,
+    /// such that you can clone and store it inside the T.
+    ///
+    /// Since the new underlying Rc<T> is not fully-constructed until
+    /// [new_cyclic] returns, calling [upgrade] on the weak reference inside your
+    /// closure will panic.
     pub fn new_cyclic<F>(cb: F) -> Self
     where
         F: FnOnce(Ref<T>) -> T,
@@ -97,74 +121,52 @@ impl<T> Ref<T> {
         }
     }
 
-    /// Retrieves an owned Rc and returns it. This function panics if weak reference
-    /// can't be upgraded.
-    pub fn get(&self) -> Rc<T> {
+    /// Upgrades to a strong reference.
+    pub fn upgrade(&self) -> Self {
         match self {
-            Ref::Strong(rc) => rc.to_owned(),
-            Ref::Weak(w) => w.upgrade().expect("failed to upgrade weak reference"),
-        }
-    }
-
-    /// Same as get() but returns an option instead of panicking.
-    pub fn try_get(&self) -> Option<Rc<T>> {
-        match self {
-            Ref::Strong(rc) => Some(rc.to_owned()),
-            Ref::Weak(w) => w.upgrade(),
+            Ref::Strong(_) => self.clone(),
+            Ref::Weak(w) => w
+                .upgrade()
+                .expect("failed to upgrade weak reference")
+                .into(),
         }
     }
 }
 
-pub fn eq<T: RecursiveEq>(lhs: Ref<T>, rhs: Ref<T>) -> bool {
-    Context::default().recursive(lhs, rhs)
+/// Calls cyclic op on the given args using a new [Context]. Pending value is
+/// returned by [Context::cyclic] to short-circuit recursive call that would lead
+/// to an infinite recursion.
+pub fn op<A, R>(op: impl FnOnce(&mut Context<A, R>, A) -> R, args: A, pending: R) -> R {
+    op(&mut Context::new(pending), args)
 }
 
-/// Trait for comparisons corresponding to equivalence relation. It is similar
-/// to [Eq] trait but supports infinitely recursive structure thanks to [Context].
-///
-/// Example
-/// ```rust
-///
-/// ```
-pub trait RecursiveEq: Sized + std::cmp::Ord {
-    fn recursive_eq(this: Ref<Self>, other: Ref<Self>, ctx: &mut Context<Self>) -> bool;
-}
-
-/// RecursiveEq context.
+/// Operation context holds state of a cyclic operation preventing infinite
+/// recursion.
 #[derive(Debug)]
-pub struct Context<T> {
-    map: BTreeMap<(Ref<T>, Ref<T>), bool>,
+pub struct Context<A, R> {
+    map: BTreeMap<A, R>,
+    pending: R,
 }
 
-impl<T> Default for Context<T> {
-    fn default() -> Self {
+impl<A, R> Context<A, R> {
+    fn new(pending: R) -> Self {
         Self {
             map: Default::default(),
+            pending,
         }
     }
 }
 
-impl<T: RecursiveEq> Context<T> {
-    pub fn recursive(&mut self, mut lhs: Ref<T>, mut rhs: Ref<T>) -> bool {
-        if lhs > rhs {
-            std::mem::swap(&mut lhs, &mut rhs);
+impl<A: std::cmp::Ord + Clone + std::fmt::Debug, R: Clone> Context<A, R> {
+    pub fn cyclic(&mut self, op: impl FnOnce(&mut Context<A, R>, A) -> R, args: A) -> R {
+        if let Some(v) = self.map.get(&args) {
+            return v.to_owned();
         }
 
-        let k = (lhs.clone(), rhs.clone());
-
-        // Cached result.
-        if let Some(eq) = self.map.get(&k) {
-            return *eq;
-        }
-
-        // Store true to prevent infinite loop.
-        self.map.insert(k.clone(), true);
-        // Perform actual equality check.
-        let eq = T::recursive_eq(lhs, rhs, self);
-        // Store result.
-        self.map.insert(k, eq);
-
-        eq
+        self.map.insert(args.clone(), self.pending.clone());
+        let r = op(self, args.clone());
+        self.map.insert(args, r.clone());
+        r
     }
 }
 
@@ -201,14 +203,11 @@ mod tests {
         b: bool,
     }
 
-    impl RecursiveEq for NonRecursiveT {
-        fn recursive_eq(
-            this: Ref<Self>,
-            other: Ref<Self>,
-            _ctx: &mut super::Context<Self>,
-        ) -> bool {
-            this.b == other.b
-        }
+    fn non_recusive_eq(
+        _ctx: &mut Context<(NonRecursiveT, NonRecursiveT), bool>,
+        (lhs, rhs): (NonRecursiveT, NonRecursiveT),
+    ) -> bool {
+        lhs == rhs
     }
 
     #[test]
@@ -216,7 +215,7 @@ mod tests {
         let v1 = NonRecursiveT { b: true };
         let v2 = NonRecursiveT { b: true };
 
-        assert!(super::eq(v1.into(), v2.into()));
+        assert!(super::op(non_recusive_eq, (v1, v2), true));
     }
 
     #[test]
@@ -224,7 +223,7 @@ mod tests {
         let v1 = NonRecursiveT { b: true };
         let v2 = NonRecursiveT { b: false };
 
-        assert!(!super::eq(v1.into(), v2.into()));
+        assert!(!super::op(non_recusive_eq, (v1, v2), true));
     }
 
     #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -233,16 +232,17 @@ mod tests {
         rec_ref: Option<Ref<Self>>,
     }
 
-    impl RecursiveEq for RecursiveT {
-        fn recursive_eq(this: Ref<Self>, other: Ref<Self>, ctx: &mut super::Context<Self>) -> bool {
-            if this.i != other.i {
-                false
-            } else {
-                match (this.rec_ref.clone(), other.rec_ref.clone()) {
-                    (Some(lhs), Some(rhs)) => ctx.recursive(lhs, rhs),
-                    (None, None) => true,
-                    _ => false,
-                }
+    fn recursive_eq(
+        ctx: &mut super::Context<(Ref<RecursiveT>, Ref<RecursiveT>), bool>,
+        (lhs, rhs): (Ref<RecursiveT>, Ref<RecursiveT>),
+    ) -> bool {
+        if lhs.i != rhs.i {
+            false
+        } else {
+            match (lhs.rec_ref.clone(), rhs.rec_ref.clone()) {
+                (Some(lhs), Some(rhs)) => ctx.cyclic(recursive_eq, (lhs.upgrade(), rhs.upgrade())),
+                (None, None) => true,
+                _ => false,
             }
         }
     }
@@ -258,8 +258,8 @@ mod tests {
             rec_ref: Some(w),
         });
 
-        assert!(super::eq(v1.clone(), v2));
-        assert!(super::eq(v1.clone(), v1));
+        assert!(super::op(recursive_eq, (v1.clone(), v2), true));
+        assert!(super::op(recursive_eq, (v1.clone(), v1), true));
     }
 
     #[test]
@@ -273,6 +273,6 @@ mod tests {
             rec_ref: Some(w),
         });
 
-        assert!(!super::eq(v1, v2))
+        assert!(!super::op(recursive_eq, (v1.clone(), v2), true));
     }
 }
