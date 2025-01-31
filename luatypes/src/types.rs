@@ -8,6 +8,7 @@ pub enum Type {
     Primitive(PrimitiveType),
     Literal(LiteralType),
     Union(UnionType),
+    Intersection(IntersectionType),
 }
 
 impl fmt::Display for Type {
@@ -18,6 +19,7 @@ impl fmt::Display for Type {
             Type::Primitive(prim) => fmt::Display::fmt(prim, f),
             Type::Literal(lit) => fmt::Display::fmt(lit, f),
             Type::Union(u) => fmt::Display::fmt(u, f),
+            Type::Intersection(i) => fmt::Display::fmt(i, f),
         }
     }
 }
@@ -38,7 +40,10 @@ impl Type {
             (Type::Literal(lhs), Type::Literal(rhs)) => lhs.can_assign(rhs),
             // Literal can be assigned to primitive of same type.
             (Type::Primitive(lhs), Type::Literal(rhs)) => *lhs == rhs.primitive,
+            // Union.
             (Type::Union(lhs), rhs) => lhs.can_assign(rhs),
+            // Intersection.
+            (Type::Intersection(lhs), rhs) => lhs.can_assign(rhs),
             // Anything else is false.
             _ => false,
         }
@@ -152,6 +157,10 @@ impl From<Vec<Type>> for UnionType {
 
 impl fmt::Display for UnionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            f.write_str("(")?;
+        }
+
         f.write_str(
             &self
                 .variants
@@ -160,7 +169,13 @@ impl fmt::Display for UnionType {
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(" | "),
-        )
+        )?;
+
+        if f.alternate() {
+            f.write_str("(")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -173,11 +188,86 @@ impl UnionType {
                         return true;
                     }
                 }
-
                 false
             }
-            Type::Union(u) => {
-                for v in u.variants.iter() {
+            Type::Union(UnionType { variants })
+            | Type::Intersection(IntersectionType { variants }) => {
+                for v in variants.iter() {
+                    if !self.can_assign(v) {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+/// IntersectionType define an intersection of types. All types that can be
+/// assigned to all of intersection's variant type can be assigned to the
+/// intersection.
+#[derive(Debug, Clone)]
+pub struct IntersectionType {
+    variants: Vec<Type>,
+}
+
+impl From<IntersectionType> for Type {
+    fn from(value: IntersectionType) -> Self {
+        Type::Intersection(value)
+    }
+}
+
+impl From<Type> for IntersectionType {
+    fn from(value: Type) -> Self {
+        Self::from(vec![value])
+    }
+}
+
+impl From<Vec<Type>> for IntersectionType {
+    fn from(value: Vec<Type>) -> Self {
+        Self { variants: value }
+    }
+}
+
+impl fmt::Display for IntersectionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            f.write_str("(")?;
+        }
+
+        f.write_str(
+            &self
+                .variants
+                .clone()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" & "),
+        )?;
+
+        if f.alternate() {
+            f.write_str(")")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl IntersectionType {
+    fn can_assign(&self, rhs: &Type) -> bool {
+        match rhs {
+            Type::Primitive(_) | Type::Literal(_) => {
+                for v in self.variants.iter() {
+                    if !v.can_assign(rhs) {
+                        return false;
+                    }
+                }
+                true
+            }
+            Type::Union(UnionType { variants })
+            | Type::Intersection(IntersectionType { variants }) => {
+                for v in variants.iter() {
                     if !self.can_assign(v) {
                         return false;
                     }
@@ -202,6 +292,11 @@ mod tests {
         let number = Type::Primitive(PrimitiveType::Number);
         let string = Type::Primitive(PrimitiveType::String);
         let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+        let union_num_nil = Type::Union(UnionType::from(vec![number.clone(), nil.clone()]));
+        let inter_union_num_str_union_num_nil = Type::Intersection(IntersectionType::from(vec![
+            union_num_str.clone(),
+            union_num_nil.clone(),
+        ]));
 
         assert!(never.can_assign(&never));
         assert!(!never.can_assign(&any));
@@ -210,6 +305,8 @@ mod tests {
         assert!(!never.can_assign(&number));
         assert!(!never.can_assign(&string));
         assert!(!never.can_assign(&union_num_str));
+        assert!(!never.can_assign(&union_num_nil));
+        assert!(!never.can_assign(&inter_union_num_str_union_num_nil));
     }
 
     #[test]
@@ -221,6 +318,11 @@ mod tests {
         let number = Type::Primitive(PrimitiveType::Number);
         let string = Type::Primitive(PrimitiveType::String);
         let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+        let union_num_nil = Type::Union(UnionType::from(vec![number.clone(), nil.clone()]));
+        let inter_union_num_str_union_num_nil = Type::Intersection(IntersectionType::from(vec![
+            union_num_str.clone(),
+            union_num_nil.clone(),
+        ]));
 
         assert!(any.can_assign(&never));
         assert!(any.can_assign(&any));
@@ -229,6 +331,8 @@ mod tests {
         assert!(any.can_assign(&number));
         assert!(any.can_assign(&string));
         assert!(any.can_assign(&union_num_str));
+        assert!(any.can_assign(&union_num_nil));
+        assert!(any.can_assign(&inter_union_num_str_union_num_nil));
     }
 
     #[test]
@@ -241,6 +345,11 @@ mod tests {
         let any = Type::Any(AnyType);
         let never = Type::Never(NeverType);
         let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+        let union_num_nil = Type::Union(UnionType::from(vec![number.clone(), nil.clone()]));
+        let inter_union_num_str_union_num_nil = Type::Intersection(IntersectionType::from(vec![
+            union_num_str.clone(),
+            union_num_nil.clone(),
+        ]));
 
         for (i, lhs) in [nil.clone(), boolean.clone(), number.clone(), string.clone()]
             .iter()
@@ -262,6 +371,8 @@ mod tests {
             assert!(!lhs.can_assign(&any));
             assert!(!lhs.can_assign(&never));
             assert!(!lhs.can_assign(&union_num_str));
+            assert!(!lhs.can_assign(&union_num_nil));
+            assert!(!lhs.can_assign(&inter_union_num_str_union_num_nil));
         }
     }
 
@@ -276,6 +387,11 @@ mod tests {
         let never = Type::Never(NeverType);
 
         let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+        let union_num_nil = Type::Union(UnionType::from(vec![number.clone(), nil.clone()]));
+        let inter_union_num_str_union_num_nil = Type::Intersection(IntersectionType::from(vec![
+            union_num_str.clone(),
+            union_num_nil.clone(),
+        ]));
 
         assert!(!union_num_str.can_assign(&nil));
         assert!(!union_num_str.can_assign(&boolean));
@@ -285,5 +401,40 @@ mod tests {
         assert!(union_num_str.can_assign(&number));
         assert!(union_num_str.can_assign(&string));
         assert!(union_num_str.can_assign(&union_num_str));
+
+        assert!(!union_num_str.can_assign(&union_num_nil));
+        assert!(!union_num_str.can_assign(&inter_union_num_str_union_num_nil));
+    }
+
+    #[test]
+    fn intersection_can_assign() {
+        let nil = Type::Primitive(PrimitiveType::Nil);
+        let boolean = Type::Primitive(PrimitiveType::Boolean);
+        let number = Type::Primitive(PrimitiveType::Number);
+        let string = Type::Primitive(PrimitiveType::String);
+
+        let any = Type::Any(AnyType);
+        let never = Type::Never(NeverType);
+
+        let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+        let union_num_nil = Type::Union(UnionType::from(vec![number.clone(), nil.clone()]));
+        let inter_union_num_str_union_num_nil = Type::Intersection(IntersectionType::from(vec![
+            union_num_str.clone(),
+            union_num_nil.clone(),
+        ]));
+
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&nil));
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&boolean));
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&any));
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&never));
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&string));
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&union_num_str));
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&union_num_nil));
+
+        // Only number can be assigned as it is present in both union.
+        assert!(inter_union_num_str_union_num_nil.can_assign(&number));
+
+        // This doesn't work unless we normalize the intersection.
+        assert!(!inter_union_num_str_union_num_nil.can_assign(&inter_union_num_str_union_num_nil));
     }
 }
