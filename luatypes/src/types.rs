@@ -1,6 +1,12 @@
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::BTreeMap,
+    fmt::{self},
+    ops::Deref,
+};
 
-use crate::cyclic::{self};
+use smol_str::SmolStr;
+
+use crate::cyclic::{self, Ref};
 
 /// Checks that type `assignee` is assignable to type `t`.
 pub fn can_assign(t: Type, assignee: Type) -> bool {
@@ -17,6 +23,14 @@ pub enum Type {
     Union(UnionType),
     Intersection(IntersectionType),
     Interface(InterfaceType),
+    Named(NamedType),
+    Ref(Ref<Type>),
+}
+
+impl From<Ref<Type>> for Type {
+    fn from(value: Ref<Type>) -> Self {
+        Self::Ref(value)
+    }
 }
 
 impl Type {
@@ -25,7 +39,6 @@ impl Type {
             // Nothing can be assigned to the never type except the never type
             // itself.
             (Type::Never(_), Type::Never(_)) => true,
-            (Type::Never(_), _) => false,
             // Anything can be assigned to any.
             (Type::Any(_), _) => true,
             // Primitive can be assigned if they're equal.
@@ -38,8 +51,20 @@ impl Type {
             (Type::Union(l), _) => l.can_assign(lhs, rhs, ctx),
             // Intersection.
             (Type::Intersection(l), _) => l.can_assign(lhs, rhs, ctx),
-            // Inteface.
+            // Interface.
             (Type::Interface(l), _) => l.can_assign(lhs, rhs, ctx),
+            // Named type.
+            (Type::Named(l), _) => l.can_assign(lhs, rhs, ctx),
+            (l, Type::Named(r)) => {
+                ctx.cyclic(Type::can_assign, (l, r.alias.upgrade().deref().clone()))
+            }
+            // Ref types.
+            (Type::Ref(lhs), rhs) => {
+                ctx.cyclic(Type::can_assign, (lhs.upgrade().deref().clone(), rhs))
+            }
+            (lhs, Type::Ref(rhs)) => {
+                ctx.cyclic(Type::can_assign, (lhs, rhs.upgrade().deref().clone()))
+            }
             // Anything else is false.
             _ => false,
         }
@@ -50,6 +75,8 @@ impl Type {
             Type::Union(u) => u.field(k),
             Type::Intersection(i) => i.field(k),
             Type::Interface(i) => i.field(k),
+            Type::Named(n) => n.field(k),
+            Type::Ref(r) => r.upgrade().deref().field(k),
             _ => Type::Primitive(PrimitiveType::Nil),
         }
     }
@@ -65,6 +92,11 @@ impl fmt::Display for Type {
             Type::Union(u) => fmt::Display::fmt(u, f),
             Type::Intersection(i) => fmt::Display::fmt(i, f),
             Type::Interface(i) => fmt::Display::fmt(i, f),
+            Type::Named(n) => fmt::Display::fmt(n, f),
+            Type::Ref(r) => match r {
+                Ref::Strong(r) => fmt::Display::fmt(r.deref(), f),
+                Ref::Weak(w) => write!(f, "0x{:x}", w.as_ptr() as usize),
+            },
         }
     }
 }
@@ -125,7 +157,7 @@ impl fmt::Display for PrimitiveType {
 /// LiteralType define type of a Lua literal.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LiteralType {
-    lit: String,
+    lit: SmolStr,
     primitive: PrimitiveType,
 }
 
@@ -137,34 +169,30 @@ impl From<LiteralType> for Type {
 
 impl fmt::Display for LiteralType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.lit)
+        match self.primitive {
+            PrimitiveType::Nil | PrimitiveType::Boolean | PrimitiveType::Number => {
+                f.write_str(&self.lit)
+            }
+            PrimitiveType::String => write!(f, "\"{}\"", self.lit),
+        }
     }
 }
 
 impl LiteralType {
     /// Creates a new literal string type from the given string.
-    pub fn string(lit: String) -> Self {
-        debug_assert!(
-            {
-                if lit.len() < 2 {
-                    false
-                } else {
-                    let bytes = lit.as_bytes();
-                    [b'`', b'"', b'\''].contains(&bytes[0])
-                }
-            },
-            "invalid literal string, surrounding quotes are missing"
-        );
-
+    pub fn string(lit: impl Into<SmolStr>) -> Self {
         Self {
-            lit,
+            lit: lit.into(),
             primitive: PrimitiveType::String,
         }
     }
 
-    /// Creates a new literal string type by escaping the given string.
-    pub fn escape_str(lit: &'static str) -> Self {
-        Self::string(format!("{lit:?}"))
+    /// Creates a new literal number type from the given string.
+    pub fn number(lit: impl Into<SmolStr>) -> Self {
+        Self {
+            lit: lit.into(),
+            primitive: PrimitiveType::Number,
+        }
     }
 
     fn can_assign(&self, rhs: &LiteralType) -> bool {
@@ -270,11 +298,9 @@ impl UnionType {
         }
 
         if result.len() <= 1 {
-            result
-                .pop()
-                .unwrap_or(Type::Primitive(PrimitiveType::Nil).into())
+            result.pop().unwrap_or(Type::Primitive(PrimitiveType::Nil))
         } else {
-            Type::from(Type::from(Self::from(result)))
+            Type::from(Self::from(result))
         }
     }
 }
@@ -435,19 +461,89 @@ impl fmt::Display for InterfaceType {
         }
 
         // TODO: properly handle literal string.
-        for (k, v) in self.fields.iter() {
+        let iter = self.fields.iter();
+        let len = iter.len();
+        for (i, (k, v)) in iter.enumerate() {
             f.write_str(&k.to_string())?;
             f.write_str(" = ")?;
             f.write_str(&v.to_string())?;
+
+            if i + 1 < len {
+                if f.alternate() {
+                    f.write_str("\n")?;
+                } else {
+                    f.write_str(", ")?;
+                }
+            }
         }
 
         if f.alternate() {
-            f.write_str("}\n")?;
+            f.write_str("}")?;
         } else {
             f.write_str(" }")?;
         }
 
         Ok(())
+    }
+}
+
+/// NamedType define a custom type with a name. This is the prerequisite to
+/// cyclic types.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NamedType {
+    name: String,
+    alias: Ref<Type>,
+}
+
+impl fmt::Display for NamedType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
+impl NamedType {
+    /// Creates a new non-cylic named type.
+    pub fn new(name: String, r#type: Type) -> Self {
+        Self {
+            name,
+            alias: r#type.into(),
+        }
+    }
+
+    /// Creates a new cyclic [NamedType] while giving you a weak [Ref] to the
+    /// allocation, to allow you to construct a Type which holds a weak pointer to
+    /// itself.
+    ///
+    /// Generally, a structure circularly referencing itself, either directly or
+    /// indirectly, should not hold a strong reference to itself to prevent a
+    /// memory leak. Using this function, you get access to the weak pointer
+    /// during the initialization of T, before the underlying Rc<T> is created,
+    /// such that you can clone and store it inside the T.
+    ///
+    /// Since the new underlying Rc<T> is not fully-constructed until
+    /// [new_cyclic] returns, calling [upgrade] on the weak reference inside your
+    /// closure will panic.
+    pub fn new_cyclic<F>(name: String, cb: F) -> Self
+    where
+        F: FnOnce(Ref<Type>) -> Type,
+    {
+        Self {
+            name,
+            alias: Ref::new_cyclic(cb),
+        }
+    }
+
+    pub fn can_assign(
+        &self,
+        _this: Type,
+        rhs: Type,
+        ctx: &mut cyclic::Context<(Type, Type), bool>,
+    ) -> bool {
+        ctx.cyclic(Type::can_assign, (self.alias.deref().clone(), rhs))
+    }
+
+    fn field(&self, k: &Type) -> Type {
+        Type::field(self.alias.deref(), k)
     }
 }
 
@@ -470,12 +566,12 @@ mod tests {
             union_num_nil.clone(),
         ]));
         let iface_foo_str = Type::Interface(InterfaceType::from([(
-            Type::from(LiteralType::escape_str("foo")),
+            Type::from(LiteralType::string("foo")),
             string.clone(),
         )]));
         let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
-            (Type::from(LiteralType::escape_str("foo")), string.clone()),
-            (Type::from(LiteralType::escape_str("bar")), number.clone()),
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
 
         assert!(can_assign(never.clone(), never.clone()));
@@ -509,12 +605,12 @@ mod tests {
             union_num_nil.clone(),
         ]));
         let iface_foo_str = Type::Interface(InterfaceType::from([(
-            Type::from(LiteralType::escape_str("foo")),
+            Type::from(LiteralType::string("foo")),
             string.clone(),
         )]));
         let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
-            (Type::from(LiteralType::escape_str("foo")), string.clone()),
-            (Type::from(LiteralType::escape_str("bar")), number.clone()),
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
 
         assert!(can_assign(any.clone(), never.clone()));
@@ -548,12 +644,12 @@ mod tests {
             union_num_nil.clone(),
         ]));
         let iface_foo_str = Type::Interface(InterfaceType::from([(
-            Type::from(LiteralType::escape_str("foo")),
+            Type::from(LiteralType::string("foo")),
             string.clone(),
         )]));
         let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
-            (Type::from(LiteralType::escape_str("foo")), string.clone()),
-            (Type::from(LiteralType::escape_str("bar")), number.clone()),
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
 
         for (i, lhs) in [nil.clone(), boolean.clone(), number.clone(), string.clone()]
@@ -601,12 +697,12 @@ mod tests {
             union_num_nil.clone(),
         ]));
         let iface_foo_str = Type::Interface(InterfaceType::from([(
-            Type::from(LiteralType::escape_str("foo")),
+            Type::from(LiteralType::string("foo")),
             string.clone(),
         )]));
         let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
-            (Type::from(LiteralType::escape_str("foo")), string.clone()),
-            (Type::from(LiteralType::escape_str("bar")), number.clone()),
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
 
         assert!(!can_assign(union_num_str.clone(), nil.clone()));
@@ -640,12 +736,12 @@ mod tests {
             union_num_nil.clone(),
         ]));
         let iface_foo_str = Type::Interface(InterfaceType::from([(
-            Type::from(LiteralType::escape_str("foo")),
+            Type::from(LiteralType::string("foo")),
             string.clone(),
         )]));
         let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
-            (Type::from(LiteralType::escape_str("foo")), string.clone()),
-            (Type::from(LiteralType::escape_str("bar")), number.clone()),
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
 
         assert!(!can_assign(
@@ -711,12 +807,12 @@ mod tests {
             union_num_nil.clone(),
         ]));
         let iface_foo_str = Type::Interface(InterfaceType::from([(
-            Type::from(LiteralType::escape_str("foo")),
+            Type::from(LiteralType::string("foo")),
             string.clone(),
         )]));
         let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
-            (Type::from(LiteralType::escape_str("foo")), string.clone()),
-            (Type::from(LiteralType::escape_str("bar")), number.clone()),
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
 
         assert!(!can_assign(iface_foo_str.clone(), never));
@@ -745,5 +841,67 @@ mod tests {
             iface_foo_str_bar_num.clone(),
             iface_foo_str.clone()
         ));
+    }
+
+    #[test]
+    fn named_can_assign() {
+        let never = Type::Never(NeverType);
+        let any = Type::Any(AnyType);
+        let nil = Type::Primitive(PrimitiveType::Nil);
+        let boolean = Type::Primitive(PrimitiveType::Boolean);
+        let number = Type::Primitive(PrimitiveType::Number);
+        let string = Type::Primitive(PrimitiveType::String);
+        let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+        let union_num_nil = Type::Union(UnionType::from(vec![number.clone(), nil.clone()]));
+        let inter_union_num_str_union_num_nil = Type::Intersection(IntersectionType::from(vec![
+            union_num_str.clone(),
+            union_num_nil.clone(),
+        ]));
+        let iface_foo_str = Type::Interface(InterfaceType::from([(
+            Type::from(LiteralType::string("foo")),
+            string.clone(),
+        )]));
+        let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
+        ]));
+
+        let cyclic_iface = Type::Named(NamedType::new_cyclic("List".to_owned(), |w| {
+            Type::Interface(InterfaceType::from([
+                (Type::from(LiteralType::string("nil")), nil.clone()),
+                (Type::from(LiteralType::string("value")), number.clone()),
+                (Type::from(LiteralType::string("next")), w.into()),
+            ]))
+        }));
+
+        let cyclic_iface2 = Type::Named(NamedType::new_cyclic("List".to_owned(), |w| {
+            Type::Interface(InterfaceType::from([
+                (Type::from(LiteralType::string("value")), number.clone()),
+                (Type::from(LiteralType::string("next")), w.into()),
+                (Type::from(LiteralType::string("id")), string.clone()),
+            ]))
+        }));
+
+        assert!(!can_assign(cyclic_iface.clone(), never.clone()));
+        assert!(!can_assign(cyclic_iface.clone(), any.clone()));
+        assert!(!can_assign(cyclic_iface.clone(), nil.clone()));
+        assert!(!can_assign(cyclic_iface.clone(), boolean.clone()));
+        assert!(!can_assign(cyclic_iface.clone(), number.clone()));
+        assert!(!can_assign(cyclic_iface.clone(), string.clone()));
+        assert!(!can_assign(cyclic_iface.clone(), union_num_str.clone()));
+        assert!(!can_assign(cyclic_iface.clone(), union_num_nil.clone()));
+        assert!(!can_assign(
+            cyclic_iface.clone(),
+            inter_union_num_str_union_num_nil.clone()
+        ));
+        assert!(!can_assign(cyclic_iface.clone(), iface_foo_str.clone()));
+        assert!(!can_assign(
+            cyclic_iface.clone(),
+            iface_foo_str_bar_num.clone()
+        ));
+        assert!(can_assign(cyclic_iface.clone(), cyclic_iface.clone()));
+        assert!(can_assign(cyclic_iface.clone(), cyclic_iface2.clone()));
+        assert!(can_assign(cyclic_iface2.clone(), cyclic_iface2.clone()));
+        assert!(!can_assign(cyclic_iface2.clone(), cyclic_iface.clone()));
     }
 }
