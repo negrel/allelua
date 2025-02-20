@@ -7,8 +7,8 @@ use std::{
 
 /// Ref define a reference counting pointer with cyclic types support.
 /// It is a simple wrapper around [Rc] and [Weak]. In order to prevent infinite
-/// loop, implementations of [Eq], [Ord] and [Hash] is applied on the underlying pointer
-/// and not the value it points to.
+/// loop, implementations of [Eq], [Ord] and [Hash] is applied on the underlying
+/// pointer and not the value it points to.
 #[derive(Debug)]
 pub enum Ref<T> {
     Strong(Rc<T>),

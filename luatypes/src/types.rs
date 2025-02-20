@@ -1,4 +1,5 @@
 use std::{
+    cmp,
     collections::BTreeMap,
     fmt::{self},
     ops::Deref,
@@ -24,6 +25,7 @@ pub enum Type {
     Intersection(IntersectionType),
     Interface(InterfaceType),
     Named(NamedType),
+    Function(FunctionType),
     Ref(Ref<Type>),
 }
 
@@ -58,6 +60,7 @@ impl Type {
             (l, Type::Named(r)) => {
                 ctx.cyclic(Type::can_assign, (l, r.alias.upgrade().deref().clone()))
             }
+            (Type::Function(f), _) => f.can_assign(lhs, rhs, ctx),
             // Ref types.
             (Type::Ref(lhs), rhs) => {
                 ctx.cyclic(Type::can_assign, (lhs.upgrade().deref().clone(), rhs))
@@ -80,6 +83,16 @@ impl Type {
             _ => Type::Primitive(PrimitiveType::Nil),
         }
     }
+
+    pub fn try_to_function(&self) -> Option<&FunctionType> {
+        match self {
+            // TODO: support union and intersection, object with metatable.__call()
+            Type::Named(n) => n.try_to_function(),
+            Type::Function(f) => Some(f),
+            Type::Ref(r) => r.try_to_function(),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -93,6 +106,7 @@ impl fmt::Display for Type {
             Type::Intersection(i) => fmt::Display::fmt(i, f),
             Type::Interface(i) => fmt::Display::fmt(i, f),
             Type::Named(n) => fmt::Display::fmt(n, f),
+            Type::Function(func) => fmt::Display::fmt(func, f),
             Type::Ref(r) => match r {
                 Ref::Strong(r) => fmt::Display::fmt(r.deref(), f),
                 Ref::Weak(w) => write!(f, "0x{:x}", w.as_ptr() as usize),
@@ -495,9 +509,23 @@ pub struct NamedType {
     alias: Ref<Type>,
 }
 
+impl Deref for NamedType {
+    type Target = Ref<Type>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.alias
+    }
+}
+
 impl fmt::Display for NamedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.name)
+    }
+}
+
+impl From<NamedType> for Type {
+    fn from(value: NamedType) -> Self {
+        Self::Named(value)
     }
 }
 
@@ -541,9 +569,111 @@ impl NamedType {
     ) -> bool {
         ctx.cyclic(Type::can_assign, (self.alias.deref().clone(), rhs))
     }
+}
 
-    fn field(&self, k: &Type) -> Type {
-        Type::field(self.alias.deref(), k)
+/// FunctionType define type of a Lua function.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FunctionType {
+    params: Vec<Type>,
+    results: Vec<Type>,
+}
+
+impl From<FunctionType> for Type {
+    fn from(value: FunctionType) -> Self {
+        Self::Function(value)
+    }
+}
+
+impl<P: IntoIterator<Item = Type>, R: IntoIterator<Item = Type>> From<(P, R)> for FunctionType {
+    fn from((params, results): (P, R)) -> Self {
+        FunctionType {
+            params: Vec::from_iter(params),
+            results: Vec::from_iter(results),
+        }
+    }
+}
+
+impl fmt::Display for FunctionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("(")?;
+        for (i, p) in self.params.iter().enumerate() {
+            fmt::Display::fmt(p, f)?;
+            if i < self.params.len() - 1 {
+                f.write_str(", ")?;
+            }
+        }
+        f.write_str(")")?;
+
+        f.write_str(" -> ")?;
+
+        f.write_str("(")?;
+        for (i, r) in self.results.iter().enumerate() {
+            fmt::Display::fmt(r, f)?;
+            if i < self.results.len() - 1 {
+                f.write_str(", ")?;
+            }
+        }
+        f.write_str(")")?;
+
+        Ok(())
+    }
+}
+
+impl FunctionType {
+    fn can_assign(
+        &self,
+        _this: Type,
+        rhs: Type,
+        ctx: &mut cyclic::Context<(Type, Type), bool>,
+    ) -> bool {
+        let rhs = match rhs.try_to_function() {
+            Some(p) => p,
+            None => return false,
+        };
+
+        // We swap lhs and rhs as parameters of self must be assignable
+        // to rhs parameters. For example:
+        //
+        // type fn1: (any, any) -> ()
+        // type fn2: (number, number) -> ()
+        //
+        // fn1 is assignable to fn2 but fn2 isn't assignable to fn1.
+        // number is assignable to any but any isn't assignable to number.
+        if !Self::can_assign_tuple(ctx, &rhs.params, &self.params) {
+            return false;
+        }
+
+        if !Self::can_assign_tuple(ctx, &self.results, &rhs.results) {
+            return false;
+        }
+
+        true
+    }
+
+    fn can_assign_tuple(
+        ctx: &mut cyclic::Context<(Type, Type), bool>,
+        source: &[Type],
+        target: &[Type],
+    ) -> bool {
+        let min = cmp::min(source.len(), target.len());
+        for i in 0..min {
+            let lhs = &source[i];
+            let rhs = &target[i];
+
+            if !Type::can_assign(ctx, (rhs.clone(), lhs.clone())) {
+                return false;
+            }
+        }
+
+        // If rhs has more params than lhs, ensure we can assign nil to
+        // remaining params.
+        for rhs in target.iter().skip(source.len()) {
+            if !Type::can_assign(ctx, (rhs.clone(), Type::Primitive(PrimitiveType::Nil))) {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -573,6 +703,7 @@ mod tests {
             (Type::from(LiteralType::string("foo")), string.clone()),
             (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
 
         assert!(can_assign(never.clone(), never.clone()));
         assert!(!can_assign(never.clone(), any));
@@ -588,6 +719,7 @@ mod tests {
         ));
         assert!(!can_assign(never.clone(), iface_foo_str));
         assert!(!can_assign(never.clone(), iface_foo_str_bar_num));
+        assert!(!can_assign(never.clone(), func_number));
     }
 
     #[test]
@@ -612,6 +744,7 @@ mod tests {
             (Type::from(LiteralType::string("foo")), string.clone()),
             (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
 
         assert!(can_assign(any.clone(), never.clone()));
         assert!(can_assign(any.clone(), any.clone()));
@@ -627,6 +760,7 @@ mod tests {
         ));
         assert!(can_assign(any.clone(), iface_foo_str));
         assert!(can_assign(any.clone(), iface_foo_str_bar_num));
+        assert!(can_assign(any.clone(), func_number));
     }
 
     #[test]
@@ -651,6 +785,7 @@ mod tests {
             (Type::from(LiteralType::string("foo")), string.clone()),
             (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
 
         for (i, lhs) in [nil.clone(), boolean.clone(), number.clone(), string.clone()]
             .iter()
@@ -679,6 +814,7 @@ mod tests {
             ));
             assert!(!can_assign(lhs.clone(), iface_foo_str.clone()));
             assert!(!can_assign(lhs.clone(), iface_foo_str_bar_num.clone()));
+            assert!(!can_assign(lhs.clone(), func_number.clone()));
         }
     }
 
@@ -704,6 +840,7 @@ mod tests {
             (Type::from(LiteralType::string("foo")), string.clone()),
             (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
 
         assert!(!can_assign(union_num_str.clone(), nil.clone()));
         assert!(!can_assign(union_num_str.clone(), boolean.clone()));
@@ -719,6 +856,7 @@ mod tests {
         ));
         assert!(!can_assign(union_num_str.clone(), iface_foo_str));
         assert!(!can_assign(union_num_str.clone(), iface_foo_str_bar_num));
+        assert!(!can_assign(union_num_str.clone(), func_number));
     }
 
     #[test]
@@ -743,6 +881,7 @@ mod tests {
             (Type::from(LiteralType::string("foo")), string.clone()),
             (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
 
         assert!(!can_assign(
             inter_union_num_str_union_num_nil.clone(),
@@ -790,6 +929,10 @@ mod tests {
             inter_union_num_str_union_num_nil.clone(),
             iface_foo_str_bar_num
         ));
+        assert!(!can_assign(
+            inter_union_num_str_union_num_nil.clone(),
+            func_number
+        ));
     }
 
     #[test]
@@ -814,6 +957,7 @@ mod tests {
             (Type::from(LiteralType::string("foo")), string.clone()),
             (Type::from(LiteralType::string("bar")), number.clone()),
         ]));
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
 
         assert!(!can_assign(iface_foo_str.clone(), never));
         assert!(!can_assign(iface_foo_str.clone(), any));
@@ -841,6 +985,7 @@ mod tests {
             iface_foo_str_bar_num.clone(),
             iface_foo_str.clone()
         ));
+        assert!(!can_assign(iface_foo_str_bar_num.clone(), func_number));
     }
 
     #[test]
@@ -881,6 +1026,7 @@ mod tests {
                 (Type::from(LiteralType::string("id")), string.clone()),
             ]))
         }));
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
 
         assert!(!can_assign(cyclic_iface.clone(), never.clone()));
         assert!(!can_assign(cyclic_iface.clone(), any.clone()));
@@ -903,5 +1049,50 @@ mod tests {
         assert!(can_assign(cyclic_iface.clone(), cyclic_iface2.clone()));
         assert!(can_assign(cyclic_iface2.clone(), cyclic_iface2.clone()));
         assert!(!can_assign(cyclic_iface2.clone(), cyclic_iface.clone()));
+        assert!(!can_assign(cyclic_iface2.clone(), func_number));
+    }
+
+    #[test]
+    fn function_can_assign() {
+        let never = Type::Never(NeverType);
+        let any = Type::Any(AnyType);
+        let nil = Type::Primitive(PrimitiveType::Nil);
+        let boolean = Type::Primitive(PrimitiveType::Boolean);
+        let number = Type::Primitive(PrimitiveType::Number);
+        let string = Type::Primitive(PrimitiveType::String);
+        let union_num_str = Type::Union(UnionType::from(vec![number.clone(), string.clone()]));
+        let union_num_nil = Type::Union(UnionType::from(vec![number.clone(), nil.clone()]));
+        let inter_union_num_str_union_num_nil = Type::Intersection(IntersectionType::from(vec![
+            union_num_str.clone(),
+            union_num_nil.clone(),
+        ]));
+        let iface_foo_str = Type::Interface(InterfaceType::from([(
+            Type::from(LiteralType::string("foo")),
+            string.clone(),
+        )]));
+        let iface_foo_str_bar_num = Type::Interface(InterfaceType::from([
+            (Type::from(LiteralType::string("foo")), string.clone()),
+            (Type::from(LiteralType::string("bar")), number.clone()),
+        ]));
+
+        let func_number = Type::Function(FunctionType::from(([number.clone()], [])));
+        let func_any = Type::Function(FunctionType::from(([any.clone()], [])));
+
+        assert!(can_assign(func_any.clone(), func_number.clone()));
+        assert!(!can_assign(func_number.clone(), func_any.clone()));
+        assert!(!can_assign(func_any.clone(), never));
+        assert!(!can_assign(func_any.clone(), any));
+        assert!(!can_assign(func_any.clone(), nil));
+        assert!(!can_assign(func_any.clone(), boolean));
+        assert!(!can_assign(func_any.clone(), number));
+        assert!(!can_assign(func_any.clone(), string));
+        assert!(!can_assign(func_any.clone(), union_num_str));
+        assert!(!can_assign(func_any.clone(), union_num_nil));
+        assert!(!can_assign(
+            func_any.clone(),
+            inter_union_num_str_union_num_nil
+        ));
+        assert!(!can_assign(func_any.clone(), iface_foo_str));
+        assert!(!can_assign(func_any.clone(), iface_foo_str_bar_num));
     }
 }
