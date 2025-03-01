@@ -93,6 +93,293 @@ impl Type {
             _ => None,
         }
     }
+
+    // + operator
+    pub fn add(&self, rhs: &Type) -> Option<Type> {
+        match (self, rhs) {
+            // Numbers.
+            (Type::Primitive(PrimitiveType::Number), Type::Primitive(PrimitiveType::Number))
+            | (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+                Type::Primitive(PrimitiveType::Number),
+            )
+            | (
+                Type::Primitive(PrimitiveType::Number),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+            ) => Some(Type::Primitive(PrimitiveType::Number)),
+            (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: lhs,
+                }),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: rhs,
+                }),
+            ) => {
+                let lhs = lhs.parse::<f32>().unwrap();
+                let rhs = rhs.parse::<f32>().unwrap();
+                Some(Type::Literal(LiteralType::number((lhs + rhs).to_string())))
+            }
+
+            // Refs.
+            (lhs, Type::Ref(rhs)) => lhs.add(rhs.deref()),
+            (Type::Ref(lhs), rhs) => lhs.deref().add(rhs),
+            _ => None,
+        }
+    }
+
+    // - operator
+    pub fn sub(&self, rhs: &Type) -> Option<Type> {
+        match (self, rhs) {
+            // Numbers.
+            (Type::Primitive(PrimitiveType::Number), Type::Primitive(PrimitiveType::Number))
+            | (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+                Type::Primitive(PrimitiveType::Number),
+            )
+            | (
+                Type::Primitive(PrimitiveType::Number),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+            ) => Some(Type::Primitive(PrimitiveType::Number)),
+            (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: lhs,
+                }),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: rhs,
+                }),
+            ) => {
+                let lhs = lhs.parse::<f32>().unwrap();
+                let rhs = rhs.parse::<f32>().unwrap();
+                Some(Type::Literal(LiteralType::number((lhs - rhs).to_string())))
+            }
+
+            // Refs.
+            (lhs, Type::Ref(rhs)) => lhs.add(rhs.deref()),
+            (Type::Ref(lhs), rhs) => lhs.deref().add(rhs),
+            _ => None,
+        }
+    }
+
+    // * operator
+    pub fn mul(&self, rhs: &Type) -> Option<Type> {
+        match (self, rhs) {
+            // Numbers.
+            (Type::Primitive(PrimitiveType::Number), Type::Primitive(PrimitiveType::Number))
+            | (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+                Type::Primitive(PrimitiveType::Number),
+            )
+            | (
+                Type::Primitive(PrimitiveType::Number),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+            ) => Some(Type::Primitive(PrimitiveType::Number)),
+            (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: lhs,
+                }),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: rhs,
+                }),
+            ) => {
+                let lhs = lhs.parse::<f32>().unwrap();
+                let rhs = rhs.parse::<f32>().unwrap();
+                Some(Type::Literal(LiteralType::number((lhs * rhs).to_string())))
+            }
+
+            // Refs.
+            (lhs, Type::Ref(rhs)) => lhs.add(rhs.deref()),
+            (Type::Ref(lhs), rhs) => lhs.deref().add(rhs),
+            _ => None,
+        }
+    }
+
+    // / operator
+    pub fn div(&self, rhs: &Type) -> Option<Type> {
+        match (self, rhs) {
+            // Numbers.
+            (Type::Primitive(PrimitiveType::Number), Type::Primitive(PrimitiveType::Number))
+            | (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+                Type::Primitive(PrimitiveType::Number),
+            )
+            | (
+                Type::Primitive(PrimitiveType::Number),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+            ) => Some(Type::Primitive(PrimitiveType::Number)),
+            (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: lhs,
+                }),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: rhs,
+                }),
+            ) => {
+                let lhs = lhs.parse::<f32>().unwrap();
+                let rhs = rhs.parse::<f32>().unwrap();
+                Some(Type::Literal(LiteralType::number((lhs / rhs).to_string())))
+            }
+
+            // Refs.
+            (lhs, Type::Ref(rhs)) => lhs.add(rhs.deref()),
+            (Type::Ref(lhs), rhs) => lhs.deref().add(rhs),
+            _ => None,
+        }
+    }
+
+    // % operator
+    pub fn modulo(&self, rhs: &Type) -> Option<Type> {
+        match (self, rhs) {
+            // Numbers.
+            (Type::Primitive(PrimitiveType::Number), Type::Primitive(PrimitiveType::Number))
+            | (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+                Type::Primitive(PrimitiveType::Number),
+            )
+            | (
+                Type::Primitive(PrimitiveType::Number),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+            ) => Some(Type::Primitive(PrimitiveType::Number)),
+            (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: lhs,
+                }),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: rhs,
+                }),
+            ) => {
+                let lhs = lhs.parse::<f32>().unwrap();
+                let rhs = rhs.parse::<f32>().unwrap();
+                Some(Type::Literal(LiteralType::number((lhs % rhs).to_string())))
+            }
+
+            // Refs.
+            (lhs, Type::Ref(rhs)) => lhs.add(rhs.deref()),
+            (Type::Ref(lhs), rhs) => lhs.deref().add(rhs),
+            _ => None,
+        }
+    }
+
+    // ^ operator
+    pub fn pow(&self, rhs: &Type) -> Option<Type> {
+        match (self, rhs) {
+            // Numbers.
+            (Type::Primitive(PrimitiveType::Number), Type::Primitive(PrimitiveType::Number))
+            | (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+                Type::Primitive(PrimitiveType::Number),
+            )
+            | (
+                Type::Primitive(PrimitiveType::Number),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    ..
+                }),
+            ) => Some(Type::Primitive(PrimitiveType::Number)),
+            (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: lhs,
+                }),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::Number,
+                    lit: rhs,
+                }),
+            ) => {
+                let lhs = lhs.parse::<f32>().unwrap();
+                let rhs = rhs.parse::<f32>().unwrap();
+                Some(Type::Literal(LiteralType::number(
+                    (lhs.powf(rhs)).to_string(),
+                )))
+            }
+
+            // Refs.
+            (lhs, Type::Ref(rhs)) => lhs.add(rhs.deref()),
+            (Type::Ref(lhs), rhs) => lhs.deref().add(rhs),
+            _ => None,
+        }
+    }
+
+    // .. operator
+    pub fn concat(&self, rhs: &Type) -> Option<Type> {
+        match (self, rhs) {
+            // Strings.
+            (Type::Primitive(PrimitiveType::String), Type::Primitive(PrimitiveType::String))
+            | (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::String,
+                    ..
+                }),
+                Type::Primitive(PrimitiveType::String),
+            )
+            | (
+                Type::Primitive(PrimitiveType::String),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::String,
+                    ..
+                }),
+            ) => Some(Type::Primitive(PrimitiveType::String)),
+            (
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::String,
+                    lit: lhs,
+                }),
+                Type::Literal(LiteralType {
+                    primitive: PrimitiveType::String,
+                    lit: rhs,
+                }),
+            ) => Some(Type::Literal(LiteralType::string(
+                lhs.to_string() + rhs.as_str(),
+            ))),
+
+            // Refs.
+            (lhs, Type::Ref(rhs)) => lhs.concat(rhs.deref()),
+            (Type::Ref(lhs), rhs) => lhs.deref().concat(rhs),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -206,6 +493,14 @@ impl LiteralType {
         Self {
             lit: lit.into(),
             primitive: PrimitiveType::Number,
+        }
+    }
+
+    /// Creates a new literal boolean type from the given string.
+    pub fn boolean(lit: impl Into<SmolStr>) -> Self {
+        Self {
+            lit: lit.into(),
+            primitive: PrimitiveType::Boolean,
         }
     }
 
@@ -427,6 +722,7 @@ impl IntersectionType {
 pub struct InterfaceType {
     fields: BTreeMap<Type, Type>,
 }
+
 impl InterfaceType {
     fn can_assign(
         &self,
@@ -462,6 +758,14 @@ impl<const N: usize> From<[(Type, Type); N]> for InterfaceType {
     fn from(value: [(Type, Type); N]) -> Self {
         Self {
             fields: BTreeMap::from(value),
+        }
+    }
+}
+
+impl FromIterator<(Type, Type)> for InterfaceType {
+    fn from_iter<T: IntoIterator<Item = (Type, Type)>>(iter: T) -> Self {
+        Self {
+            fields: BTreeMap::from_iter(iter),
         }
     }
 }

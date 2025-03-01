@@ -9,3 +9,4 @@ full_moon = { version = "1.2.0", default-features = false, features = [
 	"luajit",
 ] }
 smol_str = "0.3.2"
+thiserror = "2.0.11"
