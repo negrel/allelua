@@ -1,5 +1,5 @@
 use full_moon::{
-    ast::{Ast, Expression},
+    ast::{Ast, Expression, LastStmt},
     node::Node,
     tokenizer::Symbol,
     visitors::Visitor,
@@ -60,8 +60,20 @@ impl Checker {
                 todo!()
             }
             // Function.
-            Expression::Function(_func) => {
-                todo!()
+            Expression::Function(func) => {
+                let body = &func.1;
+                let params_count = body.parameters().iter().count();
+                let mut results_count = 0;
+                if let Some(LastStmt::Return(last_stmt)) = body.block().last_stmt() {
+                    results_count = last_stmt.returns().iter().count();
+                }
+
+                let mut params = Vec::with_capacity(params_count);
+                params.resize(params.capacity(), self.vm.any());
+                let mut results = Vec::with_capacity(results_count);
+                results.resize(results.capacity(), self.vm.any());
+
+                self.vm.function(&params, &results)
             }
             // Variable.
             Expression::Var(var) => match var {
@@ -192,7 +204,6 @@ mod tests {
     #[test]
     fn local_assign() {
         let checker = Checker::new();
-
         let ast = full_moon::parse(
             r#"
 local foo, bar = 3.14, "baz"
@@ -211,7 +222,6 @@ bar = foo
     #[test]
     fn local_shadowing() {
         let checker = Checker::new();
-
         let ast = full_moon::parse(
             r#"
 local foo, bar = 3.14, "baz"
@@ -228,7 +238,6 @@ end
     #[test]
     fn local_assign_expr() {
         let checker = Checker::new();
-
         let ast = full_moon::parse(
             r#"
 local foo = 1 == 1
@@ -242,9 +251,8 @@ foo = false
     }
 
     #[test]
-    fn local_assign_function() {
+    fn local_annotation() {
         let checker = Checker::new();
-
         let ast = full_moon::parse(
             r#"
 --@ fn(number, number) (number)
@@ -256,6 +264,41 @@ local foo = 3"#,
         assert_eq!(
             errs[0],
             "type number is not assignable to type fn(number, number) (number)"
+        );
+    }
+
+    #[test]
+    fn annotation_after_decl() {
+        let checker = Checker::new();
+        let ast = full_moon::parse(
+            r#"
+local foo = 3
+--@ string
+foo = 'bar'"#,
+        )
+        .unwrap();
+
+        let errs = checker.check(&ast).unwrap_err();
+        assert_eq!(errs[0], "type string is not assignable to type number");
+    }
+
+    #[test]
+    fn function_inference() {
+        let checker = Checker::new();
+        let ast = full_moon::parse(
+            r#"
+local foo = function(foo, bar)
+    return foo
+end
+foo = "bar"
+"#,
+        )
+        .unwrap();
+
+        let errs = checker.check(&ast).unwrap_err();
+        assert_eq!(
+            errs[0],
+            "type string is not assignable to type fn(any, any) (any)"
         );
     }
 }

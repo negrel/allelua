@@ -379,7 +379,7 @@ function func:string()
 	return str .. ")"
 end
 
---- function type constructor.
+--- Function type constructor.
 function M.fn(...)
 	local params = { ... }
 	return function(...)
@@ -390,6 +390,10 @@ function M.fn(...)
 		}, func)
 		return setmetatable({}, mt)
 	end
+end
+
+function M._fn(params, results)
+	return M.fn(unpack(params))(unpack(results))
 end
 
 -- We store variable types in scope tables.
@@ -414,7 +418,7 @@ function scopes.pop()
 	return scopes.current
 end
 
---- Evaluates provided lua code in curret scope.
+--- Evaluates provided Lua code in current scope.
 function M.eval_in_scope(expr)
 	local f, err = loadstring(expr, "eval_in_scope")
 	if err then error(err) end
@@ -429,6 +433,7 @@ function M.eval_in_scope(expr)
 	return M[to_type_string(t)]
 end
 
+--- Evaluate type expression.
 function M.eval_type(expr)
 	local f, err = loadstring(expr, "eval_type")
 	if err then error(err) end

@@ -107,6 +107,16 @@ impl VM {
             .into()
     }
 
+    /// Returns any type singleton.
+    pub fn any(&self) -> Type {
+        self.g.get::<Type>("any").unwrap()
+    }
+
+    /// Returns never type singleton.
+    pub fn never(&self) -> Type {
+        self.g.get::<Type>("never").unwrap()
+    }
+
     /// Returns string type singleton.
     pub fn string(&self) -> Type {
         self.g.get::<Type>("string").unwrap()
@@ -125,6 +135,15 @@ impl VM {
     /// Returns nil type singleton.
     pub fn nil(&self) -> Type {
         Type(mlua::Nil)
+    }
+
+    /// Returns a function [Type] with provided parameters and returns [Type].
+    pub fn function(&self, params: &[Type], results: &[Type]) -> Type {
+        self.g
+            .get::<mlua::Function>("_fn")
+            .unwrap()
+            .call((params, results))
+            .unwrap()
     }
 }
 
