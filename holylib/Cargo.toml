@@ -1,0 +1,7 @@
+[package]
+name = "holylib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mlua = { version = "0.10.3", features = ["luajit52", "macros"] }

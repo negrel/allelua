@@ -1,2 +1,0 @@
-# `luatype` - Lua structural typesystem.
-
