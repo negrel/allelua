@@ -84,6 +84,12 @@ impl Checker {
     }
 }
 
+impl Default for Checker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Visitor for Checker {
     fn visit_block(&mut self, _node: &full_moon::ast::Block) {
         self.vm.push_scope();

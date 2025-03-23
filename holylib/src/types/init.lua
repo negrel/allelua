@@ -128,6 +128,82 @@ function Type:__call()
 	error("function call not supported on type " .. to_type_string(self))
 end
 
+-- any type.
+local any = new_type("any")
+M.any = setmetatable({}, any)
+
+function any.__assign(lhs, rhs)
+	return lhs == M.any
+end
+
+function any.__tostring()
+	return M.any
+end
+
+function any.__add()
+	return M.any
+end
+
+function any.__unm()
+	return M.any
+end
+
+function any.__sub()
+	return M.any
+end
+
+function any.__mod()
+	return M.any
+end
+
+function any.__div()
+	return M.any
+end
+
+function any.__mul()
+	return M.any
+end
+
+function any.__pow()
+	return M.any
+end
+
+function any.__eq()
+	return M.any
+end
+
+function any.__le()
+	return M.any
+end
+
+function any.__lt()
+	return M.any
+end
+
+function any.__concat()
+	return M.any
+end
+
+function any.__len()
+	return M.any
+end
+
+function any.__index()
+	return M.any
+end
+
+function any.__call()
+	return M.any
+end
+
+-- never type.
+local never = new_type("never")
+M.never = setmetatable({}, never)
+
+function never.__assign(lhs, rhs)
+	not_assignable(lhs, rhs)
+end
+
 -- boolean primitive type.
 local boolean = new_type("boolean")
 M.boolean = setmetatable({}, boolean)
@@ -139,7 +215,7 @@ function boolean:__assign(rhs)
 end
 
 function boolean:__eq(rhs)
-	return boolean
+	return M.boolean
 end
 
 -- string primitive type.
@@ -165,7 +241,7 @@ end
 
 function string.__eq(lhs, rhs)
 	if to_type_string(lhs) == "string" and to_type_string(rhs) == "string" then
-		return boolean
+		return M.boolean
 	end
 	error("comparison not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
@@ -183,13 +259,13 @@ function number:__assign(rhs)
 end
 
 function number:__unm()
-	return number
+	return M.number
 end
 
 
 function number.__add(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return number
+		return M.number
 	end
 
 	error("operation + not supported for types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
@@ -197,56 +273,56 @@ end
 
 function number.__sub(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return number
+		return M.number
 	end
 	error("operation - not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
 
 function number.__mod(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return number
+		return M.number
 	end
 	error("operation % not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
 
 function number.__div(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return number
+		return M.number
 	end
 	error("operation / not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
 
 function number.__mul(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return number
+		return M.number
 	end
 	error("operation * not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
 
 function number.__pow(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return number
+		return M.number
 	end
 	error("operation ˆ not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
 
 function number.__eq(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return boolean
+		return M.boolean
 	end
 	error("operation == not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
 
 function number.__le(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return boolean
+		return M.boolean
 	end
 	error("operation <= not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
 
 function number.__lt(lhs, rhs)
 	if to_type_string(lhs) == "number" and to_type_string(rhs) == "number" then
-		return boolean
+		return M.boolean
 	end
 	error("operation < not supported with types " .. to_type_string(lhs) .. " and " .. to_type_string(rhs))
 end
