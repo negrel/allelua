@@ -2,7 +2,7 @@
     <img height="250" src="./.github/images/allelua.png">
 </h1>
 
-# 🙏 `allelua` - LuaJIT distribution blessed by programming gods
+# 🙏 `allelua` - Lua runtime and tools blessed by programming gods
 
 `allelua` is a Lua runtime with secure defaults and a great developer experience.
 It's built on [`mlua`](https://github.com/mlua-rs/mlua),
