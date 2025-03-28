@@ -1,9 +1,13 @@
 [package]
-name = "lualint"
+name = "allelua"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["cargo", "derive"] }
 codespan = { workspace = true }
 codespan-reporting = { workspace = true }
 full_moon = { workspace = true }
+lualint = { path = "../lualint" }
+walkdir = "2.5.0"

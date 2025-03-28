@@ -1,5 +1,3 @@
-mod rules;
-
 use full_moon::{
     ast::{
         lua52::{Goto, Label},
@@ -12,7 +10,9 @@ use full_moon::{
     tokenizer::{Token, TokenReference},
     visitors::Visitor,
 };
-use rules::{Diagnostic, Rule};
+
+mod rules;
+use rules::{Diagnostic, EmptyIf, Rule};
 
 #[derive(Debug, Default)]
 pub struct Linter {
@@ -22,7 +22,7 @@ pub struct Linter {
 impl Linter {
     /// Creates a new [Linter] with all rules.
     pub fn new() -> Self {
-        Self::with_rules(vec![])
+        Self::with_rules(vec![Box::new(EmptyIf::default())])
     }
 
     /// Creates a new linter with provided [Rule].

@@ -1,4 +1,13 @@
 [workspace]
 
 resolver = "2"
-members = ["holylib", "lualint", "luatypes"]
+members = ["allelua", "holylib", "lualint", "luatypes"]
+
+[workspace.dependencies]
+codespan = "0.12.0"
+codespan-reporting = "0.12.0"
+full_moon = { version = "1.2.0", default-features = false, features = [
+	"lua52",
+	"luajit",
+] }
+mlua = { version = "0.10.3", features = ["luajit52"] }
