@@ -1,0 +1,12 @@
+[package]
+name = "lualint"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+codespan = "0.12.0"
+codespan-reporting = "0.12.0"
+full_moon = { version = "1.2.0", default-features = false, features = [
+	"lua52",
+	"luajit",
+] }
