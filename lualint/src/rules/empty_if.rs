@@ -1,7 +1,7 @@
 use codespan_reporting::diagnostic::Severity;
 use full_moon::{ast, node::Node, visitors::Visitor};
 
-use super::{Diagnostic, Label, Rule};
+use super::{fullmoon_range_to_bytes_range, Diagnostic, Label, Rule};
 
 #[derive(Debug, Default)]
 pub struct EmptyIf {
@@ -25,7 +25,7 @@ impl Visitor for EmptyIf {
                 message: "empty if block".to_owned(),
                 notes: vec![],
                 primary_label: Label {
-                    message: None,
+                    message: Some("block is empty".to_string()),
                     range: if_block
                         .range()
                         .map(|(start, end)| (start.bytes() as u32, end.bytes() as u32))
@@ -44,7 +44,7 @@ impl Visitor for EmptyIf {
                         message: "empty else if block".to_owned(),
                         notes: vec![],
                         primary_label: Label {
-                            message: None,
+                            message: Some("block is empty".to_string()),
                             range: if_block
                                 .range()
                                 .map(|(start, end)| (start.bytes() as u32, end.bytes() as u32))
@@ -61,14 +61,11 @@ impl Visitor for EmptyIf {
                 self.diags.push(Diagnostic {
                     severity: Severity::Note,
                     code: "emtpy_if",
-                    message: "empty esle block".to_owned(),
+                    message: "empty else block".to_owned(),
                     notes: vec![],
                     primary_label: Label {
-                        message: None,
-                        range: if_block
-                            .range()
-                            .map(|(start, end)| (start.bytes() as u32, end.bytes() as u32))
-                            .unwrap(),
+                        message: Some("block is empty".to_string()),
+                        range: if_block.range().map(fullmoon_range_to_bytes_range).unwrap(),
                     },
                     secondary_labels: vec![],
                 })

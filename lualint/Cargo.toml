@@ -7,3 +7,4 @@ edition = "2021"
 codespan = { workspace = true }
 codespan-reporting = { workspace = true }
 full_moon = { workspace = true }
+luatypes = { path = "../luatypes" }

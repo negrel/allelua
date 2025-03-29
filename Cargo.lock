@@ -307,6 +307,7 @@ dependencies = [
  "codespan",
  "codespan-reporting",
  "full_moon",
+ "luatypes",
 ]
 
 [[package]]

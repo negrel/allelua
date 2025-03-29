@@ -12,7 +12,7 @@ use full_moon::{
 };
 
 mod rules;
-use rules::{Diagnostic, EmptyIf, Rule};
+use rules::{Diagnostic, EmptyIf, Rule, TypeChecker};
 
 #[derive(Debug, Default)]
 pub struct Linter {
@@ -22,7 +22,10 @@ pub struct Linter {
 impl Linter {
     /// Creates a new [Linter] with all rules.
     pub fn new() -> Self {
-        Self::with_rules(vec![Box::new(EmptyIf::default())])
+        Self::with_rules(vec![
+            Box::new(EmptyIf::default()),
+            Box::new(TypeChecker::default()),
+        ])
     }
 
     /// Creates a new linter with provided [Rule].

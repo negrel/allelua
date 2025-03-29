@@ -2,7 +2,7 @@ use std::fmt;
 
 use codespan::FileId;
 use codespan_reporting::diagnostic::Severity;
-use full_moon::visitors::Visitor;
+use full_moon::{tokenizer::Position, visitors::Visitor};
 
 /// Rule defines a lint rule.
 pub trait Rule: Visitor + fmt::Debug {
@@ -10,7 +10,10 @@ pub trait Rule: Visitor + fmt::Debug {
 }
 
 mod empty_if;
+mod type_checker;
+
 pub use empty_if::*;
+pub use type_checker::*;
 
 /// Diagnostic defines a lint rule diagnostic.
 #[derive(Debug)]
@@ -66,4 +69,8 @@ impl Label {
         )
         .with_message(self.message.as_ref().unwrap_or(&"".to_owned()).to_owned())
     }
+}
+
+fn fullmoon_range_to_bytes_range((start, end): (Position, Position)) -> (u32, u32) {
+    (start.bytes() as u32, end.bytes() as u32)
 }

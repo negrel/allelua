@@ -1,3 +1,5 @@
+use core::fmt;
+
 use full_moon::{
     ast::{Ast, Expression, LastStmt},
     node::Node,
@@ -9,7 +11,7 @@ use holylib::types::{Type, VM};
 #[derive(Debug)]
 pub struct Checker {
     vm: VM,
-    errors: Vec<String>,
+    errors: Vec<Error>,
 }
 
 impl Checker {
@@ -20,14 +22,20 @@ impl Checker {
         }
     }
 
-    pub fn check(mut self, ast: &Ast) -> Result<(), Vec<String>> {
+    pub fn check(&mut self, ast: &Ast) -> Result<(), Vec<Error>> {
         self.visit_ast(ast);
 
         if self.errors.is_empty() {
             Ok(())
         } else {
-            Err(self.errors)
+            Err(self.errors())
         }
+    }
+
+    pub fn errors(&mut self) -> Vec<Error> {
+        let mut errs = vec![];
+        std::mem::swap(&mut self.errors, &mut errs);
+        errs
     }
 
     fn type_of(&self, expr: &Expression) -> mlua::Result<(Type, Option<mlua::Value>)> {
@@ -74,10 +82,13 @@ impl Checker {
         Ok((t, literal))
     }
 
-    fn assign(&mut self, lhs: Type, rhs: Type) {
+    fn assign(&mut self, lhs: Type, rhs: Type, range: (u32, u32)) {
         match self.vm.assign(lhs, rhs) {
             Ok(_) => {}
-            Err(err) => self.errors.push(err.to_string()),
+            Err(err) => self.errors.push(Error {
+                message: err.to_string(),
+                range,
+            }),
         }
     }
 }
@@ -140,7 +151,13 @@ impl Visitor for Checker {
                         let t = match self.vm.eval_type(expr) {
                             Ok(t) => t,
                             Err(err) => {
-                                self.errors.push(err.to_string());
+                                self.errors.push(Error {
+                                    message: err.to_string(),
+                                    range: (
+                                        p.start_position().bytes() as u32,
+                                        p.end_position().bytes() as u32,
+                                    ),
+                                });
                                 continue;
                             }
                         };
@@ -156,7 +173,14 @@ impl Visitor for Checker {
             let (t, value) = self.type_of(expr).unwrap();
 
             if i < annotations.len() {
-                self.assign(annotations[i].clone(), t.clone())
+                self.assign(
+                    annotations[i].clone(),
+                    t.clone(),
+                    (
+                        name.start_position().unwrap().bytes() as u32,
+                        expr.end_position().unwrap().bytes() as u32,
+                    ),
+                )
             }
             scope.set(&name.token().to_string(), t, value)
         }
@@ -175,7 +199,14 @@ impl Visitor for Checker {
                 full_moon::ast::Var::Name(n) => {
                     let lhs = scope.get_type(&n.token().to_string());
                     let (rhs, _) = self.type_of(expr).unwrap();
-                    self.assign(lhs, rhs);
+                    self.assign(
+                        lhs,
+                        rhs,
+                        (
+                            name.start_position().unwrap().bytes() as u32,
+                            expr.end_position().unwrap().bytes() as u32,
+                        ),
+                    );
                 }
                 _ => unreachable!(),
             }
@@ -183,13 +214,27 @@ impl Visitor for Checker {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Error {
+    pub message: String,
+    pub range: (u32, u32),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Error {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn local_assign() {
-        let checker = Checker::new();
+        let mut checker = Checker::new();
         let ast = full_moon::parse(
             r#"
 local foo, bar = 3.14, "baz"
@@ -207,7 +252,7 @@ bar = foo
 
     #[test]
     fn local_shadowing() {
-        let checker = Checker::new();
+        let mut checker = Checker::new();
         let ast = full_moon::parse(
             r#"
 local foo, bar = 3.14, "baz"
@@ -223,7 +268,7 @@ end
 
     #[test]
     fn local_assign_expr() {
-        let checker = Checker::new();
+        let mut checker = Checker::new();
         let ast = full_moon::parse(
             r#"
 local foo = 1 == 1
@@ -238,7 +283,7 @@ foo = false
 
     #[test]
     fn local_annotation() {
-        let checker = Checker::new();
+        let mut checker = Checker::new();
         let ast = full_moon::parse(
             r#"
 --@ fn(number, number) (number)
@@ -255,7 +300,7 @@ local foo = 3"#,
 
     #[test]
     fn annotation_after_decl() {
-        let checker = Checker::new();
+        let mut checker = Checker::new();
         let ast = full_moon::parse(
             r#"
 local foo = 3
@@ -270,7 +315,7 @@ foo = 'bar'"#,
 
     #[test]
     fn function_inference() {
-        let checker = Checker::new();
+        let mut checker = Checker::new();
         let ast = full_moon::parse(
             r#"
 local foo = function(foo, bar)
