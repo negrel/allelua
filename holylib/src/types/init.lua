@@ -401,7 +401,35 @@ local scopes = {}
 M.scopes = scopes
 
 local function new_scope(parent)
-	return setmetatable({}, { __index = parent })
+	local scope = { parent = parent }
+	scope.is_nil = {}
+	scope.types = setmetatable({}, {
+		__index = function(t, k)
+			if scope.is_nil[k] == true then
+				return nil
+			elseif scope.parent then
+				return scope.parent.types[k]
+			else
+				return nil
+			end
+		end
+	})
+	scope.values = setmetatable({}, {
+		__index = function(t, k)
+			local type = rawget(scope.types, k)
+			if type then
+				return type
+			elseif scope.is_nil[k] == true then
+				return nil
+			elseif scope.parent then
+				return scope.parent.values[k]
+			else
+				return nil
+			end
+		end
+	})
+
+	return scope
 end
 
 scopes.root = new_scope(nil)
@@ -413,27 +441,29 @@ function scopes.push()
 end
 
 function scopes.pop()
-	scopes.current = getmetatable(scopes.current).__index
+	scopes.current = scopes.current.parent
 	if scopes.current == nil then error("root scope removed") end
 	return scopes.current
 end
 
---- Evaluates provided Lua code in current scope.
+--- Evaluates provided Lua code in current scope and returns resultant [Type] and
+--- literal value if any.
 function M.eval_in_scope(expr)
 	local f, err = loadstring(expr, "eval_in_scope")
 	if err then error(err) end
 
-	setfenv(f, scopes.current)
+	setfenv(f, scopes.current.values)
 
 	local t = f()
-	if M._is_type() then
-		return t
+	if M._is_type(t) then
+		return t, nil
 	end
 
-	return M[to_type_string(t)]
+	return M[to_type_string(t)], t
 end
 
---- Evaluate type expression.
+--- Evaluate type expression and returns result type. A boolean flag is returned
+--- to indicate if returned type is a [Type] or a literal.
 function M.eval_type(expr)
 	local f, err = loadstring(expr, "eval_type")
 	if err then error(err) end
@@ -445,7 +475,7 @@ function M.eval_type(expr)
 		return t
 	end
 
-	return M[to_type_string(t)]
+	return t
 end
 
 return M

@@ -1,7 +1,6 @@
 use full_moon::{
     ast::{Ast, Expression, LastStmt},
     node::Node,
-    tokenizer::Symbol,
     visitors::Visitor,
 };
 use holylib::types::{Type, VM};
@@ -31,12 +30,12 @@ impl Checker {
         }
     }
 
-    fn type_of(&self, expr: &Expression) -> mlua::Result<Type> {
-        let t: Type = match expr {
+    fn type_of(&self, expr: &Expression) -> mlua::Result<(Type, Option<mlua::Value>)> {
+        let (t, literal): (Type, Option<mlua::Value>) = match expr {
             Expression::Parentheses { expression, .. } => self.type_of(expression)?,
-            Expression::BinaryOperator { .. } | Expression::UnaryOperator { .. } => self
-                .vm
-                .eval_in_scope(&("return ".to_owned() + &expr.to_string()))?,
+            Expression::BinaryOperator { .. } | Expression::UnaryOperator { .. } => {
+                self.vm.eval_expr_in_scope(&expr.to_string())?
+            }
             Expression::FunctionCall(func_call) => match func_call.prefix() {
                 full_moon::ast::Prefix::Expression(expr) => self.type_of(expr)?,
                 full_moon::ast::Prefix::Name(_n) => {
@@ -45,16 +44,10 @@ impl Checker {
                 _ => unreachable!(),
             },
             // Primitives.
-            Expression::Number(_) => self.vm.number(),
-            Expression::String(_) => self.vm.string(),
-            Expression::Symbol(tok) => match tok.token_type() {
-                full_moon::tokenizer::TokenType::Symbol { symbol } => match symbol {
-                    Symbol::Nil => self.vm.nil(),
-                    Symbol::True | Symbol::False => self.vm.boolean(),
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            },
+            Expression::Number(_)
+            | Expression::String(_)
+            | Expression::Symbol(_)
+            | Expression::Var(_) => self.vm.eval_expr_in_scope(&expr.to_string())?,
             // Tables.
             Expression::TableConstructor(_tab) => {
                 todo!()
@@ -73,19 +66,12 @@ impl Checker {
                 let mut results = Vec::with_capacity(results_count);
                 results.resize(results.capacity(), self.vm.any());
 
-                self.vm.function(&params, &results)
+                (self.vm.function(&params, &results), None)
             }
-            // Variable.
-            Expression::Var(var) => match var {
-                full_moon::ast::Var::Expression(e) => self.vm.eval_expr_in_scope(&e.to_string())?,
-                full_moon::ast::Var::Name(n) => self.vm.scope().get(&n.token().to_string()),
-                _ => unreachable!(),
-            },
-
             _ => unreachable!(),
         };
 
-        Ok(t)
+        Ok((t, literal))
     }
 
     fn assign(&mut self, lhs: Type, rhs: Type) {
@@ -167,12 +153,12 @@ impl Visitor for Checker {
 
         let scope = self.vm.scope();
         for (i, (name, expr)) in std::iter::zip(node.names(), node.expressions()).enumerate() {
-            let t = self.type_of(expr).unwrap();
+            let (t, value) = self.type_of(expr).unwrap();
 
             if i < annotations.len() {
                 self.assign(annotations[i].clone(), t.clone())
             }
-            scope.set(&name.token().to_string(), t)
+            scope.set(&name.token().to_string(), t, value)
         }
     }
 
@@ -187,8 +173,8 @@ impl Visitor for Checker {
                     }
                 }
                 full_moon::ast::Var::Name(n) => {
-                    let lhs = scope.get(&n.token().to_string());
-                    let rhs = self.type_of(expr).unwrap();
+                    let lhs = scope.get_type(&n.token().to_string());
+                    let (rhs, _) = self.type_of(expr).unwrap();
                     self.assign(lhs, rhs);
                 }
                 _ => unreachable!(),

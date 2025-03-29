@@ -56,21 +56,29 @@ impl VM {
         self.g
             .get::<mlua::Table>("scopes")
             .unwrap()
-            .get::<mlua::Table>("current")
+            .get::<Scope>("current")
             .unwrap()
-            .into()
     }
 
-    /// Evaluates provided expression within current scope.
-    pub fn eval_in_scope(&self, expr: &str) -> mlua::Result<Type> {
-        self.g
+    /// Evaluates provided expression within current scope and returns it's [Type]
+    /// and [mlua::Value] if possible.
+    pub fn eval_in_scope(&self, expr: &str) -> mlua::Result<(Type, Option<mlua::Value>)> {
+        let (t, literal): (Type, mlua::Value) = self
+            .g
             .get::<mlua::Function>("eval_in_scope")
             .unwrap()
-            .call(expr)
+            .call(expr)?;
+
+        if t != Type(mlua::Value::Nil) && literal == mlua::Value::Nil {
+            Ok((t, None))
+        } else {
+            Ok((t, Some(literal)))
+        }
     }
 
-    /// Evaluates variable expression (e.g. `foo.bar.bar`) and returns it's [Type].
-    pub fn eval_expr_in_scope(&self, expr: &str) -> mlua::Result<Type> {
+    /// Evaluates expression within current scope and returns it's [Type]
+    /// and [mlua::Value].
+    pub fn eval_expr_in_scope(&self, expr: &str) -> mlua::Result<(Type, Option<mlua::Value>)> {
         self.eval_in_scope(&("return ".to_owned() + expr))
     }
 
@@ -90,9 +98,8 @@ impl VM {
             .unwrap()
             .get::<mlua::Function>("push")
             .unwrap()
-            .call::<mlua::Table>(())
+            .call::<Scope>(())
             .unwrap()
-            .into()
     }
 
     /// Pops scope from stack of scopes and returns new lexical scope.
@@ -102,9 +109,8 @@ impl VM {
             .unwrap()
             .get::<mlua::Function>("pop")
             .unwrap()
-            .call::<mlua::Table>(())
+            .call::<Scope>(())
             .unwrap()
-            .into()
     }
 
     /// Returns any type singleton.
@@ -171,25 +177,57 @@ impl IntoLua for Type {
 
 /// Scope define a Lua lexical scope.
 #[derive(Debug, PartialEq)]
-pub struct Scope(mlua::Table);
+pub struct Scope {
+    is_nil: mlua::Table,
+    values: mlua::Table,
+    types: mlua::Table,
+}
 
-impl From<mlua::Table> for Scope {
-    fn from(value: mlua::Table) -> Self {
-        Self(value)
+impl FromLua for Scope {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
+        let tab = mlua::Table::from_lua(value, lua)?;
+        let is_nil = tab.get::<mlua::Table>("is_nil")?;
+        let values = tab.get::<mlua::Table>("values")?;
+        let types = tab.get::<mlua::Table>("types")?;
+
+        Ok(Self {
+            is_nil,
+            values,
+            types,
+        })
     }
 }
 
 impl Scope {
-    pub fn set(&self, name: &str, t: Type) {
-        self.0.set(name, t).unwrap()
+    pub fn set(&self, name: &str, t: Type, value: Option<mlua::Value>) {
+        if let Some(value) = value {
+            self.values.set(name, value).unwrap();
+        }
+        if t == Type(mlua::Value::Nil) {
+            self.is_nil.set(name, true).unwrap();
+        }
+        self.types.set(name, t).unwrap();
     }
 
     pub fn get(&self, name: &str) -> Type {
-        self.0.get(name).unwrap()
+        self.values.get::<Type>(name).unwrap()
+    }
+
+    pub fn get_type(&self, name: &str) -> Type {
+        self.types.get::<Type>(name).unwrap()
     }
 
     pub fn get_local(&self, name: &str) -> Type {
-        self.0.raw_get(name).unwrap()
+        let v = self.values.raw_get::<Type>(name).unwrap();
+        if v == Type(mlua::Value::Nil) && self.is_nil.get::<bool>(name).unwrap() {
+            return v;
+        }
+
+        self.types.raw_get::<Type>(name).unwrap()
+    }
+
+    pub fn get_local_type(&self, name: &str) -> Type {
+        self.types.raw_get::<Type>(name).unwrap()
     }
 }
 
@@ -231,7 +269,7 @@ mod tests {
         let vm = VM::new().unwrap();
         let scope = vm.scope();
 
-        scope.set("foo", vm.string());
+        scope.set("foo", vm.string(), None);
 
         assert_eq!(scope.get("foo"), vm.string());
     }
@@ -242,7 +280,7 @@ mod tests {
         // Setup initial scope.
         {
             let scope = vm.scope();
-            scope.set("foo", vm.string());
+            scope.set("foo", vm.string(), None);
         }
 
         // Create a new scope.
@@ -251,7 +289,7 @@ mod tests {
         assert_eq!(scope.get("foo"), vm.string());
 
         // Shadow the variable.
-        scope.set("foo", vm.number());
+        scope.set("foo", vm.number(), None);
         assert_eq!(scope.get("foo"), vm.number());
 
         // Restore initial scope.
@@ -265,12 +303,12 @@ mod tests {
         let vm = VM::new().unwrap();
         {
             let scope = vm.scope();
-            scope.set("foo", vm.string());
+            scope.set("foo", vm.string(), None);
         }
 
         let scope = vm.push_scope();
-        scope.set("foo", vm.number());
+        scope.set("foo", vm.number(), None);
 
-        assert_eq!(vm.eval_expr_in_scope("foo").unwrap(), vm.number());
+        assert_eq!(vm.eval_expr_in_scope("foo").unwrap(), (vm.number(), None));
     }
 }
