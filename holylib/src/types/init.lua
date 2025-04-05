@@ -19,11 +19,10 @@ end
 --- a stringified version of v.
 local function to_type_string(v)
 	if not M._is_type(v) then
-		-- if type(v) == "string" then
-		-- 	return '"' .. v .. '"'
-		-- end
-		-- return tostring(v)
-		return type(v)
+		if type(v) == "string" then
+			return '"' .. v .. '"'
+		end
+		return tostring(v)
 	end
 
 	local mt = getmetatable(v)
@@ -42,15 +41,19 @@ end
 function M._assign(lhs, rhs)
 	if M._is_type(lhs) then
 		local mt = getmetatable(lhs)
-		local _, err = pcall(mt.__assign, lhs, rhs)
-		return err
+		mt.__assign(lhs, rhs)
+		return
 	end
 
 	-- Literals.
 	if lhs == rhs then return end
 
 	-- Default to error.
-	local _, err = pcall(not_assignable, lhs, rhs)
+	not_assignable(lhs, rhs)
+end
+
+function M._try_assign(lhs, rhs)
+	local _, err = pcall(M._assign, lhs, rhs)
 	return err
 end
 
@@ -396,6 +399,48 @@ function M._fn(params, results)
 	return M.fn(unpack(params))(unpack(results))
 end
 
+local interface = new_type("interface")
+interface.__index = interface
+
+function interface:string()
+	local str = "{ "
+	local tab = getmetatable(self).__index
+	local first = true
+	for k, v in pairs(tab) do
+		if not first then
+			str = str .. ", "
+		end
+		first = false
+
+		if type(k) == "string" then
+			str = str .. k
+		else
+			str = str .. "[" .. k .. "]"
+		end
+
+		str = str .. " = " .. to_type_string(v)
+	end
+
+	str = str .. " }"
+
+	return str
+end
+
+function M.interface(tab)
+	local mt = {
+		__index = tab,
+		__newindex = function(t, k, v)
+			local type = t[k]
+			M._assign(type, v)
+			table[k] = v
+		end
+	}
+	setmetatable(mt, interface)
+
+	return setmetatable({}, mt)
+end
+
+
 -- We store variable types in scope tables.
 local scopes = {}
 M.scopes = scopes
@@ -458,8 +503,11 @@ function M.eval_in_scope(expr)
 	if M._is_type(t) then
 		return t, nil
 	end
+	if type(t) == "table" then
+		return M.interface(t), t
+	end
 
-	return M[to_type_string(t)], t
+	return M[type(t)], t
 end
 
 --- Evaluate type expression and returns result type. A boolean flag is returned

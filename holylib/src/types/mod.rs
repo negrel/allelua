@@ -34,7 +34,7 @@ impl VM {
     pub fn assign(&self, lhs: Type, rhs: Type) -> Result<(), String> {
         let reason = self
             .g
-            .get::<mlua::Function>("_assign")
+            .get::<mlua::Function>("_try_assign")
             .unwrap()
             .call::<Option<String>>((lhs, rhs))
             .unwrap();
@@ -62,14 +62,21 @@ impl VM {
 
     /// Evaluates provided expression within current scope and returns it's [Type]
     /// and [mlua::Value] if possible.
-    pub fn eval_in_scope(&self, expr: &str) -> mlua::Result<(Type, Option<mlua::Value>)> {
-        let (t, literal): (Type, mlua::Value) = self
+    pub fn eval_in_scope(&self, expr: &str) -> Result<(Type, Option<mlua::Value>), String> {
+        let (t, literal, err): (Type, mlua::Value, Option<String>) = self
             .g
             .get::<mlua::Function>("eval_in_scope")
             .unwrap()
-            .call(expr)?;
+            .call(expr)
+            .unwrap();
 
-        if t != Type(mlua::Value::Nil) && literal == mlua::Value::Nil {
+        if let Some(err) = err {
+            // Remove lua_file:line in error message.
+            match err.find(": ") {
+                Some(i) => Err(err[i + ": ".len()..].to_string()),
+                None => Err(err),
+            }
+        } else if t != Type(mlua::Value::Nil) && literal == mlua::Value::Nil {
             Ok((t, None))
         } else {
             Ok((t, Some(literal)))
@@ -78,8 +85,11 @@ impl VM {
 
     /// Evaluates expression within current scope and returns it's [Type]
     /// and [mlua::Value].
-    pub fn eval_expr_in_scope(&self, expr: &str) -> mlua::Result<(Type, Option<mlua::Value>)> {
-        self.eval_in_scope(&("return ".to_owned() + expr))
+    pub fn eval_expr_in_scope(&self, expr: &str) -> Result<(Type, Option<mlua::Value>), String> {
+        match self.eval_in_scope(&("return ".to_owned() + expr)) {
+            Ok(r) => Ok(r),
+            Err(err) => Err(err),
+        }
     }
 
     /// Evaluates type expression (e.g. `fn(number, number) (number)`) and

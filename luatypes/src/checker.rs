@@ -38,28 +38,20 @@ impl Checker {
         errs
     }
 
-    fn type_of(&self, expr: &Expression) -> mlua::Result<(Type, Option<mlua::Value>)> {
+    fn type_of(&self, expr: &Expression) -> Result<(Type, Option<mlua::Value>), String> {
         let (t, literal): (Type, Option<mlua::Value>) = match expr {
             Expression::Parentheses { expression, .. } => self.type_of(expression)?,
             Expression::BinaryOperator { .. } | Expression::UnaryOperator { .. } => {
                 self.vm.eval_expr_in_scope(&expr.to_string())?
             }
-            Expression::FunctionCall(func_call) => match func_call.prefix() {
-                full_moon::ast::Prefix::Expression(expr) => self.type_of(expr)?,
-                full_moon::ast::Prefix::Name(_n) => {
-                    todo!()
-                }
-                _ => unreachable!(),
-            },
+            Expression::FunctionCall(_) => self.vm.eval_expr_in_scope(&expr.to_string())?,
             // Primitives.
             Expression::Number(_)
             | Expression::String(_)
             | Expression::Symbol(_)
             | Expression::Var(_) => self.vm.eval_expr_in_scope(&expr.to_string())?,
             // Tables.
-            Expression::TableConstructor(_tab) => {
-                todo!()
-            }
+            Expression::TableConstructor(_) => self.vm.eval_expr_in_scope(&expr.to_string())?,
             // Function.
             Expression::Function(func) => {
                 let body = &func.1;
@@ -170,7 +162,19 @@ impl Visitor for Checker {
 
         let scope = self.vm.scope();
         for (i, (name, expr)) in std::iter::zip(node.names(), node.expressions()).enumerate() {
-            let (t, value) = self.type_of(expr).unwrap();
+            let (t, value) = match self.type_of(expr) {
+                Ok(r) => r,
+                Err(err) => {
+                    self.errors.push(Error {
+                        message: err.to_string(),
+                        range: (
+                            name.start_position().unwrap().bytes() as u32,
+                            expr.end_position().unwrap().bytes() as u32,
+                        ),
+                    });
+                    return;
+                }
+            };
 
             if i < annotations.len() {
                 self.assign(
@@ -182,6 +186,7 @@ impl Visitor for Checker {
                     ),
                 )
             }
+
             scope.set(&name.token().to_string(), t, value)
         }
     }
@@ -189,27 +194,35 @@ impl Visitor for Checker {
     fn visit_assignment(&mut self, node: &full_moon::ast::Assignment) {
         let scope = self.vm.scope();
         for (name, expr) in std::iter::zip(node.variables(), node.expressions()) {
-            match name {
+            let lhs = match name {
                 full_moon::ast::Var::Expression(expr) => {
                     match self.vm.eval_expr_in_scope(&expr.to_string()) {
-                        Ok(_) => todo!(),
-                        Err(_) => todo!(),
+                        Ok((t, _)) => t,
+                        Err(err) => {
+                            self.errors.push(Error {
+                                message: err.to_string(),
+                                range: (
+                                    name.start_position().unwrap().bytes() as u32,
+                                    expr.end_position().unwrap().bytes() as u32,
+                                ),
+                            });
+                            return;
+                        }
                     }
                 }
-                full_moon::ast::Var::Name(n) => {
-                    let lhs = scope.get_type(&n.token().to_string());
-                    let (rhs, _) = self.type_of(expr).unwrap();
-                    self.assign(
-                        lhs,
-                        rhs,
-                        (
-                            name.start_position().unwrap().bytes() as u32,
-                            expr.end_position().unwrap().bytes() as u32,
-                        ),
-                    );
-                }
+                full_moon::ast::Var::Name(n) => scope.get_type(&n.token().to_string()),
                 _ => unreachable!(),
-            }
+            };
+
+            let (rhs, _) = self.type_of(expr).unwrap();
+            self.assign(
+                lhs,
+                rhs,
+                (
+                    name.start_position().unwrap().bytes() as u32,
+                    expr.end_position().unwrap().bytes() as u32,
+                ),
+            );
         }
     }
 }
