@@ -1,9 +1,0 @@
-[package]
-name = "luatypes"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-full_moon = { workspace = true }
-holylib = { path = "../holylib/" }
-mlua = { workspace = true }

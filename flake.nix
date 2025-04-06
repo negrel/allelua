@@ -11,59 +11,30 @@
     };
   };
 
-  outputs = { flake-utils, nixpkgs, fenix, self, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ fenix.overlays.default ];
-        };
-        lib = pkgs.lib;
-      in {
-        packages = {
-          default = pkgs.rustPlatform.buildRustPackage rec {
-            pname = "allelua";
-            version = "0.1.0";
-            src = ./.;
-            cargoLock = {
-              lockFile = ./Cargo.lock;
-              outputHashes = {
-                "selene-lib-0.27.1" =
-                  "sha256-BcoQqim4yeEnZAgTwsFMj2AtH93tO218Z/2arhFAi9I=";
-              };
-            };
-            nativeBuildInputs = with pkgs; [ pkg-config ];
-            buildInputs = [ self.packages.${system}.luajit ];
-            LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
+  outputs = { flake-utils, nixpkgs, fenix, ... }@inputs:
+    flake-utils.lib.eachDefaultSystem
+      (system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ fenix.overlays.default ];
           };
-          luajit = pkgs.luajit.overrideAttrs (oldAttrs: {
-            env = (oldAttrs.env or { }) // {
-              NIX_CFLAGS_COMPILE = toString [
-                (oldAttrs.env.NIX_CFLAGS_COMPILE or "")
-                "-DLUAJIT_ENABLE_LUA52COMPAT"
-              ];
-              prePatch = (oldAttrs.prePatch or "") + ''
-                sed -i -E 's/#define LUAI_MAXCSTACK\s+8000/#define LUAI_MAXCSTACK 0xFFFFFF00/' src/luaconf.h
-                sed -i -E 's/#define LUAI_MAXSTACK\s+65500/#define LUAI_MAXSTACK 0xFFFFFF00/' src/luaconf.h
-              '';
-            };
-          });
-        };
-        devShells = {
-          default = pkgs.mkShell rec {
-            buildInputs =
-              (with pkgs; [ pkg-config cargo-expand tokio-console bats ])
-              ++ (with self.packages.${system}; [ luajit ])
-              ++ (with pkgs.fenix; [ stable.toolchain rust-analyzer ]);
-            LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
+          lib = pkgs.lib;
 
-            # Statically link LuaJIT
-            # LUA_LIB =
-            #   "/nix/store/1fjp1a03kg4ndy69rqawag9az351gfj2-luajit-2.1.1713773202/lib";
-            # LUA_LIB_NAME = "luajit-5.1";
-            # LUA_LINK = "static";
+          pkgBuildInputs = with pkgs; [ ];
+        in
+        {
+          devShells = {
+            default = pkgs.mkShell rec {
+              buildInputs = with pkgs; [ ] ++ pkgBuildInputs ++ (
+                with pkgs.fenix; [
+                  stable.toolchain
+                  rust-analyzer
+                ]
+              );
+              LD_LIBRARY_PATH = "${lib.makeLibraryPath pkgBuildInputs}";
+            };
           };
-        };
-      });
+        });
 }
 

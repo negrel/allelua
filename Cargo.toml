@@ -1,13 +1,14 @@
-[workspace]
+[package]
+name = "allelua"
+version = "0.1.0"
+edition = "2024"
+license-file = "LICENSE"
+description = "LuaJIT distribution blessed by programming gods."
+documentation = "https://docs.rs/allelua"
+repository = "https://github.com/negrel/allelua"
+readme = "README.md"
+authors = ["Alexandre Negrel <alexandre@negrel.dev>"]
 
-resolver = "2"
-members = ["allelua", "holylib", "lualint", "luatypes"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[workspace.dependencies]
-codespan = "0.12.0"
-codespan-reporting = "0.12.0"
-full_moon = { version = "1.2.0", default-features = false, features = [
-	"lua52",
-	"luajit",
-] }
-mlua = { version = "0.10.3", features = ["luajit52"] }
+[dependencies]

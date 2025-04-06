@@ -1,12 +1,38 @@
-<h1 align="center">
-    <img height="250" src="./.github/images/allelua.png">
-</h1>
+# `allelua` - LuaJIT distribution blessed by programming gods.
 
-# 🙏 `allelua` - Lua runtime and tools blessed by programming gods
 
-`allelua` is a Lua runtime with secure defaults and a great developer experience.
-It's built on [`mlua`](https://github.com/mlua-rs/mlua),
-[Rust](https://www.rust-lang.org/) and [Tokio](https://tokio.rs).
+
+## Why ?
+
+- What was your motivation?
+- Why did you build this project?
+- What problem does it solve?
+- What did you learn?
+- What makes your project stand out?
+
+If your project has a lot of features, consider adding a "Features" section and listing them here.
+
+## Getting started
+
+### Configuration
+
+Here is a table of configuration options:
+
+|  Option name  | Default value |           Description            |
+| :-----------: | :-----------: | :------------------------------: |
+| `OPTION_NAME` |    `VALUE`    |       Option description.        |
+
+### Building the project
+
+```shell
+make build
+```
+
+### Running the tests
+
+```shell
+make tests
+```
 
 ## Contributing
 
@@ -19,7 +45,7 @@ me at [alexandre@negrel.dev](mailto:alexandre@negrel.dev), open an
 
 Please give a :star: if this project helped you!
 
-[![buy me a coffee](https://github.com/negrel/.github/raw/master/.github/images/bmc-button.png?raw=true)](https://www.buymeacoffee.com/negrel)
+[![buy me a coffee](https://github.com/negrel/.github/blob/master/.github/images/bmc-button.png?raw=true)](https://www.buymeacoffee.com/negrel)
 
 ## :scroll: License
 
