@@ -4,13 +4,17 @@ pub const xev = @import("xev");
 
 const print = std.debug.print;
 
+pub const LightRef = struct {
+    const asyncYield: u1 = 0;
+};
+
 pub const Allelua = struct {
     const Self = @This();
 
+    pub const RegistryKey = "allelua";
+
     L: zluajit.State,
     xev: xev.Loop,
-
-    pub const RegistryKey = "allelua";
 
     pub fn init(options: zluajit.State.Options) !*Self {
         var self = try options.allocator.*.create(Self);
@@ -24,15 +28,22 @@ pub const Allelua = struct {
         self.xev = try xev.Loop.init(.{});
         errdefer self.xev.deinit();
 
-        // Load libs.
-        self.L.openLibs();
-        self.L.doString(@embedFile("./embed/compat.lua"), "compat") catch unreachable;
-        self.L.doString(@embedFile("./embed/table.lua"), "table") catch unreachable;
-        self.L.doString(@embedFile("./embed/coroutine.lua"), "coroutine") catch unreachable;
+        self.openLibs();
 
         // Store reference on registry.
         self.L.pushLightUserData(self);
         self.L.setField(zluajit.Registry, Self.RegistryKey);
+
+        // self.L.pushAnyType(struct {
+        //     fn print(L: zluajit.State) void {
+        //         for (1..@as(usize, @intCast(L.top())) + 1) |i| {
+        //             L.dumpValue(@as(c_int, @intCast(i)));
+        //             std.debug.print(" ", .{});
+        //         }
+        //         std.debug.print("\n", .{});
+        //     }
+        // }.print);
+        // self.L.setGlobal("print");
 
         self.L.pushAnyType(struct {
             fn sleep(L: zluajit.State) !c_int {
@@ -41,72 +52,47 @@ pub const Allelua = struct {
 
                 L.getField(zluajit.Registry, Allelua.RegistryKey);
                 var al: *Allelua = @constCast(@ptrCast(@alignCast(L.toPointer(-1).?)));
-                var alloc = al.L.allocator();
 
-                const SleepTask = struct {
-                    L: zluajit.State,
+                const SleepTask = Future(struct {
                     c: xev.Completion,
                     timer: xev.Timer,
-                    nursery_ref: c_int,
+                });
 
+                const callback = struct {
                     fn callback(
-                        t: ?*@This(),
+                        t: ?*SleepTask,
                         _: *xev.Loop,
                         _: *xev.Completion,
                         err: anyerror!void,
                     ) xev.CallbackAction {
                         const task = t.?;
-                        defer task.L.allocator().destroy(task);
+                        defer task.deinit();
 
-                        // Retrieve nursery from registry.
-                        task.L.pushAnyType(task.nursery_ref);
-                        task.L.getTable(zluajit.Registry);
-                        task.L.unref(zluajit.Registry, task.nursery_ref);
+                        task.wake(.{@as(f64, 123.45)});
 
-                        // TODO: mark routine as dead.
+                        // TODO: mark routine as dead or raise error from coroutine.
                         err catch unreachable;
-
-                        // Mark routine as ready.
-                        task.L.getField(-1, "_wake");
-                        task.L.pushValue(-2);
-                        _ = task.L.pushState();
-                        task.L.call(2, 0);
 
                         return .disarm;
                     }
-                };
+                }.callback;
 
-                var task = try alloc.create(SleepTask);
-                task.L = L;
-                task.c = undefined;
-                task.timer = try xev.Timer.init();
+                const task = SleepTask.init(L);
+                task.data.timer = try xev.Timer.init();
 
-                // Async yield.
-                L.getGlobal("coroutine");
-                L.getField(-1, "_nursery");
-
-                // Create reference to nursery.
-                L.pushValue(-1);
-                task.nursery_ref = try L.ref(zluajit.Registry);
-
-                task.timer.run(
+                task.data.timer.run(
                     &al.xev,
-                    &task.c,
+                    &task.data.c,
                     ms,
                     SleepTask,
                     task,
-                    SleepTask.callback,
+                    callback,
                 );
 
-                print("sleeping {}ms\n", .{ms});
-                L.dumpStack();
-
-                // Async yield.
-                L.getGlobal("coroutine");
-                L.getField(-1, "_nursery");
-                return L.yield(1);
+                return task.yield();
             }
         }.sleep);
+        self.L.setGlobal("sleep");
 
         return self;
     }
@@ -118,12 +104,42 @@ pub const Allelua = struct {
         alloc.destroy(self);
     }
 
+    pub fn openLibs(self: *Self) void {
+        self.L.openLibs();
+
+        // Layer to improve compatibility with other Lua versions.
+        self.L.doString(@embedFile("./embed/compat.lua"), "compat") catch unreachable;
+
+        // Extensions.
+        {
+            self.L.doString(@embedFile("./embed/table.lua"), "table") catch unreachable;
+
+            // Coroutine.
+            {
+                self.L.setGlobalAnyType(
+                    "async_yield",
+                    @as(*anyopaque, @ptrCast(@constCast(&LightRef.asyncYield))),
+                );
+
+                self.L.doString(@embedFile("./embed/coroutine.lua"), "coroutine") catch unreachable;
+
+                self.L.pushNil();
+                self.L.setGlobal("async_yield");
+            }
+        }
+    }
+
     pub fn doFile(
         self: *Self,
-        filename: [*c]const u8,
+        filename: ?[]const u8,
     ) !void {
         const th = self.L.newThread();
-        try th.loadFile(filename);
+        th.doString(
+            @embedFile("./embed/entrypoint.lua"),
+            "entrypoint",
+        ) catch unreachable;
+        _ = filename;
+
         while (true) {
             // Run thread until it yields.
             switch (try th.@"resume"(0)) {
@@ -131,9 +147,84 @@ pub const Allelua = struct {
                 .yield => {},
             }
 
-            print("polling xev\n", .{});
             // Poll event loop until there is at least one completion.
             try self.xev.run(.once);
         }
     }
 };
+
+/// Future represents an asynchronous Zig computation called from Lua
+/// thread.
+pub fn Future(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        const zluajitTName = "_Future";
+
+        L: zluajit.State,
+        data: T,
+        ref: c_int,
+        nursery: c_int,
+
+        /// Creates a new Future and pushes it on top of the stack.
+        pub fn init(L: zluajit.State) *Self {
+            const self = L.newUserData(Self);
+            self.L = L;
+
+            if (L.newMetaTable(Self)) {
+                const mt = L.toAnyType(-1, zluajit.TableRef).?;
+                mt.set("__gc", Self.deinit);
+                mt.set("__metatable", false);
+            }
+            L.setMetaTable(-2);
+
+            // Prevent garbage collection of self.
+            self.ref = L.ref(zluajit.Registry) catch unreachable;
+
+            // Retrieve nursery if any.
+            self.L.getGlobal("coroutine");
+            self.L.getField(-1, "_nursery");
+            defer self.L.pop(2);
+            self.nursery = L.ref(zluajit.Registry) catch unreachable;
+
+            return self;
+        }
+
+        /// Yields future's thread. This will move the thread into a suspended
+        /// state until the Future is dropped (typically once async work is
+        /// done)
+        pub fn yield(self: *const Self) c_int {
+            self.L.pushLightUserData(
+                @as(*anyopaque, @ptrCast(@constCast(&LightRef.asyncYield))),
+            );
+            return self.L.yield(1);
+        }
+
+        /// Push provided data onto stack of future's thread.
+        pub fn wake(self: *const Self, data: anytype) void {
+            // Retrieve nursery from registy.
+            self.L.pushAnyType(self.nursery);
+            self.L.getTable(zluajit.Registry);
+
+            // Prepare to call nursery:_wake().
+            self.L.getField(-1, "_wake");
+            self.L.pushValue(-2);
+            _ = self.L.pushState();
+
+            // Push wake args.
+            const info = @typeInfo(@TypeOf(data)).@"struct";
+            inline for (info.fields) |f| {
+                self.L.pushAnyType(@field(data, f.name));
+            }
+
+            self.L.pCall(2 + info.fields.len, 0, 0) catch @panic("logic error");
+        }
+
+        /// Clean up future state and mark it as ready to be resumed.
+        pub fn deinit(self: *const Self) void {
+            // Remove references so data can be GC.
+            self.L.unref(zluajit.Registry, self.ref);
+            self.L.unref(zluajit.Registry, self.nursery);
+        }
+    };
+}

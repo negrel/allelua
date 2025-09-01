@@ -46,12 +46,11 @@ pub fn main() !void {
     //         return L.yield(1);
     //     }
     // }.sleep);
-    al.L.setGlobal("sleep");
 
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    const fname: ?[:0]const u8 = if (args.len >= 2) args[1] else null;
+    const fname: ?[]const u8 = if (args.len >= 2) args[1] else null;
     al.doFile(fname orelse null) catch |err| handleLuaError(al, err);
 }
 

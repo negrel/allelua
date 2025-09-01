@@ -1,6 +1,14 @@
 local coroutine = require("coroutine")
 local table = require("table")
 
+-- coroutine built-in functions
+local coro = {
+	resume = coroutine.resume,
+	yield = coroutine.yield,
+}
+
+local async_yield = async_yield
+
 --- Nursery defines the primitive type of structured concurrency. A nursery is
 --- a block of instruction (function in Lua), that can fork new thread
 --- of code that runs concurrently and join before the block returns.
@@ -13,13 +21,13 @@ local table = require("table")
 --- end)
 --- -- All routines are done here.
 --- ```
-local Nursery = { _nursery = true, __metatable = false }
+local Nursery = { __metatable = false }
 Nursery.__index = Nursery
 
 --- Creates a coroutine ready to execute provided block.
 function Nursery:go(block)
 	local co = coroutine.create(block)
-	self._ready[co] = co
+	self._ready[co] = { self }
 end
 
 function Nursery:_poll()
@@ -28,14 +36,14 @@ function Nursery:_poll()
 
 	-- Resume all ready routines.
 	while not table.empty(self._ready) do
-		for co in pairs(self._ready) do
-			local ok, val = coroutine.resume(co, self)
+		for co, args in pairs(self._ready) do
+			local ok, val = coroutine.resume(co, table.unpack(args))
 
 			-- Forward error if any.
 			if not ok then error(val) end
 
 			-- Move to pending set until completion move it back to ready set.
-			if type(val) == "table" and val._nursery == true then
+			if val == async_yield then
 				self._ready[co] = nil
 				self._pending[co] = co
 			else
@@ -51,22 +59,18 @@ function Nursery:_poll()
 	coroutine._nursery = nursery
 end
 
-function Nursery:_wake(co)
+function Nursery:_wake(co, ...)
 	if self._pending[co] then
 		self._pending[co] = nil
-		self._ready[co] = co
+		self._ready[co] = { ... }
 		-- Recursively wake routine in parent nursery.
-		self._parent:_wake(self._co)
-	else
+		if self._parent then
+			self._parent:_wake(self._co)
+		end
+	elseif not self._ready[co] then
 		error("can't wake unknown coroutine")
 	end
 end
-
--- Root nursery mock.
-coroutine._nursery = setmetatable({
-	_nursery = true,
-	_wake = function() end,
-}, Nursery)
 
 function coroutine.nursery(block)
 	local co = coroutine.create(block)
@@ -75,10 +79,12 @@ function coroutine.nursery(block)
 		_parent = coroutine._nursery,
 		_co = coroutine.running(),
 		-- Routines ready to be executed on next poll.
-		_ready = { [co] = co },
+		_ready = {},
 		-- Routines waiting for I/O completion.
 		_pending = {},
 	}, Nursery)
+
+	nu._ready[co] = { nu }
 
 	while true do
 		-- Poll ready routines.
@@ -88,8 +94,7 @@ function coroutine.nursery(block)
 		if table.empty(nu._pending) then return end
 
 		-- All routines are pending, perform an async yield.
-		coroutine.yield(nu._parent)
+		coroutine.yield(async_yield)
 	end
 end
-
 
