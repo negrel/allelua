@@ -9,44 +9,6 @@ pub fn main() !void {
     var al = try Allelua.init(.{ .allocator = &alloc });
     defer al.deinit();
 
-    // al.L.pushAnyType(struct {
-    //     fn sleep(L: zluajit.State) !c_int {
-    //         const secs = L.checkNumber(1);
-    //         _ = secs;
-    //
-    //         // Async yield.
-    //         L.getGlobal("coroutine");
-    //         L.getField(-1, "_nursery");
-    //
-    //         // Create reference to nursery.
-    //         L.pushValue(-1);
-    //         const nursery = try L.ref(zluajit.Registry);
-    //
-    //         // Spawn thread.
-    //         const thread_config = std.Thread.SpawnConfig{};
-    //         _ = try std.Thread.spawn(thread_config, struct {
-    //             fn thread(lua: zluajit.State, n: c_int) void {
-    //                 std.time.sleep(1 * std.time.ns_per_s);
-    //
-    //                 // Retrieve nursery.
-    //                 lua.pushAnyType(n);
-    //                 lua.getTable(zluajit.Registry);
-    //
-    //                 // Remove it from registry.
-    //                 lua.unref(zluajit.Registry, n);
-    //
-    //                 // Retrieve _wake and call it.
-    //                 lua.getField(-1, "_wake");
-    //                 lua.pushValue(-2);
-    //                 _ = lua.pushState();
-    //                 lua.call(2, 0);
-    //             }
-    //         }.thread, .{ L, nursery });
-    //
-    //         return L.yield(1);
-    //     }
-    // }.sleep);
-
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 

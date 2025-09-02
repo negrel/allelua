@@ -7,7 +7,8 @@ local coro = {
 	yield = coroutine.yield,
 }
 
-local async_yield = async_yield
+-- Zig / Lua references table.
+local refs = refs
 
 --- Nursery defines the primitive type of structured concurrency. A nursery is
 --- a block of instruction (function in Lua), that can fork new thread
@@ -25,9 +26,9 @@ local Nursery = { __metatable = false }
 Nursery.__index = Nursery
 
 --- Creates a coroutine ready to execute provided block.
-function Nursery:go(block)
+function Nursery:go(block, ...)
 	local co = coroutine.create(block)
-	self._ready[co] = { self }
+	self._ready[co] = { ... }
 end
 
 function Nursery:_poll()
@@ -43,7 +44,7 @@ function Nursery:_poll()
 			if not ok then error(val) end
 
 			-- Move to pending set until completion move it back to ready set.
-			if val == async_yield then
+			if val == refs.async_yield then
 				self._ready[co] = nil
 				self._pending[co] = co
 			else
@@ -94,7 +95,7 @@ function coroutine.nursery(block)
 		if table.empty(nu._pending) then return end
 
 		-- All routines are pending, perform an async yield.
-		coroutine.yield(async_yield)
+		coroutine.yield(refs.async_yield)
 	end
 end
 

@@ -4,14 +4,10 @@ pub const xev = @import("xev");
 
 const print = std.debug.print;
 
-pub const LightRef = struct {
-    const asyncYield: u1 = 0;
-};
-
 pub const Allelua = struct {
     const Self = @This();
 
-    pub const RegistryKey = "allelua";
+    const registry_key = "allelua";
 
     L: zluajit.State,
     xev: xev.Loop,
@@ -32,25 +28,48 @@ pub const Allelua = struct {
 
         // Store reference on registry.
         self.L.pushLightUserData(self);
-        self.L.setField(zluajit.Registry, Self.RegistryKey);
+        self.L.setField(zluajit.Registry, Self.registry_key);
 
-        // self.L.pushAnyType(struct {
-        //     fn print(L: zluajit.State) void {
-        //         for (1..@as(usize, @intCast(L.top())) + 1) |i| {
-        //             L.dumpValue(@as(c_int, @intCast(i)));
-        //             std.debug.print(" ", .{});
-        //         }
-        //         std.debug.print("\n", .{});
-        //     }
-        // }.print);
-        // self.L.setGlobal("print");
+        return self;
+    }
 
-        self.L.pushAnyType(struct {
+    /// Retrieves reference from Lua registry.
+    // pub fn initFromLuaRegistry(L: zluajit.State) *Self {
+    // L.getField(index: c_int, k: [*c]const u8)
+    // }
+
+    pub fn deinit(self: *Self) void {
+        const alloc = self.L.allocator();
+        self.L.deinit();
+        self.xev.deinit();
+        alloc.destroy(self);
+    }
+
+    pub fn openLibs(self: *Self) void {
+        self.L.openLibs();
+
+        Flag.newTable(self.L);
+        self.L.setGlobal("refs");
+        defer {
+            self.L.pushNil();
+            self.L.setGlobal("refs");
+        }
+
+        // Layer to improve compatibility with other Lua versions.
+        self.L.doString(@embedFile("./embed/compat.lua"), "compat") catch unreachable;
+
+        // Extensions.
+        {
+            self.L.doString(@embedFile("./embed/table.lua"), "table") catch unreachable;
+            self.L.doString(@embedFile("./embed/coroutine.lua"), "coroutine") catch unreachable;
+        }
+
+        self.L.setGlobalAnyType("sleep", struct {
             fn sleep(L: zluajit.State) !c_int {
                 const secs = L.checkNumber(1);
                 const ms: u64 = @intFromFloat(secs * 1000);
 
-                L.getField(zluajit.Registry, Allelua.RegistryKey);
+                L.getField(zluajit.Registry, Allelua.registry_key);
                 var al: *Allelua = @constCast(@ptrCast(@alignCast(L.toPointer(-1).?)));
 
                 const SleepTask = Future(struct {
@@ -68,7 +87,7 @@ pub const Allelua = struct {
                         const task = t.?;
                         defer task.deinit();
 
-                        task.wake(.{@as(f64, 123.45)});
+                        task.wake(.{});
 
                         // TODO: mark routine as dead or raise error from coroutine.
                         err catch unreachable;
@@ -92,41 +111,6 @@ pub const Allelua = struct {
                 return task.yield();
             }
         }.sleep);
-        self.L.setGlobal("sleep");
-
-        return self;
-    }
-
-    pub fn deinit(self: *Self) void {
-        const alloc = self.L.allocator();
-        self.L.deinit();
-        self.xev.deinit();
-        alloc.destroy(self);
-    }
-
-    pub fn openLibs(self: *Self) void {
-        self.L.openLibs();
-
-        // Layer to improve compatibility with other Lua versions.
-        self.L.doString(@embedFile("./embed/compat.lua"), "compat") catch unreachable;
-
-        // Extensions.
-        {
-            self.L.doString(@embedFile("./embed/table.lua"), "table") catch unreachable;
-
-            // Coroutine.
-            {
-                self.L.setGlobalAnyType(
-                    "async_yield",
-                    @as(*anyopaque, @ptrCast(@constCast(&LightRef.asyncYield))),
-                );
-
-                self.L.doString(@embedFile("./embed/coroutine.lua"), "coroutine") catch unreachable;
-
-                self.L.pushNil();
-                self.L.setGlobal("async_yield");
-            }
-        }
     }
 
     pub fn doFile(
@@ -171,10 +155,9 @@ pub fn Future(comptime T: type) type {
             const self = L.newUserData(Self);
             self.L = L;
 
-            if (L.newMetaTable(Self)) {
-                const mt = L.toAnyType(-1, zluajit.TableRef).?;
-                mt.set("__gc", Self.deinit);
-                mt.set("__metatable", false);
+            if (L.newMetaTableRef(Self)) |mt| {
+                mt.setField("__gc", Self.deinit);
+                mt.setField("__metatable", false);
             }
             L.setMetaTable(-2);
 
@@ -194,9 +177,7 @@ pub fn Future(comptime T: type) type {
         /// state until the Future is dropped (typically once async work is
         /// done)
         pub fn yield(self: *const Self) c_int {
-            self.L.pushLightUserData(
-                @as(*anyopaque, @ptrCast(@constCast(&LightRef.asyncYield))),
-            );
+            self.L.pushLightUserData(Flag.async_yield.toLightUserData());
             return self.L.yield(1);
         }
 
@@ -228,3 +209,22 @@ pub fn Future(comptime T: type) type {
         }
     };
 }
+
+/// Flag defines unique integer / pointer shared between Zig and Lua
+/// runtime (as light user data).
+const Flag = enum {
+    async_yield,
+
+    /// Creates a table containing all variants on top of the stack.
+    fn newTable(L: zluajit.State) void {
+        L.newTable();
+        const tab = L.toAnyType(-1, zluajit.TableRef).?;
+        inline for (@typeInfo(Flag).@"enum".fields) |d| {
+            tab.setField(d.name, Flag.toLightUserData(@enumFromInt(d.value)));
+        }
+    }
+
+    inline fn toLightUserData(self: Flag) *anyopaque {
+        return @ptrFromInt(@as(usize, @intFromEnum(self)) + 1);
+    }
+};

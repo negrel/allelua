@@ -141,37 +141,8 @@
 -- end
 --
 
-print("nursery...")
---print(sleep(0.5))
 coroutine.nursery(function(n)
-	print("block")
-	n:go(function()
-		print("sleep 1")
-		sleep(1)
-		print("done 1")
-	end)
-
-	n:go(function()
-		print("sleep 2")
-		sleep(2)
-		print("done 2")
-	end)
-
-	n:go(function()
-		coroutine.nursery(function(n)
-			print("1 block")
-			n:go(function()
-				print("1 sleep 1")
-				print(sleep(1))
-				print("1 done 1")
-			end)
-
-			n:go(function()
-				print("1 sleep 2")
-				sleep(2)
-				print("1 done 2")
-			end)
-		end)
-	end)
+	for i = 1, 100000 do
+		n:go(sleep, 0.001)
+	end
 end)
-print("nursery done")
