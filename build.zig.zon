@@ -9,8 +9,9 @@
             .path = "../zluajit/",
         },
         .libxev = .{
-            .url = "git+https://github.com/negrel/libxev#84fe76c37ffe7bd949839b655d4feba4acae5c18",
-            .hash = "libxev-0.0.0-86vtcykuEwBVi0LEutJBQ5Q2PKtpGNOZ54LfY1PAC8If",
+            // .url = "git+https://github.com/negrel/libxev#84fe76c37ffe7bd949839b655d4feba4acae5c18",
+            // .hash = "libxev-0.0.0-86vtcykuEwBVi0LEutJBQ5Q2PKtpGNOZ54LfY1PAC8If",
+            .path = "../contrib/libxev/",
         },
     },
     .paths = .{

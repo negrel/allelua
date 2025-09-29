@@ -8,11 +8,10 @@
 
   outputs =
     {
-      self,
       nixpkgs,
       flake-utils,
       ...
-    }@inputs:
+    }:
     let
       outputsWithoutSystem = { };
       outputsWithSystem = flake-utils.lib.eachDefaultSystem (
@@ -21,7 +20,6 @@
           pkgs = import nixpkgs {
             inherit system;
           };
-          lib = pkgs.lib;
         in
         {
           devShells = {
