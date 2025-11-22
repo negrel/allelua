@@ -3,12 +3,14 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const system = b.option(bool, "system", "Use system LuaJIT library.") orelse false;
     const llvm = b.option(bool, "llvm", "Use LLVM backend.") orelse false;
 
     const zluajit = b.dependency("zluajit", .{
         .target = target,
         .optimize = optimize,
         .@"lua52-compat" = true,
+        .system = system,
         .llvm = llvm,
     });
     const zev = b.dependency("libzev", .{
@@ -23,9 +25,11 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/root.zig"),
             .target = target,
             .optimize = optimize,
+            .unwind_tables = .sync,
         }),
         .linkage = .static,
         .use_llvm = llvm,
+        .use_lld = llvm,
     });
     lib.root_module.addImport("zluajit", zluajit.module("zluajit"));
     lib.root_module.addImport("zev", zev.module("zev"));
@@ -37,7 +41,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .unwind_tables = .sync,
         }),
+        .use_llvm = llvm,
+        .use_lld = llvm,
     });
     exe.root_module.addImport("allelua", lib.root_module);
     b.installArtifact(exe);
