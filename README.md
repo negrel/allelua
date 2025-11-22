@@ -1,4 +1,8 @@
-# `allelua` - 🙏 LuaJIT distribution blessed by programming gods.
+# `allelua` - 🙏 Lua runtime blessed by programming gods.
+
+`allelua` is a Lua runtime with secure defaults and a great developer
+experience. It's built on [`zluajit`](https://github.com/negrel/zluajit),
+[Zig](https://ziglang.org) and [`libzev`](https://github.com/negrel/libzev).
 
 ## Contributing
 
