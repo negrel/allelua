@@ -3,16 +3,18 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const llvm = b.option(bool, "llvm", "Use LLVM backend.") orelse false;
 
     const zluajit = b.dependency("zluajit", .{
         .target = target,
         .optimize = optimize,
         .@"lua52-compat" = true,
-        .llvm = true,
+        .llvm = llvm,
     });
-    const xev = b.dependency("libxev", .{
+    const zev = b.dependency("libzev", .{
         .target = target,
         .optimize = optimize,
+        .llvm = llvm,
     });
 
     const lib = b.addLibrary(.{
@@ -23,9 +25,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
         .linkage = .static,
+        .use_llvm = llvm,
     });
     lib.root_module.addImport("zluajit", zluajit.module("zluajit"));
-    lib.root_module.addImport("xev", xev.module("xev"));
+    lib.root_module.addImport("zev", zev.module("zev"));
     b.installArtifact(lib);
 
     const exe = b.addExecutable(.{
