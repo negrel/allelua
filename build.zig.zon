@@ -1,17 +1,13 @@
 .{
     .name = .allelua,
     .version = "0.1.0",
-    .minimum_zig_version = "0.14.1",
+    .minimum_zig_version = "0.15.1",
     .fingerprint = 0xb691244a2bea7e46,
 
     .dependencies = .{
         .zluajit = .{
-            .path = "../zluajit/",
-        },
-        .libxev = .{
-            // .url = "git+https://github.com/negrel/libxev#84fe76c37ffe7bd949839b655d4feba4acae5c18",
-            // .hash = "libxev-0.0.0-86vtcykuEwBVi0LEutJBQ5Q2PKtpGNOZ54LfY1PAC8If",
-            .path = "../contrib/libxev/",
+            .url = "git+https://github.com/negrel/zluajit#d0e5eecf8b629d73381ba7afec1c605273ca456b",
+            .hash = "zluajit-0.0.0-uJQ3flOLAgAoh40VnAMyNkHH6DHIWQvLvu5ny7_PlTaU",
         },
     },
     .paths = .{
