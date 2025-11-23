@@ -1,11 +1,21 @@
-local require = require
+local function is_file_modname(modname)
+	return string.has_prefix(modname, "./") or string.has_suffix(modname, ".lua")
+end
 
 --- Normalize module name into a suitable Lua identifier. For example,
 --- './my/lib.lua' become 'my_lib'.
 local function mod_identifier(modname)
-	modname = string.strip_prefix(modname, "./")
+	if is_file_modname(modname) then
+		modname = resolve_path(modname)
+		modname = string.strip_prefix(modname, "./")
+		repeat
+			modname = string.strip_prefix(modname, "../")
+		until not string.has_prefix(modname, "../")
+		modname = string.replace_all(modname, "/", "_")
+	end
+
 	modname = string.strip_suffix(modname, ".lua")
-	modname = string.replace_all(modname, "/", "_")
+
 	return modname
 end
 
@@ -16,27 +26,35 @@ end
 --- import { "bar", "baz" } -- import bar and baz modules
 --- import "bar"            -- import bar module
 --- ```
-local function user_import(modname)
-	if type(modname) == "table" then
-		for importname, modname in pairs(modname) do
-			if type(importname) ~= "string" then
-				module[mod_identifier(modname)] = require(modname)
-			else
-				module[importname] = require(modname)
+local function user_import(module)
+	return function(modname)
+		if type(modname) == "table" then
+			for importname, modname in pairs(modname) do
+				if type(importname) ~= "string" then
+					module[mod_identifier(modname)] = require(modname)
+				else
+					module[importname] = require(modname)
+				end
 			end
+		elseif type(modname) == "string" then
+			module[mod_identifier(modname)] = require(modname)
+		else
+			error("module name must be a string")
 		end
-	elseif type(modname) == "string" then
-		module[mod_identifier(modname)] = require(modname)
-	else
-		error("module name must be a string")
+
+		if is_file_modname(modname) then
+			package.loaded[modname] = nil
+		end
 	end
 end
 
 --- Allelua custom loader to import Lua file.
 local function file_loader(modname)
+	modname = real_path(modname)
+	if package.loaded[modname] then return package.loaded[modname] end
+
 	local m = Module.file(modname)
 	m = m:load()
-	-- TODO: use absolute path as key.
 	package.loaded[modname] = m
 
 	return m
@@ -44,8 +62,7 @@ end
 
 --- Allelua custom searcher to import Lua file.
 local function file_searcher(modname)
-		if not string.has_prefix(modname, "./") and not
-			string.has_suffix(modname, ".lua") then return nil end
+	if not is_file_modname(modname) then return nil end
 
 	return file_loader, modname
 end
@@ -80,7 +97,7 @@ function Module.new(func)
 	local env = setmetatable({}, { __index = global })
 	env.module = env
 
-	global.import = setfenv(user_import, env)
+	global.import = user_import(env)
 
 	return setmetatable({
 		global = global,
@@ -91,7 +108,7 @@ end
 
 -- Create a new Module object for given file.
 function Module.file(fpath)
-	return Module.new(loadfile(fpath))
+	return Module.new(assert(loadfile(fpath), "file not found"))
 end
 
 -- Load module and returns it's environment as a frozen table.

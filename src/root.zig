@@ -42,6 +42,35 @@ pub const Allelua = struct {
         }.print);
         self.L.setGlobal("print");
 
+        self.L.pushZFunction(struct {
+            fn resolvePath(L: zluajit.State, path: []const u8) !c_int {
+                var splitter = std.mem.splitScalar(u8, path, std.fs.path.delimiter);
+                var paths: std.ArrayList([]const u8) = .{};
+                defer paths.deinit(L.allocator().*);
+
+                while (splitter.next()) |p| {
+                    try paths.append(L.allocator().*, p);
+                }
+
+                const real = try std.fs.path.resolve(L.allocator().*, paths.items);
+                defer L.allocator().free(real);
+
+                L.pushString(real);
+                return 1;
+            }
+        }.resolvePath);
+        self.L.setGlobal("resolve_path");
+
+        self.L.pushZFunction(struct {
+            fn realPath(L: zluajit.State, path: []const u8) !c_int {
+                const real = try std.fs.cwd().realpathAlloc(L.allocator().*, path);
+                L.pushString(real);
+                L.allocator().free(real);
+                return 1;
+            }
+        }.realPath);
+        self.L.setGlobal("real_path");
+
         try self.L.doString(
             @embedFile("./embed/00_table.lua"),
             "table",
