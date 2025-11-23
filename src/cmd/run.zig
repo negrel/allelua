@@ -8,13 +8,6 @@ pub fn run(
     stdio: utils.StdIo,
     args: []const [:0]const u8,
 ) !void {
-    // Validate args.
-    if (args.len > 1) try utils.cliError(
-        stdio.err,
-        "unexpected argument '{s}'",
-        .{args[1]},
-    );
-
     var allocator = a;
 
     // Default to stdin.
@@ -25,7 +18,7 @@ pub fn run(
     var f: std.fs.File = undefined;
     var r: std.fs.File.Reader = undefined;
     var buffer: [4096]u8 = undefined;
-    if (args.len == 1) {
+    if (args.len > 0) {
         lua_fpath = args[0];
         f = std.fs.cwd().openFile(lua_fpath, .{}) catch |err| {
             try utils.fatalError(
@@ -39,6 +32,20 @@ pub fn run(
     }
     defer if (lua_file != stdio.in) f.close();
 
+    var lua_args: []const []const u8 = &.{};
+
+    if (args.len > 1) {
+        if (utils.strEql(args[1], "--")) {
+            lua_args = args[2..];
+        } else {
+            try utils.cliError(
+                stdio.err,
+                "unexpected argument after FILE argument: '{s}'",
+                .{args[1]},
+            );
+        }
+    }
+
     // Setup runtime.
     const rt = try Allelua.init(.{
         .allocator = &allocator,
@@ -46,11 +53,10 @@ pub fn run(
     defer rt.deinit();
 
     // Execute Lua file.
-    rt.doFile(lua_file, lua_fpath) catch |err| switch (err) {
+    rt.doFile(lua_file, lua_fpath, lua_args) catch |err| switch (err) {
         error.InvalidSyntax => {
-            try utils.fatalError(stdio.err, "invalid Lua code", .{});
             rt.L.dumpStack();
-            std.process.exit(1);
+            try utils.fatalError(stdio.err, "invalid Lua code", .{});
         },
         error.OutOfMemory => return err,
         error.Runtime => {
