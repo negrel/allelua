@@ -43,9 +43,26 @@ pub const Allelua = struct {
         self.L.setGlobal("print");
 
         try self.L.doString(
+            @embedFile("./embed/00_table.lua"),
+            "table",
+        );
+        try self.L.doString(
+            @embedFile("./embed/00_string.lua"),
+            "string",
+        );
+        try self.L.doString(
+            @embedFile("./embed/98_import.lua"),
+            "allelua.__import",
+        );
+        try self.L.doString(
             @embedFile("./embed/99_start.lua"),
             "allelua.__start",
         );
+
+        // Set Lua strings metatable to string module.
+        self.L.pushString("");
+        self.L.getGlobal("string");
+        self.L.setMetaTable(-2);
     }
 
     pub fn deinit(self: *Self) void {
@@ -56,32 +73,9 @@ pub const Allelua = struct {
 
     pub fn doFile(
         self: *Self,
-        r: *std.Io.Reader,
-        chunkName: [*c]const u8,
+        fpath: ?[]const u8,
         args: []const []const u8,
     ) !void {
-        const Reader = struct {
-            r: *std.Io.Reader,
-            err: std.Io.Reader.Error!void = undefined,
-
-            fn luaReader(
-                _: ?*zluajit.c.lua_State,
-                ptr: ?*anyopaque,
-                size: [*c]usize,
-            ) callconv(.c) [*c]const u8 {
-                const reader: *@This() = @ptrCast(@alignCast(ptr));
-
-                _ = reader.r.tossBuffered();
-                reader.r.fillMore() catch |err| {
-                    if (err == error.EndOfStream) return null;
-                };
-
-                const buf = reader.r.buffered();
-                size.* = buf.len;
-                return buf.ptr;
-            }
-        };
-
         // __start is our Lua entrypoint. This will setup environments and
         // execute user code.
         self.L.getGlobal("__start");
@@ -97,15 +91,8 @@ pub const Allelua = struct {
             self.L.setTable(-3);
         }
 
-        // Arg 3 is user code function.
-        {
-            // Load file.
-            var reader = Reader{ .r = r };
-            try self.L.load(Reader.luaReader, @ptrCast(&reader), chunkName);
-
-            // Check for I/O error reading the file.
-            try reader.err;
-        }
+        // Arg 3 is file.
+        if (fpath) |p| self.L.pushString(p) else self.L.pushNil();
 
         // Start executing code.
         var status = try self.L.@"resume"(3);
