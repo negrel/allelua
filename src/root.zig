@@ -36,11 +36,11 @@ pub const Allelua = struct {
 
     fn setupRuntime(self: *Self) !void {
         self.L.pushZFunction(struct {
-            fn print(L: zluajit.State) void {
+            fn dump(L: zluajit.State) void {
                 L.dumpStack();
             }
-        }.print);
-        self.L.setGlobal("print");
+        }.dump);
+        self.L.setGlobal("dump");
 
         self.L.pushZFunction(struct {
             fn resolvePath(L: zluajit.State, path: []const u8) !c_int {
