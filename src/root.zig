@@ -6,16 +6,27 @@ const aio = @import("aio.zig");
 pub const Allelua = struct {
     const Self = @This();
 
-    const registry_key = "__allelua.Allelua";
+    pub const Mode = enum {
+        debug,
+        production,
+    };
+
+    pub const Options = struct {
+        mode: Mode = .debug,
+        lua: zluajit.State.Options = .{},
+    };
 
     L: zluajit.State,
+    mode: Mode,
 
-    pub fn init(options: zluajit.State.Options) !*Self {
-        var self = try options.allocator.*.create(Self);
-        errdefer options.allocator.*.destroy(self);
+    pub fn init(options: Options) !*Self {
+        var self = try options.lua.allocator.*.create(Self);
+        errdefer options.lua.allocator.*.destroy(self);
+
+        self.mode = options.mode;
 
         // Setup Lua.
-        self.L = try zluajit.State.init(options);
+        self.L = try zluajit.State.init(options.lua);
         errdefer self.L.deinit();
 
         // Load libs.
@@ -27,19 +38,24 @@ pub const Allelua = struct {
             @panic("error setting up the runtime");
         };
 
-        // Store reference on registry.
-        self.L.pushLightUserData(self);
-        self.L.setField(zluajit.Registry, Self.registry_key);
-
         return self;
     }
 
     fn setupRuntime(self: *Self) !void {
-        self.L.pushZFunction(struct {
-            fn dump(L: zluajit.State) void {
-                L.dumpStack();
-            }
-        }.dump);
+        self.L.globalRef().set("mode", self.mode);
+
+        // dump() is noop in prod.
+        if (self.mode == .production) {
+            self.L.pushZFunction(struct {
+                fn dump(_: zluajit.State) void {}
+            }.dump);
+        } else {
+            self.L.pushZFunction(struct {
+                fn dump(L: zluajit.State) void {
+                    L.dumpStack();
+                }
+            }.dump);
+        }
         self.L.setGlobal("dump");
 
         self.L.pushZFunction(struct {

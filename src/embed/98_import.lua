@@ -87,12 +87,12 @@ Module.__index = Module
 -- Create a new Module object.
 function Module.new(func)
 	local global = {
+		dump = dump,
 		error = error,
 		ipairs = ipairs,
 		nursery = nursery,
 		pairs = pairs,
 		pcall = pcall,
-		print = print,
 		type = type,
 	}
 	local env = setmetatable({}, { __index = global })

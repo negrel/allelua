@@ -31,7 +31,9 @@ pub fn run(
 
     // Setup runtime.
     const rt = try Allelua.init(.{
-        .allocator = &allocator,
+        .lua = .{
+            .allocator = &allocator,
+        },
     });
     defer rt.deinit();
 
