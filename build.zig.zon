@@ -6,8 +6,12 @@
 
     .dependencies = .{
         .zluajit = .{
-            .url = "git+https://github.com/negrel/zluajit#d0e5eecf8b629d73381ba7afec1c605273ca456b",
-            .hash = "zluajit-0.0.0-uJQ3flOLAgAoh40VnAMyNkHH6DHIWQvLvu5ny7_PlTaU",
+            .url = "git+https://github.com/negrel/zluajit#860f776912af449cb4c5c1de34dc760c59bf2db6",
+            .hash = "zluajit-0.0.0-uJQ3fpKMAgChvyKNVEu1BgHTmlnGDO-DL6xQmdYUDlKp",
+        },
+        .libzev = .{
+            .url = "git+https://github.com/negrel/libzev#03852a1c48f59fc0ce8e8541408a655ff9bab7c4",
+            .hash = "libzev-0.0.0-8a7xIPbYAQADzoB43NMwJqweWJZS6mD-jwC0h168dpog",
         },
     },
     .paths = .{
