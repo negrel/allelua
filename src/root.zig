@@ -80,6 +80,14 @@ pub const Allelua = struct {
             "string",
         );
         try self.L.doString(
+            @embedFile("./embed/00_time.lua"),
+            "time",
+        );
+        try self.L.doString(
+            @embedFile("./embed/00_nursery.lua"),
+            "nursery",
+        );
+        try self.L.doString(
             @embedFile("./embed/98_import.lua"),
             "allelua.__import",
         );
@@ -127,8 +135,11 @@ pub const Allelua = struct {
         var status = try self.L.@"resume"(3);
 
         // Event loop.
-        while (status != .ok) {
+        while (status == .yield) {
+            // Poll event loop for I/O completions.
             const done = try io.io.poll(.all);
+
+            // Resume work.
             self.L.pushInteger(@intCast(done));
             status = try self.L.@"resume"(1);
         }

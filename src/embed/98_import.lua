@@ -89,6 +89,7 @@ function Module.new(func)
 	local global = {
 		error = error,
 		ipairs = ipairs,
+		nursery = nursery,
 		pairs = pairs,
 		pcall = pcall,
 		print = print,

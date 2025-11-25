@@ -27,3 +27,10 @@ function table.freeze(t)
 	return setmetatable(frozen, freeze_mt)
 end
 
+
+function table.is_empty(t)
+	for _ in pairs(t) do
+		return false
+	end
+	return true
+end

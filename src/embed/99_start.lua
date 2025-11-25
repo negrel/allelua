@@ -7,6 +7,8 @@ function __start(io, args, main)
 	main_module:load()
 
 	-- User main module defined a main function.
-	main_module:call("main", io, args)
+	nursery(function()
+		main_module:call("main", io, args)
+	end)
 end
 
