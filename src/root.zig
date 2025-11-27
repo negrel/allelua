@@ -88,20 +88,24 @@ pub const Allelua = struct {
         self.L.setGlobal("real_path");
 
         try self.L.doString(
-            @embedFile("./embed/00_table.lua"),
-            "table",
+            @embedFile("./embed/00_debug_assert.lua"),
+            "allelua.debug_assert",
+        );
+        try self.L.doString(
+            @embedFile("./embed/00_nursery.lua"),
+            "allelua.nursery",
         );
         try self.L.doString(
             @embedFile("./embed/00_string.lua"),
             "string",
         );
         try self.L.doString(
-            @embedFile("./embed/00_time.lua"),
-            "time",
+            @embedFile("./embed/00_table.lua"),
+            "table",
         );
         try self.L.doString(
-            @embedFile("./embed/00_nursery.lua"),
-            "nursery",
+            @embedFile("./embed/00_time.lua"),
+            "time",
         );
         try self.L.doString(
             @embedFile("./embed/98_import.lua"),

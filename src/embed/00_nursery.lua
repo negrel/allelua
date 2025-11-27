@@ -1,44 +1,75 @@
--- Currently active nursery. This is consumed by Zig code.
-__allelua_nursery = nil
+-- Nursery is a structured concurrency primitive. This class is part of the
+-- runtime but user code can't access it directly. Zig runtime's code read and
+-- write to Nursery instances.
+Nursery = {
+	-- Currently running nursery instance.
+	running = nil,
+}
+local Nursery = Nursery
+Nursery.__index = Nursery
 
-function nursery(block)
-	-- Nursery tables are edited from Zig code on submissions and completions of
-	-- I/O operations.
+function Nursery:new()
 	local n = {
-		pending_count = 0,
-		-- This table is populated by Zig code.
+		parent = Nursery.running,
+		co = coroutine.running(),
 		ready = {},
+		pending = {},
 	}
+	return setmetatable(n, Nursery)
+end
 
-	local go = function(fn, ...)
-		if table.is_empty(n.ready) and n.pending_count <= 0 then
-			error("NurseryDead")
+--- Resume all ready routines.
+function Nursery:resume()
+	for co, args in pairs(self.ready) do
+		--debug_assert(Nursery.running == self.parent)
+		Nursery.running = self
+		local ok, err = coroutine.resume(co, table.unpack(args))
+		Nursery.running = self.parent
+
+		-- Remove from ready table.
+		self.ready[co] = nil
+
+		-- An error occurred forward it.
+		if not ok then self:error(err) end
+
+		if coroutine.status(co) == "suspended" then
+			self.pending[co] = true
 		end
-
-		local co = coroutine.create(fn)
-		n.ready[co] = {...}
-	end
-
-	local co = coroutine.create(block)
-	n.ready[co] = {go}
-
-	while not table.is_empty(n.ready) or n.pending_count > 0 do
-		for co, args in pairs(n.ready) do
-			-- Resume coroutine.
-			local parent_nursery = __allelua_nursery
-			__allelua_nursery = n
-			local ok, err = coroutine.resume(co, table.unpack(args))
-			__allelua_nursery = parent_nursery
-
-			-- Remove entry AFTER resuming coroutine as go() may be called by the last
-			-- routine. Otherwise, go() will throw a "dead nursery" error.
-			n.ready[co] = nil
-
-			-- Throw error if any.
-			if not ok then error(err) end
-		end
-
-		-- Yield so runtime can poll I/O completions.
-		coroutine.yield()
 	end
 end
+
+--- Returns whether nursery is dead: it has 0 pending and ready I/O operations.
+function Nursery:is_dead()
+	return table.is_empty(self.pending) and table.is_empty(self.ready)
+end
+
+function Nursery:error(err)
+	-- TODO: cancel pending tasks.
+	error(err)
+end
+
+--- Spawn a new child coroutine and execute it as soon as possible.
+function Nursery:spawn(fn, ...)
+	if Nursery.running ~= self then error("NurseryDead") end
+	self.ready[coroutine.create(fn)] = {...}
+end
+
+--- Starts a nursery block that returns when all coroutines have returned.
+function nursery(block)
+	local n = Nursery:new()
+
+	-- Prepare nursery block to be executed.
+	local co = coroutine.create(block)
+	n.ready[co] = { function(...) n:spawn(...) end }
+
+	while true do
+		n:resume()
+
+		if not table.is_empty(n.pending) then
+			coroutine.yield()
+		elseif table.is_empty(n.ready) then
+			break
+		end
+	end
+end
+

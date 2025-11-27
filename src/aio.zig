@@ -52,7 +52,6 @@ pub const AIO = struct {
 
             // I/O operations.
             index.set("sleep", luaSubmit(zev.Sleep));
-            index.set("openat", luaSubmit(zev.OpenAt));
         }
         L.setMetaTable(-2);
 
@@ -79,6 +78,7 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
         ref: c_int,
     };
 
+    const info = @typeInfo(OpData).@"struct";
     const Static = struct {
         fn callback(_: *zev.Io, op: *zev.Io.Op(OpData)) void {
             const lua: *zluajit.c.lua_State = @ptrCast(op.header.user_data.?);
@@ -92,20 +92,11 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             ).?;
             defer L.pop(1);
 
-            // nursery.pending_count -= 1
-            nursery.set(
-                "pending_count",
-                nursery.get("pending_count", zluajit.Integer).? - 1,
-            );
-
-            const ready = nursery.get("ready", zluajit.TableRef).?;
+            const args = L.newTableRef();
             defer L.pop(1);
 
-            // nursery.ready[co] = io_results
-            L.pushAnyType(fut.L);
-            // TODO: construct result table.
-            L.newTable();
-            L.setTable(ready.ref.idx);
+            // Mark future as ready in nursery.
+            nurseryReady(nursery, fut.L, args);
 
             // Remove reference to allow Lua's GC to collect L.
             L.unref(zluajit.Registry, fut.ref);
@@ -115,9 +106,8 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
         }
     };
 
-    const info = @typeInfo(OpData).@"struct";
     return zluajit.wrapFn(struct {
-        fn submit(L: zluajit.State, aio: *AIO) !c_int {
+        fn submit(L: zluajit.State, aio: *AIO) !void {
             const fut = try L.allocator().create(Future);
             errdefer L.allocator().destroy(fut);
             fut.L = L;
@@ -127,23 +117,19 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             fut.ref = try L.ref(zluajit.Registry);
             errdefer L.unref(zluajit.Registry, fut.ref);
 
-            // Create reference to nursery.
-            L.getGlobal("__allelua_nursery");
+            // Retrieve Nursery class.
+            const nursery_class = L.globalRef().rawGet(
+                "Nursery",
+                zluajit.TableRef,
+            ).?;
+            defer L.pop(1);
+
+            // Extract Nursery.running.
+            _ = nursery_class.rawGet("running", zluajit.TableRef).?;
             fut.nursery_ref = try L.ref(zluajit.Registry);
             errdefer L.unref(zluajit.Registry, fut.nursery_ref);
 
-            // TableRef to nursery.
-            const nursery = L.globalRef().get(
-                "__allelua_nursery",
-                zluajit.TableRef,
-            ).?;
-
-            // nursery.pending_count += 1
-            nursery.set(
-                "pending_count",
-                nursery.get("pending_count", zluajit.Integer).? + 1,
-            );
-
+            // Prepare zev.Io operation.
             comptime var i = 2; // 2 as arg 1 is IO handle.
             inline for (info.fields) |f| {
                 // OpData output fields has a default value.
@@ -158,7 +144,7 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             fut.op.header.callback = @ptrCast(&Static.callback);
             fut.op.private = zev.Io.OpPrivateData(OpData).init(.{});
 
-            // Submit.
+            // Submit it.
             _ = aio.io.submit(&fut.op) catch |err| switch (err) {
                 error.SubmissionQueueFull => {
                     _ = try aio.io.poll(.one);
@@ -166,9 +152,6 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
                 },
                 else => return err,
             };
-
-            // Yield.
-            return L.yield(0);
         }
     }.submit);
 }
@@ -182,4 +165,26 @@ inline fn checkT(T: type, L: zluajit.State, comptime narg: *comptime_int) T {
     narg.* += 1;
 
     return t;
+}
+
+/// Prepare L to be resumed on next poll of nursery n.
+/// This function implementation MUST be kept in sync with the Lua version.
+fn nurseryReady(
+    n: zluajit.TableRef,
+    L: zluajit.State,
+    args: zluajit.TableRef,
+) void {
+    var nursery: ?zluajit.TableRef = n;
+    var co: ?zluajit.State = L;
+
+    while (nursery) |nur| {
+        const pending = nur.rawGet("pending", zluajit.TableRef).?;
+        pending.rawSet(co.?, zluajit.nil);
+        const ready = nur.rawGet("ready", zluajit.TableRef).?;
+        ready.rawSet(co.?, args);
+        nur.ref.L.pop(2);
+
+        nursery = nur.rawGet("parent", zluajit.TableRef);
+        co = nur.rawGet("co", zluajit.State);
+    }
 }

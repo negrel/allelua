@@ -6,7 +6,7 @@ function __start(io, args, main)
 	-- Load main module.
 	main_module:load()
 
-	-- User main module defined a main function.
+	-- Call main.main() function.
 	nursery(function()
 		main_module:call("main", io, args)
 	end)

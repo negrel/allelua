@@ -1,7 +1,7 @@
 package.preload["time"] = function()
 	return {
-		sleep = function(io, ms)
-			io:sleep(ms)
+		sleep = function(io, secs)
+			io:sleep(secs * 1000)
 			coroutine.yield()
 		end
 	}
