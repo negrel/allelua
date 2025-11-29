@@ -45,7 +45,7 @@ end
 
 function Nursery:error(err)
 	-- TODO: cancel pending tasks.
-	error(err)
+	raise(err)
 end
 
 --- Spawn a new child coroutine and execute it as soon as possible.

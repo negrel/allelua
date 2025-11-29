@@ -52,6 +52,8 @@ pub const AIO = struct {
 
             // I/O operations.
             index.set("sleep", luaSubmit(zev.Sleep));
+            index.set("openat", luaSubmit(zev.OpenAt));
+            index.set("close", luaSubmit(zev.Close));
         }
         L.setMetaTable(-2);
 
@@ -92,8 +94,18 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             ).?;
             defer L.pop(1);
 
+            // Extract data from zev.Io operation.
             const args = L.newTableRef();
-            defer L.pop(1);
+            pushResultT(L, @TypeOf(op.data.result), op.data.result);
+            args.rawSet(
+                @as(c_int, @intCast(1)),
+                zluajit.ValueRef.init(L, args.ref.idx + 1),
+            );
+            args.rawSet(
+                @as(c_int, @intCast(2)),
+                zluajit.ValueRef.init(L, args.ref.idx + 2),
+            );
+            defer L.pop(3);
 
             // Mark future as ready in nursery.
             nurseryReady(nursery, fut.L, args);
@@ -122,6 +134,7 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
                 "Nursery",
                 zluajit.TableRef,
             ).?;
+
             defer L.pop(1);
 
             // Extract Nursery.running.
@@ -133,10 +146,10 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             comptime var i = 2; // 2 as arg 1 is IO handle.
             inline for (info.fields) |f| {
                 // OpData output fields has a default value.
-                if (f.defaultValue() != null) break;
-
-                // Check value.
-                @field(&fut.op.data, f.name) = checkT(f.type, L, &i);
+                if (f.defaultValue() == null) {
+                    // Check value.
+                    @field(&fut.op.data, f.name) = checkT(f.type, L, &i);
+                }
             }
 
             fut.op.header.code = OpData.op_code;
@@ -159,12 +172,50 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
 inline fn checkT(T: type, L: zluajit.State, comptime narg: *comptime_int) T {
     const t: T = switch (T) {
         usize => @intCast(L.checkInteger(narg.*)),
-        else => unreachable,
+        std.fs.File => return .{
+            .handle = checkT(std.fs.File.Handle, L, narg),
+        },
+        std.fs.Dir => return .{ .fd = checkT(std.fs.Dir.Handle, L, narg) },
+        std.posix.fd_t => @intCast(L.checkInteger(narg.*)),
+        zev.OpenAt.Options => {
+            const options = checkT(zluajit.TableRef, L, narg);
+            return .{
+                .read = options.get("read", bool) orelse false,
+                .write = options.get("read", bool) orelse false,
+                .append = options.get("append", bool) orelse false,
+                .truncate = options.get("truncate", bool) orelse false,
+                .create = options.get("create", bool) orelse false,
+                .create_new = options.get("create_new", bool) orelse false,
+            };
+        },
+        else => L.checkAnyType(narg.*, T),
     };
 
     narg.* += 1;
 
     return t;
+}
+
+inline fn pushResultT(L: zluajit.State, comptime T: type, v: T) void {
+    const info = @typeInfo(T);
+    switch (info) {
+        .error_union => |i| {
+            const payload = v catch |err| {
+                L.pushBool(false);
+                L.pushAnyType(@errorName(err));
+                return;
+            };
+            return pushResultT(L, i.payload, payload);
+        },
+        else => {},
+    }
+
+    L.pushBool(true);
+    switch (T) {
+        void => L.pushNil(),
+        std.fs.File => L.pushAnyType(v.handle),
+        else => L.pushAnyType(v),
+    }
 }
 
 /// Prepare L to be resumed on next poll of nursery n.

@@ -58,6 +58,9 @@ pub const Allelua = struct {
         }
         self.L.setGlobal("dump");
 
+        self.L.pushCFunction(zluajit.c.lua_error);
+        self.L.setGlobal("raise");
+
         self.L.pushZFunction(struct {
             fn resolvePath(L: zluajit.State, path: []const u8) !c_int {
                 var splitter = std.mem.splitScalar(u8, path, std.fs.path.delimiter);
@@ -90,6 +93,14 @@ pub const Allelua = struct {
         try self.L.doString(
             @embedFile("./embed/00_debug_assert.lua"),
             "allelua.debug_assert",
+        );
+        try self.L.doString(
+            @embedFile("./embed/00_error.lua"),
+            "allelua.error",
+        );
+        try self.L.doString(
+            @embedFile("./embed/00_fs.lua"),
+            "allelua.fs",
         );
         try self.L.doString(
             @embedFile("./embed/00_nursery.lua"),

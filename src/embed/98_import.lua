@@ -27,23 +27,27 @@ end
 --- import "bar"            -- import bar module
 --- ```
 local function user_import(module)
-	return function(modname)
-		if type(modname) == "table" then
-			for importname, modname in pairs(modname) do
-				if type(importname) ~= "string" then
-					module[mod_identifier(modname)] = require(modname)
-				else
-					module[importname] = require(modname)
-				end
-			end
-		elseif type(modname) == "string" then
-			module[mod_identifier(modname)] = require(modname)
-		else
-			error("module name must be a string")
-		end
+	local import_mod = function(modname, importname)
+		module[mod_identifier(importname)] = require(modname)
 
 		if is_file_modname(modname) then
 			package.loaded[modname] = nil
+		end
+	end
+
+	return function(modname)
+		if type(modname) == "table" then
+			for importname, modname in pairs(modname) do
+				if type(importname) == "string" then
+					import_mod(modname, importname)
+				else
+					import_mod(modname, modname)
+				end
+			end
+		elseif type(modname) == "string" then
+			import_mod(modname, modname)
+		else
+			error("module name must be a string")
 		end
 	end
 end
@@ -93,6 +97,8 @@ function Module.new(func)
 		nursery = nursery,
 		pairs = pairs,
 		pcall = pcall,
+		raise = raise,
+		traceback = debug.traceback,
 		type = type,
 	}
 	local env = setmetatable({}, { __index = global })
