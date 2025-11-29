@@ -1,6 +1,4 @@
-local Error = {
-	__class = "allelua.Error"
-}
+local Error = {}
 
 function error(obj)
 	if getmetatable(obj) == Error then

@@ -6,14 +6,15 @@
 
     .dependencies = .{
         .zluajit = .{
-            .url = "git+https://github.com/negrel/zluajit#860f776912af449cb4c5c1de34dc760c59bf2db6",
-            .hash = "zluajit-0.0.0-uJQ3fpKMAgChvyKNVEu1BgHTmlnGDO-DL6xQmdYUDlKp",
+            .url = "git+https://github.com/negrel/zluajit#7fa2e9167ccca907ed46023478607a8fc93e9cbd",
+            .hash = "zluajit-0.0.0-uJQ3fq2SAgDu1ys9Udv5KoD4rbK4sc5fken2nPT9aLyI",
         },
         .libzev = .{
-            .url = "git+https://github.com/negrel/libzev#03852a1c48f59fc0ce8e8541408a655ff9bab7c4",
-            .hash = "libzev-0.0.0-8a7xIPbYAQADzoB43NMwJqweWJZS6mD-jwC0h168dpog",
+            .url = "git+https://github.com/negrel/libzev#48af5600f0ec1f7f31263e612f3f742f25e2c74d",
+            .hash = "libzev-0.0.0-8a7xIPTBAQD1PLpea2L6xvCBf7LbLhlr-A7EUG24C8vy",
         },
     },
+
     .paths = .{
         "build.zig",
         "build.zig.zon",
