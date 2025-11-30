@@ -56,6 +56,7 @@ pub const AIO = struct {
             index.set("close", luaSubmit(zev.Close));
             index.set("pread", luaSubmit(zev.PRead));
             index.set("pwrite", luaSubmit(zev.PWrite));
+            index.set("unlinkat", luaSubmit(zev.UnlinkAt));
         }
         L.setMetaTable(-2);
 

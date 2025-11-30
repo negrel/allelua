@@ -111,5 +111,12 @@ package.preload["fs"] = function()
 		return fs.File.from_fd(fd)
 	end
 
+	--- Remove file at `path`.
+	function fs.os.remove(io, path, remove_dir)
+		io:unlinkat(at_fdcwd, path, remove_dir or false)
+		local ok, err = coroutine.yield()
+		if not ok then error(err) end
+	end
+
 	return fs
 end
