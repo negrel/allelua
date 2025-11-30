@@ -4,6 +4,8 @@ string.sub = nil
 string.replace_all = string.gsub
 string.gsub = nil
 
+string.Buffer = require("string.buffer")
+
 --- Reports whether the string str begins with prefix.
 function string.has_prefix(str, prefix)
 	return string.slice(str, 1, #prefix) == prefix

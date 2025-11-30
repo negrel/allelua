@@ -11,9 +11,9 @@ local function mod_identifier(modname)
 		repeat
 			modname = string.strip_prefix(modname, "../")
 		until not string.has_prefix(modname, "../")
-		modname = string.replace_all(modname, "/", "_")
 	end
 
+	modname = string.replace_all(modname, "/", "_")
 	modname = string.strip_suffix(modname, ".lua")
 
 	return modname

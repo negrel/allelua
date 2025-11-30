@@ -43,6 +43,10 @@ pub const Allelua = struct {
 
     fn setupRuntime(self: *Self) !void {
         self.L.globalRef().set("mode", self.mode);
+        self.L.globalRef().set(
+            "at_fdcwd",
+            @as(zluajit.Integer, std.posix.AT.FDCWD),
+        );
 
         // dump() is noop in prod.
         if (self.mode == .production) {

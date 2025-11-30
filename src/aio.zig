@@ -54,6 +54,8 @@ pub const AIO = struct {
             index.set("sleep", luaSubmit(zev.Sleep));
             index.set("openat", luaSubmit(zev.OpenAt));
             index.set("close", luaSubmit(zev.Close));
+            index.set("pread", luaSubmit(zev.PRead));
+            index.set("pwrite", luaSubmit(zev.PWrite));
         }
         L.setMetaTable(-2);
 
@@ -124,6 +126,16 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             errdefer L.allocator().destroy(fut);
             fut.L = L;
 
+            // Prepare zev.Io operation.
+            var i: c_int = 2; // 2 as arg 1 is IO handle.
+            inline for (info.fields) |f| {
+                // OpData output fields has a default value.
+                if (f.defaultValue() == null) {
+                    // Check value.
+                    @field(&fut.op.data, f.name) = checkT(f.type, L, &i);
+                }
+            }
+
             // Create reference to future to prevent GC.
             _ = L.pushState();
             fut.ref = try L.ref(zluajit.Registry);
@@ -142,16 +154,6 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             fut.nursery_ref = try L.ref(zluajit.Registry);
             errdefer L.unref(zluajit.Registry, fut.nursery_ref);
 
-            // Prepare zev.Io operation.
-            comptime var i = 2; // 2 as arg 1 is IO handle.
-            inline for (info.fields) |f| {
-                // OpData output fields has a default value.
-                if (f.defaultValue() == null) {
-                    // Check value.
-                    @field(&fut.op.data, f.name) = checkT(f.type, L, &i);
-                }
-            }
-
             fut.op.header.code = OpData.op_code;
             fut.op.header.user_data = L.lua;
             fut.op.header.callback = @ptrCast(&Static.callback);
@@ -169,11 +171,32 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
     }.submit);
 }
 
-inline fn checkT(T: type, L: zluajit.State, comptime narg: *comptime_int) T {
+inline fn checkT(T: type, L: zluajit.State, narg: *c_int) T {
     const t: T = switch (T) {
         usize => @intCast(L.checkInteger(narg.*)),
         std.fs.File => return .{
             .handle = checkT(std.fs.File.Handle, L, narg),
+        },
+        []u8 => {
+            // Retrieve ptr.
+            const ptr = L.checkCData(narg.*);
+            narg.* += 1;
+
+            // Retrieve buffer length.
+            const len = checkT(usize, L, narg);
+
+            return ptr[0..len];
+        },
+        []const u8 => T: {
+            if (L.valueType(narg.*)) |vtype| {
+                switch (vtype) {
+                    .string => break :T L.checkString(narg.*),
+                    .cdata => return @constCast(checkT([]u8, L, narg)),
+                    else => {},
+                }
+            }
+
+            L.argError(narg.*, "expected string or string.Buffer");
         },
         std.fs.Dir => return .{ .fd = checkT(std.fs.Dir.Handle, L, narg) },
         std.posix.fd_t => @intCast(L.checkInteger(narg.*)),
@@ -181,7 +204,7 @@ inline fn checkT(T: type, L: zluajit.State, comptime narg: *comptime_int) T {
             const options = checkT(zluajit.TableRef, L, narg);
             return .{
                 .read = options.get("read", bool) orelse false,
-                .write = options.get("read", bool) orelse false,
+                .write = options.get("write", bool) orelse false,
                 .append = options.get("append", bool) orelse false,
                 .truncate = options.get("truncate", bool) orelse false,
                 .create = options.get("create", bool) orelse false,
