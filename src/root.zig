@@ -111,6 +111,10 @@ pub const Allelua = struct {
             "allelua.nursery",
         );
         try self.L.doString(
+            @embedFile("./embed/00_process.lua"),
+            "allelua.process",
+        );
+        try self.L.doString(
             @embedFile("./embed/00_string.lua"),
             "string",
         );

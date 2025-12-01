@@ -57,6 +57,7 @@ pub const AIO = struct {
             index.set("pread", luaSubmit(zev.PRead));
             index.set("pwrite", luaSubmit(zev.PWrite));
             index.set("unlinkat", luaSubmit(zev.UnlinkAt));
+            index.set("fstat", luaSubmit(zev.FStat));
         }
         L.setMetaTable(-2);
 
@@ -85,7 +86,8 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
 
     const info = @typeInfo(OpData).@"struct";
     const Static = struct {
-        fn callback(_: *zev.Io, op: *zev.Io.Op(OpData)) void {
+        fn callback(_: *zev.Io, op_h: *zev.OpHeader) void {
+            const op = zev.Io.Op(OpData).fromHeader(op_h);
             const lua: *zluajit.c.lua_State = @ptrCast(op.header.user_data.?);
             const L = zluajit.State.initFromCPointer(lua);
             const fut: *Future = @fieldParentPtr("op", op);
@@ -238,6 +240,16 @@ inline fn pushResultT(L: zluajit.State, comptime T: type, v: T) void {
     switch (T) {
         void => L.pushNil(),
         std.fs.File => L.pushAnyType(v.handle),
+        std.fs.File.Stat => {
+            const stat = L.newTableRef();
+            stat.set("inode", v.inode);
+            stat.set("size", v.size);
+            stat.set("mode", v.mode);
+            stat.set("kind", v.kind);
+            stat.set("atime", v.atime);
+            stat.set("mtime", v.mtime);
+            stat.set("ctime", v.ctime);
+        },
         else => L.pushAnyType(v),
     }
 }

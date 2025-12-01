@@ -1,18 +1,19 @@
 package.preload["fs"] = function()
 	local fs = {
 		File = {},
-		os = {}
+		os = {},
+		stdio = {},
 	}
 
 	fs.File.__index = fs.File
-	function fs.File.from_fd(fd)
+	function fs.File.from_fd(fd, position)
 		return setmetatable({
 			fd = fd,
-			position = 0,
+			position = position or 0,
 		}, fs.File)
 	end
 
-	--- Read up to `size` bytes at position `pos` and store them in given buffer
+	--- Read up to `size` bytes at position `pos`, store them in given buffer
 	--- and return the number of bytes read.
 	function fs.File:pread(io, pos, buf, size)
 		local ptr, len = buf:reserve(size or 4096)
@@ -23,7 +24,7 @@ package.preload["fs"] = function()
 		return read
 	end
 
-	--- Read up to `size` bytes and store them in given buffer and return the
+	--- Read up to `size` bytes, store them in given buffer and return the
 	--- number of bytes read.
 	function fs.File:read(io, buf, size)
 		local read = fs.File.pread(self, io, self.position, buf, size)
@@ -48,12 +49,40 @@ package.preload["fs"] = function()
 		return write
 	end
 
+	--- Read at least `min` bytes, store them in given buffer and return the
+	--- total number of bytes read.
+	function fs.File:read_at_least(io, buf, min)
+		local total_read = 0
+		while total_read < min do
+			local read = self:read(io, buf, min - total_read)
+			total_read = total_read + read
+			if read == 0 then break end
+		end
+
+		return total_read
+	end
+
 	--- Close file, rendering it unusable for I/O.
 	function fs.File:close(io)
 		io:close(self.fd)
 		local ok, read = coroutine.yield()
 		if not ok then error(read) end
 		return read
+	end
+
+	--- Get information about file.
+	function fs.File:stat(io)
+		io:fstat(self.fd)
+		local ok, stat = coroutine.yield()
+		if not ok then error(stat) end
+		return stat
+	end
+
+	--- Read entire file, store bytes in given buffer and return number of bytes
+	--- read.
+	function fs.File:read_all(io, buf)
+		local stat = self:stat(io)
+		return self:read_at_least(io, buf, stat.size)
 	end
 
 	local function fmodifier(mode)
@@ -117,6 +146,10 @@ package.preload["fs"] = function()
 		local ok, err = coroutine.yield()
 		if not ok then error(err) end
 	end
+
+	fs.stdio.input = fs.File.from_fd(0, -1)
+	fs.stdio.output = fs.File.from_fd(1, -1)
+	fs.stdio.error = fs.File.from_fd(2, -1)
 
 	return fs
 end
