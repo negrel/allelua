@@ -5,6 +5,9 @@ string.replace_all = string.gsub
 string.gsub = nil
 
 string.Buffer = require("string.buffer")
+local buffer_mt = debug.getmetatable(string.Buffer.new())
+buffer_mt.to_string = buffer_mt.tostring
+buffer_mt.tostring = nil
 
 --- Reports whether the string str begins with prefix.
 function string.has_prefix(str, prefix)

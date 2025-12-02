@@ -93,11 +93,15 @@ function Module.new(func)
 	local global = {
 		dump = dump,
 		error = error,
+		get_metatable = getmetatable,
 		ipairs = ipairs,
 		nursery = nursery,
 		pairs = pairs,
 		pcall = pcall,
 		raise = raise,
+		set_metatable = setmetatable,
+		to_number = tonumber,
+		to_string = tostring,
 		traceback = debug.traceback,
 		type = type,
 	}
@@ -115,7 +119,7 @@ end
 
 -- Create a new Module object for given file.
 function Module.file(fpath)
-	return Module.new(assert(loadfile(fpath), "file not found"))
+	return Module.new(assert(loadfile(fpath), "file '" .. fpath .. "' not found"))
 end
 
 -- Load module and returns it's environment as a frozen table.
