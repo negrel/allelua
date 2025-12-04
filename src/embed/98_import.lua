@@ -78,7 +78,7 @@ package.searchers = {
 }
 package.loaders = package.searchers
 
--- Remove I/O Lua built-in libs.
+-- Remove Lua built-in modules.
 for k in pairs(package.loaded) do package.loaded[k] = nil end
 package.loaded.math = math
 package.loaded.string = string
@@ -119,7 +119,12 @@ end
 
 -- Create a new Module object for given file.
 function Module.file(fpath)
-	return Module.new(assert(loadfile(fpath), "file '" .. fpath .. "' not found"))
+	local f, err = loadfile(fpath)
+	if not f then
+		raise(err)
+	end
+
+	return Module.new(f)
 end
 
 -- Load module and returns it's environment as a frozen table.
