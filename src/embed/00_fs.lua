@@ -85,6 +85,13 @@ package.preload["fs"] = function()
 		return self:read_at_least(io, buf, stat.size)
 	end
 
+	--- Synchronize changes to a file.
+	function fs.File:stat(io)
+		io:fsync(self.fd)
+		local ok, err = coroutine.yield()
+		if not ok then error(err) end
+	end
+
 	local function fmodifier(mode)
 		local all = {
 			read = mode.read == true or false,
