@@ -59,6 +59,8 @@ pub const AIO = struct {
             index.set("unlinkat", luaSubmit(zev.UnlinkAt));
             index.set("fsync", luaSubmit(zev.FSync));
             index.set("fstat", luaSubmit(zev.FStat));
+            index.set("getcwd", luaSubmit(zev.GetCwd));
+            index.set("chdir", luaSubmit(zev.ChDir));
         }
         L.setMetaTable(-2);
 
@@ -256,6 +258,7 @@ inline fn pushResultT(L: zluajit.State, comptime T: type, v: T) void {
             stat.set("mtime", v.mtime);
             stat.set("ctime", v.ctime);
         },
+        []u8 => L.pushString(v),
         else => L.pushAnyType(v),
     }
 }

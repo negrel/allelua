@@ -1,5 +1,6 @@
 package.preload["fs"] = function()
 	local fs = {
+		path_max = path_max,
 		File = {},
 		os = {},
 		stdio = {},
@@ -169,10 +170,6 @@ package.preload["fs"] = function()
 		local ok, err = coroutine.yield()
 		if not ok then error(err) end
 	end
-
-	fs.stdio.input = fs.File.from_fd(0, -1)
-	fs.stdio.output = fs.File.from_fd(1, -1)
-	fs.stdio.error = fs.File.from_fd(2, -1)
 
 	return fs
 end
