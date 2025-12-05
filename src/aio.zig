@@ -61,6 +61,8 @@ pub const AIO = struct {
             index.set("fstat", luaSubmit(zev.FStat));
             index.set("getcwd", luaSubmit(zev.GetCwd));
             index.set("chdir", luaSubmit(zev.ChDir));
+            index.set("spawn", luaSubmit(zev.Spawn));
+            index.set("waitpid", luaSubmit(zev.WaitPid));
         }
         L.setMetaTable(-2);
 
@@ -209,6 +211,31 @@ inline fn checkT(T: type, L: zluajit.State, narg: *c_int) T {
 
             L.argError(narg.*, "expected string or string.Buffer");
         },
+        [*:null]const ?[*:0]const u8 => T: {
+            const allocator = L.allocator().*;
+            var result: std.ArrayList(?[*:0]const u8) = .{};
+
+            const t = narg.*;
+            L.checkValueType(t, .table);
+
+            L.pushNil(); // first key
+            while (L.next(t)) {
+                // Value is a string.
+                if (L.toString(-1)) |envvar| {
+                    result.append(
+                        allocator,
+                        @ptrCast(envvar.ptr),
+                    ) catch |err| L.raiseError(err);
+                }
+
+                // removes 'value'; keeps 'key' for next iteration
+                L.pop(1);
+            }
+
+            // Sentinel null.
+            result.append(allocator, null) catch |err| L.raiseError(err);
+            break :T @ptrCast(result.items.ptr);
+        },
         std.fs.Dir => return .{ .fd = checkT(std.fs.Dir.Handle, L, narg) },
         std.posix.fd_t => @intCast(L.checkInteger(narg.*)),
         zev.OpenAt.Options => {
@@ -257,6 +284,15 @@ inline fn pushResultT(L: zluajit.State, comptime T: type, v: T) void {
             stat.set("atime", v.atime);
             stat.set("mtime", v.mtime);
             stat.set("ctime", v.ctime);
+        },
+        zev.Spawn.Result => {
+            const r = L.newTableRef();
+            if (@TypeOf(v.pid) != void) {
+                r.set("pid", v.pid);
+            }
+            r.set("stdin", v.stdin.handle);
+            r.set("stdout", v.stdout.handle);
+            r.set("stderr", v.stderr.handle);
         },
         []u8 => L.pushString(v),
         else => L.pushAnyType(v),
