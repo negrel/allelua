@@ -1,4 +1,7 @@
 package.preload["fs"] = function()
+	local table = require("table")
+	local string = require("string")
+
 	local fs = {
 		path_max = path_max,
 		File = {},
@@ -28,7 +31,7 @@ package.preload["fs"] = function()
 	--- Read up to `size` bytes, store them in given buffer and return the
 	--- number of bytes read.
 	function fs.File:read(io, buf, size)
-		local read = fs.File.pread(self, io, self.position, buf, size)
+		local read = self:pread(io, self.position, buf, size)
 		self.position = self.position + read
 		return read
 	end
@@ -45,7 +48,7 @@ package.preload["fs"] = function()
 
 	--- Write `#buf` bytes to the file and return the number of bytes written.
 	function fs.File:write(io, buf)
-		local write = fs.File.pwrite(self, io, self.position, buf)
+		local write = self:pwrite(io, self.position, buf)
 		self.position = self.position + write
 		return write
 	end
@@ -61,7 +64,7 @@ package.preload["fs"] = function()
 
 	--- Write `#buf` bytes to the file and return the number of bytes written.
 	function fs.File:write_string(io, buf, len)
-		local write = fs.File.pwrite_string(self, io, self.position, buf, len or #buf)
+		local write = self:pwrite_string(io, self.position, buf, len or #buf)
 		self.position = self.position + write
 		return write
 	end
@@ -107,6 +110,43 @@ package.preload["fs"] = function()
 		io:fsync(self.fd)
 		local ok, err = coroutine.yield()
 		if not ok then error(err) end
+	end
+
+	--- Returns chunks of data within file.
+	function fs.File:chunks(io, buf, chunk_size)
+		if type(buf) == "number" then
+			chunk_size = buf
+			buf = nil
+		else
+			chunk_size = chunk_size or 4096
+		end
+
+		if buf == nil then
+			buf = string.Buffer.new(chunk_size)
+		end
+
+		return function()
+			local read = self:read(io, buf, chunk_size)
+			if read > 0 then return buf:get() end
+		end
+	end
+
+	function fs.File:lines(io, buf)
+		local iter = self:chunks(io, buf)
+		local chunk = nil
+		local lines_iter = nil
+
+		return function()
+			if chunk == nil then
+				chunk = iter()
+				if chunk == nil then return nil end
+				lines_iter = string.lines(chunk)
+			end
+
+			local next = lines_iter()
+			if next == nil then chunk = nil end
+			return next
+		end
 	end
 
 	local function fmodifier(mode)
