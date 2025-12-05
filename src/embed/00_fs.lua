@@ -49,6 +49,22 @@ package.preload["fs"] = function()
 		return write
 	end
 
+	--- Write str string at position pos in the file and return the number of
+	--- bytes written.
+	function fs.File:pwrite_string(io, pos, str, len)
+		io:pwrite(self.fd, str, len or #str, pos)
+		local ok, write = coroutine.yield()
+		if not ok then error(write) end
+		return write
+	end
+
+	--- Write `#buf` bytes to the file and return the number of bytes written.
+	function fs.File:write_string(io, buf, len)
+		local write = fs.File.pwrite_string(self, io, self.position, buf, len or #buf)
+		self.position = self.position + write
+		return write
+	end
+
 	--- Read at least `min` bytes, store them in given buffer and return the
 	--- total number of bytes read.
 	function fs.File:read_at_least(io, buf, min)
@@ -86,7 +102,7 @@ package.preload["fs"] = function()
 	end
 
 	--- Synchronize changes to a file.
-	function fs.File:stat(io)
+	function fs.File:sync(io)
 		io:fsync(self.fd)
 		local ok, err = coroutine.yield()
 		if not ok then error(err) end

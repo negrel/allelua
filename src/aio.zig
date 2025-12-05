@@ -191,10 +191,15 @@ inline fn checkT(T: type, L: zluajit.State, narg: *c_int) T {
 
             return ptr[0..len];
         },
-        []const u8 => T: {
+        []const u8 => {
             if (L.valueType(narg.*)) |vtype| {
                 switch (vtype) {
-                    .string => break :T L.checkString(narg.*),
+                    .string => {
+                        const str = L.checkString(narg.*);
+                        narg.* += 1;
+                        const len = checkT(usize, L, narg);
+                        return str[0..len];
+                    },
                     .cdata => return @constCast(checkT([]u8, L, narg)),
                     else => {},
                 }
