@@ -150,7 +150,10 @@ inline fn luaSubmit(OpData: type) zluajit.CFunction {
             errdefer L.unref(zluajit.Registry, fut.ref);
 
             // Retrieve Nursery class.
-            const nursery_class = L.globalRef().rawGet(
+            const nursery_class = L.globalRef().get(
+                "_z",
+                zluajit.TableRef,
+            ).?.rawGet(
                 "Nursery",
                 zluajit.TableRef,
             ).?;

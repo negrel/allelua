@@ -9,7 +9,7 @@ debug.setmetatable("", string)
 string.__index = string
 
 string.Buffer = require("string.buffer")
-local buffer_mt = debug.getmetatable(string.Buffer.new())
+local buffer_mt = _z.raw_getmetatable(string.Buffer.new())
 buffer_mt.to_string = buffer_mt.tostring
 buffer_mt.tostring = nil
 buffer_mt.__metatable = "string.Buffer"

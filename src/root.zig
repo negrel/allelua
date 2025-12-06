@@ -1,4 +1,5 @@
 const std = @import("std");
+
 pub const zluajit = @import("zluajit");
 
 const aio = @import("aio.zig");
@@ -42,61 +43,84 @@ pub const Allelua = struct {
     }
 
     fn setupRuntime(self: *Self) !void {
-        self.L.globalRef().set("mode", self.mode);
-        self.L.globalRef().set(
+        const z = self.L.newTableRef();
+
+        z.set("mode", self.mode);
+        z.set(
             "path_max",
             @as(usize, @intCast(std.posix.PATH_MAX)),
         );
-        self.L.globalRef().set(
+        z.set("path_separator", std.fs.path.sep_str);
+        z.set(
             "at_fdcwd",
             @as(zluajit.Integer, std.posix.AT.FDCWD),
         );
 
         // dump() is noop in prod.
-        if (self.mode == .production) {
-            self.L.pushZFunction(struct {
+        if (self.mode == .production)
+            z.set("dump", struct {
                 fn dump(_: zluajit.State) void {}
-            }.dump);
-        } else {
-            self.L.pushZFunction(struct {
-                fn dump(L: zluajit.State) void {
-                    L.dumpStack();
+            }.dump)
+        else
+            z.set(
+                "dump",
+                struct {
+                    fn dump(L: zluajit.State) void {
+                        L.dumpStack();
+                    }
+                }.dump,
+            );
+        z.set("raise", zluajit.c.lua_error);
+
+        z.set(
+            "resolve_path",
+            struct {
+                fn resolvePath(L: zluajit.State, path: []const u8) !c_int {
+                    var splitter = std.mem.splitScalar(
+                        u8,
+                        path,
+                        std.fs.path.delimiter,
+                    );
+                    var paths: std.ArrayList([]const u8) = .{};
+                    defer paths.deinit(L.allocator().*);
+
+                    while (splitter.next()) |p| {
+                        try paths.append(L.allocator().*, p);
+                    }
+
+                    const real = try std.fs.path.resolve(
+                        L.allocator().*,
+                        paths.items,
+                    );
+                    defer L.allocator().free(real);
+
+                    L.pushString(real);
+                    return 1;
                 }
-            }.dump);
-        }
-        self.L.setGlobal("dump");
+            }.resolvePath,
+        );
 
-        self.L.pushCFunction(zluajit.c.lua_error);
-        self.L.setGlobal("raise");
-
-        self.L.pushZFunction(struct {
-            fn resolvePath(L: zluajit.State, path: []const u8) !c_int {
-                var splitter = std.mem.splitScalar(u8, path, std.fs.path.delimiter);
-                var paths: std.ArrayList([]const u8) = .{};
-                defer paths.deinit(L.allocator().*);
-
-                while (splitter.next()) |p| {
-                    try paths.append(L.allocator().*, p);
+        z.set(
+            "real_path",
+            struct {
+                fn realPath(L: zluajit.State, path: []const u8) !c_int {
+                    const real = try std.fs.cwd().realpathAlloc(L.allocator().*, path);
+                    L.pushString(real);
+                    L.allocator().free(real);
+                    return 1;
                 }
-
-                const real = try std.fs.path.resolve(L.allocator().*, paths.items);
-                defer L.allocator().free(real);
-
-                L.pushString(real);
-                return 1;
+            }.realPath,
+        );
+        z.set("raw_getmetatable", struct {
+            fn rawGetMetaTable(L: zluajit.State) c_int {
+                if (L.getMetaTable(-1)) {
+                    return 1;
+                }
+                return 0;
             }
-        }.resolvePath);
-        self.L.setGlobal("resolve_path");
+        }.rawGetMetaTable);
 
-        self.L.pushZFunction(struct {
-            fn realPath(L: zluajit.State, path: []const u8) !c_int {
-                const real = try std.fs.cwd().realpathAlloc(L.allocator().*, path);
-                L.pushString(real);
-                L.allocator().free(real);
-                return 1;
-            }
-        }.realPath);
-        self.L.setGlobal("real_path");
+        self.L.setGlobal("_z");
 
         try self.L.doString(
             @embedFile("./embed/00_debug_assert.lua"),
@@ -131,6 +155,10 @@ pub const Allelua = struct {
             "allelua.process",
         );
         try self.L.doString(
+            @embedFile("./embed/20_sh.lua"),
+            "allelua.sh",
+        );
+        try self.L.doString(
             @embedFile("./embed/98_import.lua"),
             "allelua.__import",
         );
@@ -138,11 +166,6 @@ pub const Allelua = struct {
             @embedFile("./embed/99_start.lua"),
             "allelua.__start",
         );
-
-        // Set Lua strings metatable to string module.
-        self.L.pushString("");
-        self.L.getGlobal("string");
-        self.L.setMetaTable(-2);
     }
 
     pub fn deinit(self: *Self) void {

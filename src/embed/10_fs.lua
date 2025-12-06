@@ -3,7 +3,7 @@ package.preload["fs"] = function()
 	local string = require("string")
 
 	local fs = {
-		path_max = path_max,
+		path_max = _z.path_max,
 		File = {},
 		os = {},
 		stdio = {},
@@ -197,7 +197,7 @@ package.preload["fs"] = function()
 
 	--- Open file at `path`.
 	function fs.os.open(io, path, options, mode)
-		io:openat(at_fdcwd, path, options or {}, fmodifier(mode or mode_perm))
+		io:openat(_z.at_fdcwd, path, options or {}, fmodifier(mode or mode_perm))
 		local ok, fd = coroutine.yield()
 		if not ok then error(fd) end
 
@@ -206,7 +206,7 @@ package.preload["fs"] = function()
 
 	--- Remove file at `path`.
 	function fs.os.remove(io, path, remove_dir)
-		io:unlinkat(at_fdcwd, path, remove_dir or false)
+		io:unlinkat(_z.at_fdcwd, path, remove_dir or false)
 		local ok, err = coroutine.yield()
 		if not ok then error(err) end
 	end

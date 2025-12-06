@@ -6,7 +6,7 @@ end
 --- './my/lib.lua' become 'my_lib'.
 local function mod_identifier(modname)
 	if is_file_modname(modname) then
-		modname = resolve_path(modname)
+		modname = _z.resolve_path(modname)
 		modname = string.strip_prefix(modname, "./")
 		repeat
 			modname = string.strip_prefix(modname, "../")
@@ -54,7 +54,7 @@ end
 
 --- Allelua custom loader to import Lua file.
 local function file_loader(modname)
-	modname = real_path(modname)
+	modname = _z.real_path(modname)
 	if package.loaded[modname] then return package.loaded[modname] end
 
 	local m = Module.file(modname)
@@ -91,14 +91,13 @@ Module.__index = Module
 -- Create a new Module object.
 function Module.new(func)
 	local global = {
-		dump = dump,
+		dump = _z.dump,
 		error = error,
 		get_metatable = getmetatable,
-		ipairs = ipairs,
 		nursery = nursery,
-		pairs = pairs,
 		pcall = pcall,
-		raise = raise,
+		raise = _z.raise,
+		select = select,
 		set_metatable = setmetatable,
 		to_number = tonumber,
 		to_string = tostring,
@@ -121,7 +120,7 @@ end
 function Module.file(fpath)
 	local f, err = loadfile(fpath)
 	if not f then
-		raise(err)
+		_z.raise(err)
 	end
 
 	return Module.new(f)

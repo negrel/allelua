@@ -1,11 +1,11 @@
 -- Nursery is a structured concurrency primitive. This class is part of the
 -- runtime but user code can't access it directly. Zig runtime's code read and
 -- write to Nursery instances.
-Nursery = {
+_z.Nursery = {
 	-- Currently running nursery instance.
 	running = nil,
 }
-local Nursery = Nursery
+local Nursery = _z.Nursery
 Nursery.__index = Nursery
 
 function Nursery:new()
@@ -45,7 +45,7 @@ end
 
 function Nursery:error(err)
 	-- TODO: cancel pending tasks.
-	raise(err)
+	_z.raise(err)
 end
 
 --- Spawn a new child coroutine and execute it as soon as possible.
