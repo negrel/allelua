@@ -107,16 +107,8 @@ pub const Allelua = struct {
             "allelua.error",
         );
         try self.L.doString(
-            @embedFile("./embed/00_fs.lua"),
-            "allelua.fs",
-        );
-        try self.L.doString(
             @embedFile("./embed/00_nursery.lua"),
             "allelua.nursery",
-        );
-        try self.L.doString(
-            @embedFile("./embed/00_process.lua"),
-            "allelua.process",
         );
         try self.L.doString(
             @embedFile("./embed/00_string.lua"),
@@ -129,6 +121,14 @@ pub const Allelua = struct {
         try self.L.doString(
             @embedFile("./embed/00_time.lua"),
             "time",
+        );
+        try self.L.doString(
+            @embedFile("./embed/10_fs.lua"),
+            "allelua.fs",
+        );
+        try self.L.doString(
+            @embedFile("./embed/10_process.lua"),
+            "allelua.process",
         );
         try self.L.doString(
             @embedFile("./embed/98_import.lua"),
