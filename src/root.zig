@@ -19,6 +19,7 @@ pub const Allelua = struct {
 
     L: zluajit.State,
     mode: Mode,
+    aio: *aio.AIO,
 
     pub fn init(options: Options) !*Self {
         var self = try options.lua.allocator.*.create(Self);
@@ -33,8 +34,13 @@ pub const Allelua = struct {
         // Load libs.
         self.L.openLibs();
 
+        // Setup event loop.
+        self.aio = try aio.AIO.init(self.L);
+        const aio_vref = zluajit.ValueRef.init(self.L, -1);
+        defer self.L.pop(1);
+
         // Setup runtime.
-        self.setupRuntime() catch {
+        self.setupRuntime(aio_vref) catch {
             self.L.dumpStack();
             @panic("error setting up the runtime");
         };
@@ -42,9 +48,10 @@ pub const Allelua = struct {
         return self;
     }
 
-    fn setupRuntime(self: *Self) !void {
+    fn setupRuntime(self: *Self, aio_vref: zluajit.ValueRef) !void {
         const z = self.L.newTableRef();
 
+        z.set("io", aio_vref);
         z.set("mode", self.mode);
         z.set(
             "path_max",
@@ -56,20 +63,11 @@ pub const Allelua = struct {
             @as(zluajit.Integer, std.posix.AT.FDCWD),
         );
 
-        // dump() is noop in prod.
-        if (self.mode == .production)
-            z.set("dump", struct {
-                fn dump(_: zluajit.State) void {}
-            }.dump)
-        else
-            z.set(
-                "dump",
-                struct {
-                    fn dump(L: zluajit.State) void {
-                        L.dumpStack();
-                    }
-                }.dump,
-            );
+        z.set("dump", struct {
+            fn dump(L: zluajit.State) void {
+                L.dumpStack();
+            }
+        }.dump);
         z.set("raise", zluajit.c.lua_error);
 
         z.set(
@@ -123,8 +121,8 @@ pub const Allelua = struct {
         self.L.setGlobal("_z");
 
         try self.L.doString(
-            @embedFile("./embed/00_debug_assert.lua"),
-            "allelua.debug_assert",
+            @embedFile("./embed/00_debug.lua"),
+            "allelua.debug",
         );
         try self.L.doString(
             @embedFile("./embed/00_error.lua"),
@@ -181,12 +179,13 @@ pub const Allelua = struct {
     ) !void {
         // __start is our Lua entrypoint. This will setup environments and
         // execute user code.
-        self.L.getGlobal("__start");
+        const z = self.L.globalRef().getField(
+            "_z",
+            zluajit.TableRef,
+        ).?;
+        _ = z.get("__start", zluajit.ValueRef);
 
-        // Arg 1 is aio handle.
-        const io = try aio.AIO.init(self.L);
-
-        // Arg 2 is CLI args as a Lua table.
+        // Arg 1 is CLI args as a Lua table.
         self.L.newTable();
         for (args, 0..args.len) |arg, i| {
             self.L.pushInteger(@intCast(i));
@@ -194,16 +193,16 @@ pub const Allelua = struct {
             self.L.setTable(-3);
         }
 
-        // Arg 3 is file.
+        // Arg 2 is file.
         if (fpath) |p| self.L.pushString(p) else self.L.pushNil();
 
         // Start executing code.
-        var status = try self.L.@"resume"(3);
+        var status = try self.L.@"resume"(2);
 
         // Event loop.
         while (status == .yield) {
             // Poll event loop for I/O completions.
-            const done = try io.io.poll(.all);
+            const done = try self.aio.io.poll(.all);
 
             // Resume work.
             self.L.pushInteger(@intCast(done));
@@ -211,6 +210,6 @@ pub const Allelua = struct {
         }
 
         // Poll remaining I/O operations.
-        _ = try io.io.poll(.all);
+        _ = try self.aio.io.poll(.all);
     }
 };

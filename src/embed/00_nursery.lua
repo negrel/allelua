@@ -55,7 +55,7 @@ function Nursery:spawn(fn, ...)
 end
 
 --- Starts a nursery block that returns when all coroutines have returned.
-function nursery(block)
+function _z.nursery(block)
 	local n = Nursery:new()
 
 	-- Prepare nursery block to be executed.

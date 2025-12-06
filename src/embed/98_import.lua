@@ -1,3 +1,5 @@
+local package = package
+
 local function is_file_modname(modname)
 	return string.has_prefix(modname, "./") or string.has_suffix(modname, ".lua")
 end
@@ -80,21 +82,23 @@ package.loaders = package.searchers
 
 -- Remove Lua built-in modules.
 for k in pairs(package.loaded) do package.loaded[k] = nil end
+package.loaded.debug = _z.debug
 package.loaded.math = math
 package.loaded.string = string
 package.loaded.table = table
 
 -- Module class.
-Module = { __metatable = "Module" }
+_z.Module = { __metatable = "Module" }
+local Module = _z.Module
 Module.__index = Module
 
 -- Create a new Module object.
 function Module.new(func)
 	local global = {
 		dump = _z.dump,
-		error = error,
+		error = _z.error,
 		get_metatable = getmetatable,
-		nursery = nursery,
+		nursery = _z.nursery,
 		pcall = pcall,
 		raise = _z.raise,
 		select = select,
