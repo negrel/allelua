@@ -12,6 +12,11 @@ pub fn strEql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
+/// Returns whether string a has `prefix` prefix.
+pub fn hasPrefix(a: []const u8, prefix: []const u8) bool {
+    return std.mem.startsWith(u8, a, prefix);
+}
+
 /// Returns index of string in bs equal to a. If there is no match, -1 is
 /// returned.
 pub fn strMatch(a: []const u8, comptime bs: anytype) isize {

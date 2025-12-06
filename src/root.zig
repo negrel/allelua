@@ -188,7 +188,7 @@ pub const Allelua = struct {
         // Arg 1 is CLI args as a Lua table.
         self.L.newTable();
         for (args, 0..args.len) |arg, i| {
-            self.L.pushInteger(@intCast(i));
+            self.L.pushInteger(@intCast(i + 1));
             self.L.pushString(arg);
             self.L.setTable(-3);
         }

@@ -12,25 +12,25 @@ pub fn run(
 
     var lua_fpath: ?[]const u8 = null;
     var lua_args: []const []const u8 = &.{};
+    var mode: Allelua.Mode = .production;
 
-    if (args.len > 0) {
-        lua_fpath = args[0];
-    }
-
-    if (args.len > 1) {
-        if (utils.strEql(args[1], "--")) {
-            lua_args = args[2..];
+    for (0..args.len) |i| {
+        if (utils.strEql(args[i], "--debug")) {
+            mode = .debug;
+        } else if (utils.hasPrefix(args[i], "--")) {
+            try utils.cliError(stdio.err, "unrecognized flag {s}", .{args[i]});
         } else {
-            try utils.cliError(
-                stdio.err,
-                "unexpected argument after FILE argument: '{s}'",
-                .{args[1]},
-            );
+            if (!utils.strEql(args[i], "-")) {
+                lua_fpath = args[i];
+            }
+            lua_args = args[i + 1 ..];
+            break;
         }
     }
 
     // Setup runtime.
     const rt = try Allelua.init(.{
+        .mode = mode,
         .lua = .{
             .allocator = &allocator,
         },

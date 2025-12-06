@@ -9,6 +9,7 @@ debug.inspect = inspect
 if _z.mode == "production" then
 	debug.assert = noop
 	debug.dump = noop
+	debug.print = noop
 else
 	debug.assert = assert
 	debug.dump = _z.dump
