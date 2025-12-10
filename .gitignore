@@ -1,2 +1,5 @@
 .direnv/
 .envrc
+
+compile_flags.txt
+allelua

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+: ${CC:=clang}
+CFLAGS="-Wall -Wextra -Werror -Wnull-dereference -Wformat=2
+-Wshadow -Wsign-conversion -Wfloat-equal -Wswitch-enum -Wmissing-prototypes
+-Wdeprecated-declarations -fsanitize=undefined -fsanitize=thread -std=c11 -I$EVENTLOOP_INCLUDE"
+LDFLAGS="-lpthread"
+
+cc() {
+	echo "CC	$@"
+	$CC $CFLAGS $LDFLAGS $@
+}
+
+execute() {
+	echo "EXEC	$@"
+	$@
+	echo "exit code $?"
+}
+
+case "${1:-run}" in
+	run)
+		shift
+		cc -I. cmd/allelua/main.c cmd/allelua/run.c -o allelua
+		execute ./allelua $@
+		;;
+
+	compile_flags.txt)
+		echo $CFLAGS -Isrc/ -I. -I$EVENTLOOP_INCLUDE \
+			| tr ' ' '\n' > compile_flags.txt
+		;;
+
+	*)
+		echo "unknown command: '${1-}'" >&2
+		exit 1
+		;;
+esac
+
