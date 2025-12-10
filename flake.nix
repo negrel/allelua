@@ -32,6 +32,16 @@
               EVENTLOOP_INCLUDE = "${eventloop.packages.${system}.default}/include";
             };
           };
+          packages = {
+            luajit = pkgs.luajit.overrideAttrs (oldAttrs: {
+              env = (oldAttrs.env or { }) // {
+                NIX_CFLAGS_COMPILE = toString [
+                  (oldAttrs.env.NIX_CFLAGS_COMPILE or "")
+                  "-DLUAJIT_ENABLE_LUA52COMPAT"
+                ];
+              };
+            });
+          };
         }
       );
     in
