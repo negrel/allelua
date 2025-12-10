@@ -5,8 +5,9 @@ set -euo pipefail
 : ${CC:=clang}
 CFLAGS="-Wall -Wextra -Werror -Wnull-dereference -Wformat=2
 -Wshadow -Wsign-conversion -Wfloat-equal -Wswitch-enum -Wmissing-prototypes
--Wdeprecated-declarations -fsanitize=undefined -fsanitize=thread -std=c11 -I$EVENTLOOP_INCLUDE"
-LDFLAGS="-lpthread"
+-Wdeprecated-declarations -fsanitize=undefined -fsanitize=thread -std=c11
+-I$EVENTLOOP_INCLUDE -I$LUAJIT_INCLUDE"
+LDFLAGS="-lpthread $(pkg-config --libs luajit)"
 
 cc() {
 	echo "CC	$@"
