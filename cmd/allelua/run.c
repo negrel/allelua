@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cmd/allelua/main.h"
+#include "src/allelua.h"
 
 /**
  * Print CLI error and exit.
@@ -37,24 +38,28 @@ int run(int argc, char **argv)
 		return EXIT_SUCCESS;
 	} else if (strcmp(lua_file, "-") == 0) {
 		lua_file = NULL;
-	} else {
+	} else if (lua_file[0] == '-') {
 		CLI_ERRORF(stderr, "unknown flag '%s'", argv[1]);
 		return EXIT_FAILURE;
 	}
 
-	lua_State *L = luaL_newstate();
-	luaL_openlibs(L);
+	argc -= 1;
+	argv += 1;
 
-	luaL_loadfile(L, lua_file);
-	if (lua_pcall(L, 0, 0, 0)) {
-		fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
-		lua_pop(L, 1);
+	struct allelua *al;
+	err = allelua_new(argc, argv, &al);
+	if (err)
+		return err;
+
+	luaL_loadfile(al->L, lua_file);
+	if (lua_pcall(al->L, 0, 0, 0)) {
+		fprintf(stderr, "Error: %s\n", lua_tostring(al->L, -1));
 		err = EXIT_FAILURE;
 		goto end;
 	}
 
 end:
-	lua_close(L);
+	lua_close(al->L);
 	return err;
 }
 

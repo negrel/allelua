@@ -6,7 +6,7 @@ set -euo pipefail
 CFLAGS="-Wall -Wextra -Werror -Wnull-dereference -Wformat=2
 -Wshadow -Wsign-conversion -Wfloat-equal -Wswitch-enum -Wmissing-prototypes
 -Wdeprecated-declarations -fsanitize=undefined -fsanitize=thread -std=c11
--I$EVENTLOOP_INCLUDE -I$LUAJIT_INCLUDE"
+-I$EVENTLOOP_INCLUDE -I$LUAJIT_INCLUDE -I. -DEVENTLOOP_THREADPOOL"
 LDFLAGS="-lpthread $(pkg-config --libs luajit)"
 
 cc() {
@@ -23,7 +23,7 @@ execute() {
 case "${1:-run}" in
 	run)
 		shift
-		cc -I. cmd/allelua/main.c cmd/allelua/run.c -o allelua
+		cc src/allelua.c cmd/allelua/run.c cmd/allelua/main.c -o allelua
 		execute ./allelua $@
 		;;
 

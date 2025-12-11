@@ -8,11 +8,11 @@
         "threadpool": "threadpool"
       },
       "locked": {
-        "lastModified": 1765396910,
-        "narHash": "sha256-2iPiWVGsvPzy+7BjBYQ7DXc3+l5L/rauEr3Gb8xSsZY=",
+        "lastModified": 1765458835,
+        "narHash": "sha256-MHN7ohM0XQCFvqrqeYCiWzgW/gxfgBXCtkNbYHExotc=",
         "owner": "negrel",
         "repo": "eventloop.h",
-        "rev": "e622353fc213683742f685b5aa947f08fb02d74d",
+        "rev": "e29129afd0a975a4793967409148acb48f54d4d7",
         "type": "github"
       },
       "original": {
@@ -249,11 +249,11 @@
         "nixpkgs": "nixpkgs_3"
       },
       "locked": {
-        "lastModified": 1765313958,
-        "narHash": "sha256-diy2l0w1UiugwaR5c4lKiOUV2nR1qZpfBF9h1En6Nmw=",
+        "lastModified": 1765393888,
+        "narHash": "sha256-C+3PNhg3pLRZOjPl6U4O8ZWEYxLnG4S2JGc2Cy11Hy4=",
         "owner": "negrel",
         "repo": "threadpool.h",
-        "rev": "435c79bc4381094c06fa5ccabee234705352fb63",
+        "rev": "56e094e6ae34e97aca1ba87700e0a6146b3b8b96",
         "type": "github"
       },
       "original": {
