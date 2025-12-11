@@ -6,6 +6,12 @@
 
 #define EVENTLOOP_IMPLEMENTATION
 #include "src/allelua.h"
+#include "src/embed/holy_string.h"
+
+static void al_open_holylibs(lua_State *L)
+{
+	luaL_dostring(L, (char *)holy_string);
+}
 
 int allelua_new(int argc, char **argv, struct allelua **out)
 {
@@ -31,6 +37,7 @@ int allelua_new(int argc, char **argv, struct allelua **out)
 	}
 
 	luaL_openlibs(al->L);
+	al_open_holylibs(al->L);
 
 	// _al global table.
 	lua_newtable(al->L);
