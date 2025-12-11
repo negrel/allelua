@@ -1,6 +1,13 @@
 #ifndef MAIN_H_INCLUDE
 #define MAIN_H_INCLUDE
 
+#include <stdio.h>
+
+/**
+ * Print command usage.
+ */
+static void usage(FILE *out);
+
 /**
  * The run command.
  */

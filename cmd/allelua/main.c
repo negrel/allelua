@@ -7,11 +7,6 @@
 #include "cmd/allelua/main.h"
 
 /**
- * Print root usage menu.
- */
-void usage(FILE *out);
-
-/**
  * Print CLI error and exit.
  */
 #define CLI_ERRORF(out, fmt, ...)                                              \
@@ -54,16 +49,16 @@ int main(int argc, char **argv)
 	}
 
 	CLI_ERRORF(stderr, "unknown command '%s'", cmd);
-	return EXIT_SUCCESS;
+	return EXIT_FAILURE;
 }
 
-void usage(FILE *out)
+static void usage(FILE *out)
 {
 	fprintf(out, "allelua - a Lua runtime blessed by programming gods.\n");
 	fprintf(out, "Alexandre Negrel <alexandre@negrel.dev>\n");
 	fprintf(out, "\n");
 	fprintf(out, "USAGE:\n");
-	fprintf(out, "    allelua COMMAND [ARGS...]\n");
+	fprintf(out, "    allelua [FLAGS...] COMMAND [...]\n");
 	fprintf(out, "    allelua run ./main.lua\n");
 	fprintf(out, "\n");
 	fprintf(out, "COMMANDS:\n");
