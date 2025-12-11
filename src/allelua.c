@@ -7,10 +7,12 @@
 #define EVENTLOOP_IMPLEMENTATION
 #include "src/allelua.h"
 #include "src/embed/holy_string.h"
+#include "src/embed/holy_table.h"
 
 static void al_open_holylibs(lua_State *L)
 {
 	luaL_dostring(L, (char *)holy_string);
+	luaL_dostring(L, (char *)holy_table);
 }
 
 int allelua_new(int argc, char **argv, struct allelua **out)

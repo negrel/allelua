@@ -14,6 +14,14 @@ cc() {
 	$CC $CFLAGS $LDFLAGS $@
 }
 
+embed() {
+	local in="$1"
+	local out="$2"
+	local name="$(basename ${out%.*})"
+	echo "EMBED	$in"
+	xxd -name "$name" -i "$in" > "$out"
+}
+
 execute() {
 	echo "EXEC	$@"
 	$@
@@ -24,7 +32,9 @@ case "${1:-run}" in
 	run)
 		shift
 		mkdir -p src/embed
-		xxd -name holy_string -include src/holylib/00_string.lua > src/embed/holy_string.h
+
+		embed src/holylib/00_string.lua src/embed/holy_string.h
+		embed src/holylib/00_table.lua src/embed/holy_table.h
 		cc src/allelua.c cmd/allelua/run.c cmd/allelua/main.c -o allelua
 		execute ./allelua $@
 		;;
