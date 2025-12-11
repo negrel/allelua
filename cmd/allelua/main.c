@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "bits/getopt_core.h"
 #include "cmd/allelua/main.h"
 
 /**
