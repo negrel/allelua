@@ -3,7 +3,7 @@ name = "allelua"
 version = "0.1.0"
 edition = "2024"
 license-file = "LICENSE"
-description = "LuaJIT distribution blessed by programming gods."
+description = "Lua runtime blessed by programming gods."
 documentation = "https://docs.rs/allelua"
 repository = "https://github.com/negrel/allelua"
 readme = "README.md"
@@ -11,4 +11,17 @@ authors = ["Alexandre Negrel <alexandre@negrel.dev>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "allelua"
+path = "src/bin/allelua/main.rs"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+
 [dependencies]
+mlua = { version = "0.11.5", default-features = false, features = [
+	"luajit52",
+	"vendored",
+] }
