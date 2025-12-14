@@ -11,30 +11,38 @@
     };
   };
 
-  outputs = { flake-utils, nixpkgs, fenix, ... }@inputs:
-    flake-utils.lib.eachDefaultSystem
-      (system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ fenix.overlays.default ];
-          };
-          lib = pkgs.lib;
+  outputs =
+    {
+      flake-utils,
+      nixpkgs,
+      fenix,
+      ...
+    }@inputs:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ fenix.overlays.default ];
+        };
+        lib = pkgs.lib;
 
-          pkgBuildInputs = with pkgs; [ ];
-        in
-        {
-          devShells = {
-            default = pkgs.mkShell rec {
-              buildInputs = with pkgs; [ ] ++ pkgBuildInputs ++ (
-                with pkgs.fenix; [
-                  stable.toolchain
-                  rust-analyzer
-                ]
-              );
-              LD_LIBRARY_PATH = "${lib.makeLibraryPath pkgBuildInputs}";
-            };
+        pkgBuildInputs = with pkgs; [ ];
+      in
+      {
+        devShells = {
+          default = pkgs.mkShell rec {
+            buildInputs =
+              with pkgs;
+              [ ]
+              ++ pkgBuildInputs
+              ++ (with pkgs.fenix; [
+                stable.toolchain
+                rust-analyzer
+              ]);
+            LD_LIBRARY_PATH = "${lib.makeLibraryPath pkgBuildInputs}";
           };
-        });
+        };
+      }
+    );
 }
-
