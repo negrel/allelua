@@ -17,7 +17,7 @@
       nixpkgs,
       fenix,
       ...
-    }@inputs:
+    }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
@@ -26,23 +26,34 @@
           overlays = [ fenix.overlays.default ];
         };
         lib = pkgs.lib;
-
-        pkgBuildInputs = with pkgs; [ ];
+        pkgBuildInputs = with pkgs; [ libgcc ];
       in
       {
         devShells = {
-          default = pkgs.mkShell rec {
+          default = pkgs.mkShell {
             buildInputs =
               with pkgs;
               [ ]
               ++ pkgBuildInputs
               ++ (with pkgs.fenix; [
-                stable.toolchain
+                (combine [
+                  stable.cargo
+                  stable.rustc
+                  targets.x86_64-unknown-linux-musl.stable.rust-std
+                ])
                 rust-analyzer
               ]);
+            shellHook = ''
+              export TARGET_CC="${pkgs.musl.dev}/bin/musl-gcc"
+              export TARGET_AR="ar rcus"
+              export TARGET_STRIP="strip"
+              export TARGET_LD="$TARGET_CC"
+            '';
+
             LD_LIBRARY_PATH = "${lib.makeLibraryPath pkgBuildInputs}";
           };
         };
+        pkgs = pkgs;
       }
     );
 }
