@@ -6,6 +6,13 @@ version = 4
 name = "allelua"
 version = "0.1.0"
 dependencies = [
+ "allelua_runtime",
+]
+
+[[package]]
+name = "allelua_runtime"
+version = "0.1.0"
+dependencies = [
  "mlua",
 ]
 

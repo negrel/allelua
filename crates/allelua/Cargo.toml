@@ -1,0 +1,17 @@
+[package]
+name = "allelua"
+version = "0.1.0"
+edition = "2024"
+license-file = "LICENSE"
+description = "Provides the allelua binary."
+repository = "https://github.com/negrel/allelua"
+readme = "README.md"
+authors = ["Alexandre Negrel <alexandre@negrel.dev>"]
+
+[[bin]]
+name = "allelua"
+path = "src/main.rs"
+
+[dependencies]
+allelua_runtime = { path = "../runtime" }
+

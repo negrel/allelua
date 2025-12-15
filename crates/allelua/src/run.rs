@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use allelua::Runtime;
+use allelua_runtime as allelua;
 
 pub fn run(args: &[String]) {
     if args.len() < 2 {
@@ -12,7 +12,7 @@ pub fn run(args: &[String]) {
         "-h" | "--help" | "help" => usage(),
         fname => match std::fs::read_to_string(fname) {
             Ok(lua_code) => {
-                let mut rt = Runtime::new(args[1..].iter().cloned())
+                let mut rt = allelua::Runtime::new(args[1..].iter().cloned())
                     .expect("failed to initialize Allelua runtime");
 
                 if let Err(err) = rt.do_chunk(lua_code) {
