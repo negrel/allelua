@@ -1,47 +1,33 @@
-use std::process::exit;
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
 
 mod run;
+use run::*;
 
-pub use run::*;
+/// Lua runtime blessed by programming gods.
+#[derive(Debug, Parser)]
+#[command(version)]
+struct Allelua {
+    #[command(subcommand)]
+    subcommand: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Run a Lua file.
+    Run {
+        /// Lua file to execute.
+        file: PathBuf,
+        /// Arguments passed to Lua main function
+        args: Vec<String>,
+    },
+}
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let cmd = Allelua::parse();
 
-    if args.len() < 2 {
-        cli_error(1, "no command provided");
+    match cmd.subcommand {
+        Command::Run { file, args } => run(file, args),
     }
-
-    let cmd = &args[1];
-    match cmd.as_str() {
-        "-h" | "--help" | "help" => usage(),
-        "r" | "ru" | "rnu" | "run" => run(&args[1..]),
-        _ => cli_error(1, format!("unknown command: '{cmd}'")),
-    }
-}
-
-fn cli_error(exit_code: i32, msg: impl AsRef<str>) {
-    eprintln!("Error: {}", msg.as_ref());
-    eprintln!();
-    eprintln!("USAGE: allelua [FLAGS...] COMMAND [ARGS...]");
-    eprintln!();
-    eprintln!("Run 'allelua -h' for more informations");
-    exit(exit_code);
-}
-
-fn usage() {
-    eprintln!("allelua - a Lua runtime blessed by programming gods.");
-    eprintln!("Alexandre Negrel <alexandre@negrel.dev>");
-    eprintln!();
-    eprintln!("USAGE:");
-    eprintln!("   allelua [FLAGS...] COMMAND [ARGS...]");
-    eprintln!();
-    eprintln!("FLAGS:");
-    eprintln!("   -h, --help                   Print this menu.");
-    eprintln!();
-    eprintln!("COMMANDS:");
-    eprintln!("   help                         Print this menu.");
-    eprintln!("   help COMMAND                 Print command's help menu.");
-    eprintln!("   run  FILE                    Run a Lua file.");
-    eprintln!();
-    eprintln!("Source code: https://github.com/negrel/allelua");
 }

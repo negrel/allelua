@@ -1,52 +1,25 @@
-use std::process::exit;
+use std::{path::PathBuf, process::exit};
 
 use allelua_runtime as allelua;
 
-pub fn run(args: &[String]) {
-    if args.len() < 2 {
-        cli_error(1, "no Lua file provided");
-    }
+pub fn run(file: PathBuf, args: Vec<String>) {
+    match std::fs::read_to_string(&file) {
+        Ok(lua_code) => {
+            let mut rt = allelua::Runtime::new(args.into_iter())
+                .expect("failed to initialize Allelua runtime");
 
-    let cmd = &args[1];
-    match cmd.as_str() {
-        "-h" | "--help" | "help" => usage(),
-        fname => match std::fs::read_to_string(fname) {
-            Ok(lua_code) => {
-                let mut rt = allelua::Runtime::new(args[1..].iter().cloned())
-                    .expect("failed to initialize Allelua runtime");
-
-                if let Err(err) = rt.do_chunk(lua_code) {
-                    match err {
-                        allelua::Error::LuaError(error) => {
-                            eprintln!("lua error: {error}");
-                            exit(1);
-                        }
+            if let Err(err) = rt.do_chunk(lua_code) {
+                match err {
+                    allelua::Error::LuaError(error) => {
+                        eprintln!("Lua error: {error}");
+                        exit(1);
                     }
                 }
             }
-            Err(err) => {
-                eprintln!("failed to read lua file '{cmd}': {err}");
-                exit(1);
-            }
-        },
+        }
+        Err(err) => {
+            eprintln!("failed to read Lua file '{}': {err}", file.display());
+            exit(1);
+        }
     }
-}
-
-fn cli_error(exit_code: i32, msg: impl AsRef<str>) {
-    eprintln!("Error: {}", msg.as_ref());
-    eprintln!();
-    eprintln!("USAGE: allelua run [FLAGS...] FILE [ARGS...]");
-    eprintln!();
-    eprintln!("Run 'allelua run -h' for more informations");
-    exit(exit_code);
-}
-
-fn usage() {
-    eprintln!("allelua run - Run a Lua file.");
-    eprintln!();
-    eprintln!("USAGE:");
-    eprintln!("   allelua run [FLAGS...] FILE [ARGS...]");
-    eprintln!();
-    eprintln!("FLAGS:");
-    eprintln!("   -h, --help                   Print this menu.");
 }

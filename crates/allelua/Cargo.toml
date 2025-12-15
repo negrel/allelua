@@ -14,4 +14,5 @@ path = "src/main.rs"
 
 [dependencies]
 allelua_runtime = { path = "../runtime" }
+clap = { version = "4.5.53", default-features = false, features = ["cargo", "derive", "help", "std", "usage"] }
 
